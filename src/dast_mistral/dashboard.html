@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="cs"><head><meta charset="utf-8"><title>dast-mistral</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{color-scheme:dark;--bg:#14161a;--card:#1d2026;--mut:#8b93a1;--ok:#4cc38a;--bad:#ef6b6b;--acc:#ff8a3d}
+body{margin:0;background:var(--bg);color:#e6e8ec;font:14px/1.45 system-ui,sans-serif;padding:24px;max-width:980px;margin-inline:auto}
+h1{font-size:18px;margin:0 0 4px}.sub{color:var(--mut);margin-bottom:20px}
+.pool{background:var(--card);border-radius:10px;padding:16px 18px;margin-bottom:16px}
+.head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.name{font-weight:600}.tag{font-size:12px;padding:2px 8px;border-radius:99px;background:#2a2f38}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+.bar{height:8px;background:#2a2f38;border-radius:4px;overflow:hidden;margin:10px 0 4px}
+.bar>i{display:block;height:100%;background:var(--acc)}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-variant-numeric:tabular-nums}
+td,th{text-align:right;padding:4px 6px;border-top:1px solid #2a2f38}th{color:var(--mut);font-weight:500}
+td:first-child,th:first-child{text-align:left}
+.mut{color:var(--mut)}
+</style></head><body>
+<h1>dast-mistral</h1><div class="sub" id="sub">načítám…</div><div id="pools"></div>
+<div class="pool"><div class="name">Posledních 7 dní podle klienta</div><table id="clients"></table></div>
+<script>
+const token=new URLSearchParams(location.search).get('token')||'';
+const eur=v=>v.toFixed(2)+' €';
+const t=ts=>ts?new Date(ts*1000).toLocaleString('cs-CZ',{day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+async function load(){
+  const r=await fetch('/_dm/status?token='+encodeURIComponent(token));
+  if(!r.ok){document.getElementById('sub').textContent='chyba '+r.status+' (token?)';return}
+  const d=await r.json();
+  document.getElementById('sub').textContent='poslední sync z Mistralu: '+t(d.last_sync);
+  document.getElementById('pools').innerHTML=d.pools.map(p=>{
+    const pct=Math.min(100,p.used_eur/p.initial_eur*100);
+    const rows=[['měsíc',p.month],...Object.entries(p.windows)].map(([n,w])=>
+      `<tr><td>${n}</td><td>${eur(w.spent)}</td><td>${eur(w.cap)}</td><td class="${w.room>0?'ok':'bad'}">${eur(w.room)}</td><td class="mut">${w.retry_at?'volno '+t(w.retry_at):''}</td></tr>`).join('');
+    return `<div class="pool"><div class="head"><span class="name">${p.account} / ${p.pool}</span>
+      <span class="tag ${p.blocked_by?'bad':'ok'}">${p.blocked_by?'blokováno ('+p.blocked_by+')':'volno'}</span></div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="mut">${eur(p.used_eur)} z ${eur(p.initial_eur)} (${pct.toFixed(1)} %) · reset za ${p.days_left.toFixed(1)} d · férově ${eur(p.daily_fair_share_eur)}/den</div>
+      <table><tr><th>okno</th><th>spotřeba</th><th>limit</th><th>zbývá</th><th></th></tr>${rows}</table></div>`}).join('')||'<div class="pool mut">Žádný účet zatím nemá data – spusť <code>dast-mistral sync</code>.</div>';
+  document.getElementById('clients').innerHTML='<tr><th>klient</th><th>účet/pool</th><th>požadavků</th><th>náklad</th></tr>'+
+    d.by_client_7d.map(r=>`<tr><td>${r.client}</td><td>${r.account}/${r.pool}</td><td>${r.n}</td><td>${eur(r.cost_eur)}</td></tr>`).join('');
+}
+load();setInterval(load,10000);
+</script></body></html>
