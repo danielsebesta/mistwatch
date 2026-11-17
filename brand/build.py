@@ -6,6 +6,7 @@ Then optimise:  npx svgo -f src/mistwatch/web --config brand/svgo.config.mjs
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from fontTools.ttLib import TTFont
@@ -18,7 +19,8 @@ CMAP, GLYF = FONT.getBestCmap(), FONT["glyf"]
 
 # sunset amber -> coral; a pixel-stepped gradient (not Mistral's yellow-orange-red)
 STEPS = ["#ffc233", "#ffa21f", "#ff7f2a", "#f95a3b", "#e8384f"]
-TILE, TILE_DARK, INK_DARK, INK_LIGHT = "#14181d", "#14181d", "#14181d", "#edf0f4"
+PAL = json.loads((HERE / "palette.json").read_text(encoding="utf-8"))["tokens"]  # from brand/palette.mjs
+TILE, INK_DARK, INK_LIGHT = PAL["bg"], PAL["bg"], PAL["text"]
 
 
 def letter(ch: str) -> list[tuple[int, int]]:
@@ -120,8 +122,8 @@ def main() -> None:
     raster(192, False).save(OUT / "icon-192.png", optimize=True)
     raster(512, False).save(OUT / "icon-512.png", optimize=True)
     (OUT / "site.webmanifest").write_text(
-        '{"name":"Mistwatch","short_name":"Mistwatch","start_url":"/","display":"standalone","background_color":"#14181d",'
-        '"theme_color":"#14181d","icons":[{"src":"/icon-192.png","sizes":"192x192","type":"image/png"},'
+        '{"name":"Mistwatch","short_name":"Mistwatch","start_url":"/","display":"standalone","background_color":"' + TILE + '",'
+        '"theme_color":"' + TILE + '","icons":[{"src":"/icon-192.png","sizes":"192x192","type":"image/png"},'
         '{"src":"/icon-512.png","sizes":"512x512","type":"image/png"},{"src":"/favicon.svg","sizes":"any","type":"image/svg+xml"}]}',
         encoding="utf-8")
 

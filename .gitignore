@@ -5,3 +5,4 @@ config.toml
 *.db
 *.db-*
 .pytest_cache/
+node_modules/

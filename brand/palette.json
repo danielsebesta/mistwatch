@@ -1,0 +1,26 @@
+{
+  "seed": "#ff8a1f",
+  "tokens": {
+    "bg": "#1d1108",
+    "surface": "#261910",
+    "fill": "#35271d",
+    "fill-2": "#413227",
+    "line": "#413227",
+    "line-strong": "#a58c7c",
+    "text-3": "#cfb3a2",
+    "text-2": "#eccfbd",
+    "text": "#fde3d4",
+    "accent": "#ffa35d",
+    "accent-ink": "#3f1c00",
+    "ok": "#81cd89",
+    "warn": "#efd118",
+    "bad": "#ff909d",
+    "s1": "#ff9742",
+    "s2": "#3ac2c7",
+    "s3": "#95c4ff",
+    "s4": "#89bf73",
+    "s5": "#ff9dcf",
+    "s6": "#d7c93c",
+    "s-other": "#7d6657"
+  }
+}
