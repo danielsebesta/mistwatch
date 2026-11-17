@@ -32,8 +32,8 @@ LADDER: list[Step] = [
     Step("zai-glm-5-3", "max", False, 1_048_576, "glm-5.3/max"),
 ]
 TOP = len(LADDER) - 1
-LLM_WEIGHT = 0.6
-SCORE_TO_LEVEL = [(1, 0), (3, 1), (5, 2), (6, 3), (7, 4), (9, 5), (10, 6)]  # score <= x -> level
+LLM_WEIGHT = 0.8
+SCORE_TO_LEVEL = [(1, 0), (3, 1), (4, 2), (5, 3), (6, 4), (8, 5), (10, 6)]  # score <= x -> level
 VALID_EFFORT = {
     "mistral-small-2603": {"none", "high"},
     "mistral-large-4-0": {"low", "medium", "high"},

@@ -54,6 +54,8 @@ class PoolStatus:
     month_room: float = 0.0
     month_retry_at: float | None = None
     inflight: float = 0.0
+    group: str = ""  # canonical account of the shared budget
+    members: list[str] = field(default_factory=list)  # every account drawing on it
 
     @property
     def room(self) -> float:
@@ -87,7 +89,7 @@ class PoolStatus:
 
     def to_dict(self) -> dict:
         return {
-            "account": self.account, "pool": self.pool,
+            "account": self.account, "pool": self.pool, "group": self.group, "members": self.members,
             "initial_eur": round(self.initial, 4), "used_eur": round(self.used, 4),
             "remaining_eur": round(self.remaining, 4), "reserve_eur": round(self.reserve, 4),
             "reset_at": self.reset_at, "days_left": round(self.days_left, 3),
@@ -115,28 +117,33 @@ class BudgetEngine:
 
     def status(self, account: str, pool: str, now: float | None = None) -> PoolStatus | None:
         now = now or time.time()
-        snap = self.db.latest_snapshot(account, pool)
+        # Accounts that share one Mistral budget are accounted as one: one counter, spend summed over all of them.
+        canon = self.db.canonical(account)
+        snap = self.db.latest_snapshot(canon, pool)
+        if snap is None and canon != account:
+            canon, snap = account, self.db.latest_snapshot(account, pool)
         if snap is None:
             return None
+        members = self.db.members(canon)
         initial = snap.initial_eur
         rolled = now >= snap.reset_at
         if rolled:
             # Period rolled over but we have no fresh snapshot yet: assume a clean counter
             # and count only what the proxy saw since the reset.
-            used = self.db.cost_between(account, pool, snap.reset_at, inclusive=True)
+            used = self.db.cost_between(members, pool, snap.reset_at, inclusive=True)
             days_left = 30.0
         else:
-            used = snap.used_eur + self.db.cost_between(account, pool, snap.ts)
+            used = snap.used_eur + self.db.cost_between(members, pool, snap.ts)
             days_left = max((snap.reset_at - now) / DAY, MIN_DAYS_LEFT)
         remaining = initial - used
         reserve = initial * self.limits.reserve_pct / 100
         st = PoolStatus(account, pool, initial, used, remaining, reserve, snap.reset_at, days_left,
-                        now - snap.ts, inflight=self.inflight.get((account, pool), 0.0))
+                        now - snap.ts, inflight=self.inflight.get((canon, pool), 0.0), group=canon, members=members)
         st.month_room = remaining - reserve
         st.month_retry_at = snap.reset_at if st.month_room <= 0 else None
         for name, length in WINDOWS.items():
             since = now - length * DAY
-            rows = self.db.rows_since(account, pool, since)
+            rows = self.db.rows_since(members, pool, since)
             spent = sum(c for _, c in rows)
             b0 = min(max(remaining, 0.0) + spent, initial)
             share = length / (days_left + length)
@@ -165,9 +172,9 @@ class BudgetEngine:
         return rows[-1][0] + length * DAY + 1
 
     def reserve(self, account: str, pool: str, est: float) -> None:
-        k = (account, pool)
+        k = (self.db.canonical(account), pool)
         self.inflight[k] = self.inflight.get(k, 0.0) + est
 
     def release(self, account: str, pool: str, est: float) -> None:
-        k = (account, pool)
+        k = (self.db.canonical(account), pool)
         self.inflight[k] = max(self.inflight.get(k, 0.0) - est, 0.0)

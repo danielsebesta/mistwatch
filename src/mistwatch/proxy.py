@@ -7,20 +7,24 @@ import logging
 import re
 import time
 from contextlib import asynccontextmanager
-from importlib import resources
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from .budget import BudgetEngine, PoolStatus
 from .config import Account, Client, Config
+from .groups import load_links
+from .modelnames import ModelNames
+from .signin import SignInManager
+from .store import Store
+from . import webapi
 from .db import DB
 from . import classifier, router
 from .pricing import PriceBook
 from .sync import sync_all
 
-log = logging.getLogger("dast_mistral.proxy")
+log = logging.getLogger("mistwatch.proxy")
 
 HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers",
        "transfer-encoding", "upgrade", "host", "content-length", "content-encoding"}
@@ -38,7 +42,15 @@ class State:
         self.blocked_until: dict[tuple[str, str], float] = {}
         self.http: httpx.AsyncClient | None = None
         self.last_sync: float = 0
-        self.accounts = {a.name: a for a in cfg.accounts}
+        self.store = Store(self.db)
+        self.signin = SignInManager(self)
+        self.names = ModelNames(self.db)
+        load_links(self.db)
+        self.store.migrate_config(cfg)  # one-time: accounts/clients from config.toml move into the app DB
+        self.reload_accounts()
+
+    def reload_accounts(self) -> None:
+        self.cfg.accounts[:] = self.store.list_accounts()
 
     def classify(self, ua: str) -> str:
         return "vibe" if self.vibe_re.search(ua or "") else "api"
@@ -102,6 +114,7 @@ def create_app(cfg: Config) -> FastAPI:
                 await sync_all(st.http, cfg, st.db)
                 st.last_sync = time.time()
                 st.blocked_until.clear()
+                await st.names.maybe_refresh(st.http, cfg.upstream, cfg.accounts)  # model names, at most twice a day
             except Exception:  # noqa: BLE001
                 log.exception("sync loop")
             await asyncio.sleep(cfg.limits.sync_interval_s)
@@ -116,58 +129,22 @@ def create_app(cfg: Config) -> FastAPI:
             task.cancel()
             await st.http.aclose()
 
-    app = FastAPI(title="dast-mistral", lifespan=lifespan)
-    app.state.dm = st
+    app = FastAPI(title="Mistwatch", lifespan=lifespan)
+    app.state.mw = st
 
     def auth(request: Request) -> Client | None | bool:
-        """Returns Client, or None when auth is disabled, or False when rejected."""
-        if not cfg.clients:
+        """Returns the calling Client, None when no proxy key exists yet (open), False when rejected."""
+        if not st.store.has_api_keys():
             return None
         tok = request.headers.get("authorization", "")
-        tok = tok[7:] if tok.lower().startswith("bearer ") else request.headers.get("x-api-key", "") or request.query_params.get("token", "")
-        for c in cfg.clients:
-            if tok and tok == c.token:
-                return c
-        return False
+        tok = tok[7:] if tok.lower().startswith("bearer ") else request.headers.get("x-api-key", "")
+        k = st.store.verify_api_key(tok.strip())
+        return Client(k["name"], "") if k else False
 
     def deny():
-        return JSONResponse({"error": {"message": "invalid proxy token", "type": "dast_mistral_auth"}}, status_code=401)
+        return JSONResponse({"error": {"message": "invalid proxy token", "type": "mistwatch_auth"}}, status_code=401)
 
-    # ---------- local management API ----------
-    @app.get("/_dm/status")
-    async def status(request: Request):
-        if auth(request) is False:
-            return deny()
-        now = time.time()
-        pools = []
-        for a in cfg.accounts:
-            for pool in ("vibe", "api"):
-                s = st.engine.status(a.name, pool, now)
-                if s:
-                    d = s.to_dict()
-                    d["blocked_temporarily"] = st.blocked_until.get((a.name, pool), 0) > now
-                    pools.append(d)
-        return {"now": now, "last_sync": st.last_sync, "pools": pools,
-                "by_client_7d": st.db.by_client_since(now - 7 * 86400)}
-
-    @app.get("/_dm/ledger")
-    async def ledger(request: Request, limit: int = 50):
-        if auth(request) is False:
-            return deny()
-        return st.db.recent(min(limit, 500))
-
-    @app.post("/_dm/sync")
-    async def force_sync(request: Request):
-        if auth(request) is False:
-            return deny()
-        res = await sync_all(st.http, cfg, st.db)
-        st.last_sync = time.time()
-        st.blocked_until.clear()
-        return res
-
-    @app.get("/_dm/dashboard", response_class=HTMLResponse)
-    async def dashboard():
-        return resources.files("dast_mistral").joinpath("dashboard.html").read_text(encoding="utf-8")
+    webapi.register(app)
 
     # ---------- the proxy ----------
     @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
@@ -197,7 +174,7 @@ def create_app(cfg: Config) -> FastAPI:
         if not cands:
             info = st.exhausted_info(cls)
             return JSONResponse(
-                {"error": {"type": "dast_mistral_budget_exhausted",
+                {"error": {"type": "mistwatch_budget_exhausted",
                            "message": "No account/pool has budget headroom right now.", **info}},
                 status_code=429, headers={"Retry-After": str(info["retry_after"])})
 
@@ -260,11 +237,11 @@ def create_app(cfg: Config) -> FastAPI:
                 continue
 
             hdrs = {k: v for k, v in resp.headers.items() if k.lower() not in HOP}
-            hdrs.update({"x-dm-account": acct.name, "x-dm-pool": pool})
+            hdrs.update({"x-mw-account": acct.name, "x-mw-pool": pool})
             if routed:
-                hdrs["x-dm-routed"] = routed.header()
+                hdrs["x-mw-routed"] = routed.header()
             if pst is not None:
-                hdrs["x-dm-room-eur"] = f"{pst.room:.4f}"
+                hdrs["x-mw-room-eur"] = f"{pst.room:.4f}"
             if not accounted:
                 return StreamingResponse(resp.aiter_bytes(), status_code=resp.status_code, headers=hdrs,
                                          background=_closer(resp))
@@ -280,7 +257,7 @@ def create_app(cfg: Config) -> FastAPI:
 
         if last_resp is not None:  # every candidate refused: surface the last upstream answer
             return Response(last_resp[1], status_code=last_resp[0], headers={"content-type": last_resp[2]})
-        return JSONResponse({"error": {"type": "dast_mistral_upstream", "message": "all upstream attempts failed"}},
+        return JSONResponse({"error": {"type": "mistwatch_upstream", "message": "all upstream attempts failed"}},
                             status_code=502)
 
     return app

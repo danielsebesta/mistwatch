@@ -14,7 +14,7 @@ import httpx
 
 from .router import _text
 
-log = logging.getLogger("dast_mistral.classifier")
+log = logging.getLogger("mistwatch.classifier")
 
 SYSTEM = (
     "Rate how hard the user's last request is for an AI assistant on a 0-10 integer scale. "
@@ -55,7 +55,7 @@ async def rate(http: httpx.AsyncClient, base: str, key: str, body: dict, model: 
            "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": view}]}
     try:
         r = await http.post(f"{base}/v1/chat/completions", json=req, timeout=timeout,
-                            headers={"Authorization": f"Bearer {key}", "User-Agent": "dast-mistral/0.1 router"})
+                            headers={"Authorization": f"Bearer {key}", "User-Agent": "mistwatch/0.1 router"})
         r.raise_for_status()
         data = r.json()
         m = _NUM.search(data["choices"][0]["message"]["content"])

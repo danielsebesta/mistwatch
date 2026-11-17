@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mistwatch</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{
+  /* tokens read from mistral.ai: warm off-white page, 1px hairlines, 6px controls, near-black primary, flame accent */
+  --bg:#f5f4ef;--card:#fbfbf8;--line:#e4e3de;--text:#18181b;--mut:#71717a;--ink:#09090b;--ink-t:#fafafa;
+  --acc:#ff5229;--acc2:#ff8204;--flame:linear-gradient(90deg,#ff8204,#ff5229 55%,#e51300);
+  --ok:#2b8a57;--bad:#c4001d;--warn:#b7791f;--chip:rgba(7,7,11,.05);--bar:#ebe9e0;--code:#ebe9e0;
+  --r:6px;--rc:8px;--shadow:0 1px 2px rgba(21,21,31,.03),0 2px 4px rgba(21,21,31,.02)}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#09090b;--card:#151524;--line:#31313a;--text:#fafafa;--mut:#a1a1aa;--ink:#fafafa;--ink-t:#09090b;
+  --acc:#ff6a2b;--ok:#4cc38a;--bad:#ff6b6b;--warn:#e0a94a;--chip:rgba(255,255,255,.07);--bar:#26263a;--code:#1d1d30;--shadow:none}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--acc)}
+.wrap{max-width:960px;margin:0 auto;padding:0 20px 60px}
+header{border-bottom:1px solid var(--line);background:var(--card)}
+header .wrap{display:flex;align-items:center;gap:24px;height:54px;padding-bottom:0}
+.logo{font-weight:500;letter-spacing:-.01em;display:flex;align-items:center;gap:9px;font-size:16px}
+.logo svg{display:block}
+nav{display:flex;gap:2px;flex:1;min-width:0}
+nav a{color:var(--mut);text-decoration:none;padding:6px 12px;border-radius:var(--r);font-weight:400;white-space:nowrap}
+nav a:hover{background:var(--chip)}
+nav a.on{color:var(--text);background:var(--chip)}
+.who{color:var(--mut);font-size:13px}
+.sum{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--text);padding:5px 11px;border-radius:var(--r);background:var(--chip);font-size:13px;white-space:nowrap}
+.sum .mini{width:54px;height:5px;background:var(--bar);border-radius:3px;overflow:hidden}
+.sum .mini i{display:block;height:100%;background:var(--flame)}
+.sum.bad{color:var(--bad)}
+.big{font-size:26px;font-weight:500;letter-spacing:-.02em;line-height:1.1}
+.stat{min-width:0}
+.stat .k{color:var(--mut);font-size:12.5px}
+.notice{border-left:3px solid var(--acc2);background:color-mix(in srgb,var(--acc2) 8%,var(--card))}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:14px}
+.kpi{margin:0}.kpi .k{color:var(--mut);font-size:12.5px;margin-bottom:4px}.kpi .bar{margin:10px 0 0}.kpi .chip{margin-top:8px}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:500}
+.seg{display:inline-flex;background:var(--chip);border-radius:var(--r);padding:2px}
+.seg button{background:transparent;border-radius:4px;padding:3px 11px;font-size:13px;color:var(--mut)}
+.seg button.on{background:var(--card);color:var(--text);box-shadow:var(--shadow)}
+.chart{position:relative}.chart svg{display:block;width:100%}
+.chart .grid{stroke:var(--line);stroke-width:1}
+.chart .axis{fill:var(--mut);font-size:11px;font-variant-numeric:tabular-nums}
+.chart .pace{stroke:var(--text);stroke-width:1;stroke-dasharray:4 4;opacity:.5}
+.chart .pace-t{fill:var(--text);opacity:.7}
+.chart .hit:hover{fill:var(--chip)}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--ink-t);padding:8px 10px;border-radius:6px;font-size:12px;z-index:5;white-space:nowrap;line-height:1.5}
+.tip .dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
+.tip .tot{border-top:1px solid rgba(128,128,128,.4);margin-top:4px;padding-top:4px}
+.empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--mut)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;font-size:12.5px}
+.lg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px}
+.gauge{display:grid;grid-template-columns:64px 1fr auto;gap:12px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
+.gauge .bar{margin:0 0 3px}
+.brow{padding:12px 0;border-top:1px solid var(--line)}
+.brow .row{flex-wrap:nowrap}.brow .row b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.brow .chip{white-space:nowrap}.brow .bar{margin:8px 0 4px}
+.notice-line{margin-top:6px;padding-top:10px;border-top:1px dashed var(--line)}
+.grid2.top{align-items:start;margin-bottom:14px}
+details.fold{background:var(--card);border:1px solid var(--line);border-radius:var(--rc);margin-bottom:10px}
+details.fold summary{display:flex;align-items:center;gap:10px;padding:12px 18px;cursor:pointer;list-style:none;font-weight:500}
+details.fold summary::-webkit-details-marker{display:none}
+details.fold summary::before{content:"\25B8";color:var(--mut);transition:transform .15s}
+details.fold[open] summary::before{transform:rotate(90deg)}
+.foldbody{padding:0 18px 14px}
+@media(max-width:1100px){.sum .more,.who{display:none}}
+@media(max-width:900px){.sum .mini{display:none}}
+@media(max-width:640px){header .wrap{gap:10px}nav a{padding:6px 7px;font-size:13px}.sum{display:none}}
+h1{font-size:28px;line-height:1.15;font-weight:500;margin:34px 0 6px;letter-spacing:-.02em}
+h2{font-size:15px;font-weight:500;margin:0 0 10px;letter-spacing:-.005em}
+.sub{color:var(--mut);margin:0 0 18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--rc);padding:18px 20px;margin-bottom:14px;box-shadow:var(--shadow)}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sp{flex:1}
+.mut{color:var(--mut)}
+.small{font-size:12.5px}
+.chip{display:inline-block;font-size:12px;padding:2px 9px;border-radius:4px;background:var(--chip);color:var(--mut);font-weight:500}
+.chip.ok{color:var(--ok)}.chip.bad{color:var(--bad)}.chip.warn{color:var(--warn)}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+button,.btn{font:inherit;cursor:pointer;border:1px solid transparent;background:var(--chip);color:var(--text);padding:7px 13px;border-radius:var(--r);font-weight:400}
+button:hover{background:var(--chip)}
+button.pri{background:var(--ink);border-color:var(--ink);color:var(--ink-t)}
+button.pri:hover{background:var(--ink);opacity:.86}
+button.danger{color:var(--bad)}
+button.ghost{border-color:transparent;background:transparent;color:var(--mut)}
+button:disabled{opacity:.5;cursor:default}
+input,select{font:inherit;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:8px 11px;min-width:0}
+input:focus{outline:2px solid color-mix(in srgb,var(--acc) 35%,transparent);border-color:var(--acc)}
+label{display:block;font-weight:500;margin:12px 0 4px}
+.bar{height:6px;background:var(--bar);border-radius:3px;overflow:hidden;margin:12px 0 6px}
+.bar i{display:block;height:100%;background:var(--flame);border-radius:3px}
+.bar i.hot{background:linear-gradient(90deg,#ff5229,#c4001d)}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{padding:6px 8px;border-top:1px solid var(--line);text-align:right;white-space:nowrap}
+th{color:var(--mut);font-weight:500;font-size:12.5px}
+th:first-child,td:first-child{text-align:left}
+td.l,th.l{text-align:left}
+.scroll{overflow-x:auto}
+code,pre{background:var(--code);border-radius:4px;font:12.5px/1.5 "DM Mono","Space Mono",ui-monospace,Consolas,monospace}
+code{padding:1px 5px}
+pre{padding:10px 12px;overflow-x:auto;margin:8px 0;white-space:pre-wrap;word-break:break-all}
+.keyrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.keyrow .t{width:150px}
+.keyrow .t b{display:block}
+.auth{max-width:380px;margin:12vh auto 0;padding:0 20px}
+.auth .card{padding:22px}
+.auth h1{margin-top:0}
+.auth input{width:100%}
+.err{color:var(--bad);min-height:20px;margin:8px 0 0}
+.secret{border:1px solid var(--acc2);background:color-mix(in srgb,var(--acc2) 9%,var(--card))}
+.toast{position:fixed;right:18px;bottom:18px;background:var(--text);color:var(--bg);padding:10px 14px;border-radius:var(--r);max-width:360px;box-shadow:0 6px 24px rgba(0,0,0,.25);z-index:9}
+.toast.bad{background:var(--bad);color:#fff}
+.flame{height:3px;background:var(--flame)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:20px;z-index:8}
+.modal .card{width:min(460px,100%);margin:0;border-radius:12px}
+.modal input{width:100%}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:700px){.grid2{grid-template-columns:1fr}.keyrow .t{width:100%}nav a{padding:6px 8px}.who{display:none}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+"use strict";
+// ---------- tiny helpers ----------
+const enc = encodeURIComponent;
+const $ = (sel, el = document) => el.querySelector(sel);
+function h(tag, props, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "value") el.value = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) el.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return el;
+}
+async function api(method, path, body) {
+  const r = await fetch("/api" + path, {
+    method, credentials: "same-origin",
+    headers: { "content-type": "application/json", "x-mw": "1" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  let data = null;
+  try { data = await r.json(); } catch (e) { /* empty body */ }
+  if (r.status === 401 && path !== "/login") { me = null; boot(); throw new Error("Your session has expired."); }
+  if (!r.ok) throw new Error((data && (data.detail || data.message)) || "Error " + r.status);
+  return data;
+}
+let toastTimer;
+function toast(msg, bad) {
+  $(".toast")?.remove();
+  const t = h("div", { class: "toast" + (bad ? " bad" : "") }, msg);
+  document.body.append(t);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.remove(), bad ? 6000 : 3000);
+}
+const act = fn => async (...a) => { try { await fn(...a); } catch (e) { toast(e.message, true); } };
+const plural = (n, word) => n + " " + word + (n === 1 ? "" : "s");
+const eur = v => "€" + (v ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const eur4 = v => v < 0.01 ? "€" + (v ?? 0).toFixed(5) : eur(v);
+const when = ts => ts ? new Date(ts * 1000).toLocaleString("en-GB", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+function ago(ts) {
+  if (!ts) return "never";
+  const s = Date.now() / 1000 - ts;
+  if (s < 90) return "just now";
+  if (s < 5400) return Math.round(s / 60) + " min ago";
+  if (s < 129600) return Math.round(s / 3600) + " h ago";
+  return Math.round(s / 86400) + " d ago";
+}
+const POOL = { vibe: "Vibe Code", api: "Studio (API)" };
+const WIN = { "5h": "5 hours", day: "day", week: "week" };
+async function copy(text) {
+  try { await navigator.clipboard.writeText(text); toast("Copied"); } catch (e) { toast("Copy failed", true); }
+}
+function modal(content) {
+  const m = h("div", { class: "modal", onclick: e => { if (e.target === m) m.remove(); } }, h("div", { class: "card" }, content));
+  document.body.append(m);
+  return m;
+}
+
+// ---------- brand ----------
+function logo(size = 18) {
+  // 5x5 pixel "M" in the flame colours, in the spirit of Mistral's pixel emblem
+  const rows = ["#ff8204", "#ff8204", "#ff5229", "#e51300", "#c4001d"];
+  const on = ["10001", "11011", "10101", "10001", "10001"];
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 5 5"); svg.setAttribute("width", size); svg.setAttribute("height", size);
+  svg.setAttribute("shape-rendering", "crispEdges"); svg.setAttribute("aria-hidden", "true");
+  on.forEach((row, y) => [...row].forEach((c, x) => {
+    if (c !== "1") return;
+    const r = document.createElementNS(NS, "rect");
+    r.setAttribute("x", x); r.setAttribute("y", y); r.setAttribute("width", 1); r.setAttribute("height", 1); r.setAttribute("fill", rows[y]);
+    svg.append(r);
+  }));
+  return h("div", { class: "logo" }, svg, h("span", {}, "Mistwatch"));
+}
+
+// ---------- shell ----------
+let me = null, timer = null;
+const app = $("#app");
+const ROUTES = { "": ["Overview", viewDash], "#/accounts": ["Accounts & keys", viewAccounts], "#/keys": ["API keys", viewKeys], "#/settings": ["Settings", viewSettings] };
+
+async function boot() {
+  clearInterval(timer);
+  let s;
+  try { s = await api("GET", "/session"); } catch (e) { return; }
+  me = s.user;
+  if (s.setup_needed) return viewAuth("setup");
+  if (!me) return viewAuth("login");
+  render();
+}
+let sumTimer = null;
+async function loadSummary() {
+  const el = $("#sum");
+  if (!el) return;
+  let d;
+  try { d = await api("GET", "/summary"); } catch (e) { return; }
+  const a = d.all;
+  if (!a) { el.replaceChildren("No budget"); el.className = "sum"; return; }
+  const pct = a.initial_eur ? Math.min(100, a.used_eur / a.initial_eur * 100) : 0;
+  const tip = Object.entries(d.pools).map(([p, v]) => `${POOL[p]}: ${eur(v.remaining_eur)} left of ${eur(v.initial_eur)}` +
+    (v.budgets > 1 ? ` (${plural(v.budgets, "budget")})` : "")).join("\n") + "\nCan spend now: " + eur(a.room_eur);
+  el.title = tip;
+  el.className = "sum" + (a.blocked ? " bad" : "");
+  el.replaceChildren(h("span", { class: "mini" }, h("i", { style: "width:" + pct + "%" })),
+    h("b", {}, eur(a.remaining_eur)), h("span", { class: "mut" }, "left"),
+    h("span", { class: "mut more" }, a.blocked ? "· exhausted" : "· now " + eur(a.room_eur)));
+}
+function render() {
+  clearInterval(timer);
+  clearInterval(sumTimer);
+  const route = ROUTES[location.hash] ? location.hash : "";
+  const main = h("main", { class: "wrap" });
+  app.replaceChildren(
+    h("div", { class: "flame" }),
+    h("header", {}, h("div", { class: "wrap" },
+      logo(),
+      h("nav", {}, Object.entries(ROUTES).map(([r, [label]]) =>
+        h("a", { href: r || "#/", class: r === route ? "on" : "" }, label))),
+      h("a", { class: "sum", id: "sum", href: "#/", title: "Total across all accounts and keys" }, "…"),
+      h("span", { class: "who" }, me.username),
+      h("button", { class: "ghost", onclick: act(async () => { await api("POST", "/logout"); me = null; boot(); }) }, "Sign out"))),
+    main);
+  ROUTES[route][1](main);
+  loadSummary();
+  sumTimer = setInterval(loadSummary, 15000);
+}
+window.addEventListener("hashchange", () => { if (me) render(); });
+
+// ---------- login / first-run setup ----------
+function viewAuth(mode) {
+  const setup = mode === "setup";
+  const u = h("input", { autocomplete: "username", placeholder: "username", autofocus: true });
+  const p = h("input", { type: "password", autocomplete: setup ? "new-password" : "current-password", placeholder: setup ? "password (at least 10 characters)" : "password" });
+  const p2 = setup ? h("input", { type: "password", autocomplete: "new-password", placeholder: "password again" }) : null;
+  const err = h("div", { class: "err" });
+  const go = async () => {
+    err.textContent = "";
+    if (setup && p.value !== p2.value) { err.textContent = "Passwords do not match."; return; }
+    try {
+      const r = await api("POST", setup ? "/setup" : "/login", { username: u.value, password: p.value });
+      await boot();
+      if (r.api_key) showNewKey(r.api_key.name, r.api_key.secret, true);
+    } catch (e) { err.textContent = e.message; }
+  };
+  for (const i of [u, p, p2]) i?.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+  app.replaceChildren(h("div", { class: "auth" },
+    h("div", { style: "margin-bottom:18px" }, logo(22)),
+    h("div", { class: "card" },
+      h("h1", {}, setup ? "Create account" : "Sign in"),
+      setup ? h("p", { class: "sub" }, "First run. This account will manage keys and limits.") : null,
+      h("label", {}, "User"), u, h("label", {}, "Password"), p,
+      setup ? [h("label", {}, "Password again"), p2] : null,
+      err,
+      h("div", { style: "margin-top:14px" }, h("button", { class: "pri", style: "width:100%", onclick: go }, setup ? "Create account" : "Sign in")))));
+}
+
+// ---------- dashboard ----------
+// Flame colours first (Mistral's palette), neutrals after; "other" always gets the last, quietest one.
+const SERIES = ["#ff8204", "#ff5229", "#c4001d", "#f2b705", "#52525b", "#a1a1aa"];
+const OTHER_COLOR = "#d4d4d8";
+const colorOf = (name, i) => name === "other" ? OTHER_COLOR : SERIES[i % SERIES.length];
+const pref = { get: (k, d) => localStorage.getItem("mw." + k) || d, set: (k, v) => localStorage.setItem("mw." + k, v) };
+const RANGES = { "24h": "24 hours", "7d": "7 days", "30d": "30 days" };
+const BYS = { model: "Model", client: "API key", account: "Account", pool: "Budget type" };
+const RANGE_DAYS = { "24h": 1, "7d": 7, "30d": 30 };
+
+function svg(tag, attrs, ...kids) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v);
+  for (const k of kids) if (k != null) el.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return el;
+}
+const niceMax = v => {
+  if (v <= 0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const m of [1, 1.5, 2, 3, 5, 7.5, 10]) if (v <= m * p) return m * p;
+  return 10 * p;
+};
+const short = v => v >= 100 ? "€" + Math.round(v) : v >= 10 ? "€" + v.toFixed(0) : v >= 1 ? "€" + v.toFixed(1).replace(/\.0$/, "") : "€" + v.toFixed(2);
+
+function fold(title, hint, ...content) {
+  return h("details", { class: "fold" }, h("summary", {}, h("span", {}, title), hint ? h("span", { class: "mut small" }, hint) : null), h("div", { class: "foldbody" }, content));
+}
+function windowTable(rows) {
+  return h("div", { class: "scroll" }, h("table", {},
+    h("tr", {}, h("th", {}, "window"), h("th", {}, "spent"), h("th", {}, "limit"), h("th", {}, "left"), h("th", {}, "")),
+    rows.map(([n, w]) => h("tr", {}, h("td", {}, n), h("td", {}, eur(w.spent)), h("td", {}, eur(w.cap)),
+      h("td", { class: w.room > 0 ? "ok" : "bad" }, eur(w.room)), h("td", { class: "mut" }, w.retry_at ? "free from " + when(w.retry_at) : "")))));
+}
+
+async function viewDash(main) {
+  let range = pref.get("range", "7d"), by = pref.get("by", "model");
+  if (!RANGES[range]) range = "7d";
+  if (!BYS[by]) by = "model";
+  const sub = h("p", { class: "sub" }, "Loading…");
+  const body = h("div");
+  main.append(h("h1", {}, "Overview"), sub, body);
+  const load = async () => {
+    let d, u, led;
+    try { [d, u, led] = await Promise.all([api("GET", "/status"), api("GET", `/usage?range=${range}&by=${by}`), api("GET", "/ledger?limit=15")]); } catch (e) { return; }
+    if (!body.isConnected) return;
+    sub.replaceChildren("Last sync with Mistral: " + (d.last_sync ? ago(d.last_sync) : "not yet") + " · ",
+      h("button", { class: "ghost small", onclick: act(async () => { toast("Syncing…"); await api("POST", "/sync"); load(); }) }, "sync now"));
+    const set = (k, v) => { if (k === "range") range = v; else by = v; pref.set(k, v); load(); };
+    body.replaceChildren(...dashBody(d, u, led, set, range, by));
+  };
+  await load();
+  timer = setInterval(load, 10000);
+}
+
+function dashBody(d, u, led, set, range, by) {
+  const sm = d.summary, a = sm.all;
+  if (!a) return [h("div", { class: "card" }, h("h2", {}, "No data yet"),
+    h("p", { class: "mut" }, "Add a Mistral account and key so the proxy knows what to draw from."),
+    h("a", { class: "btn pri", href: "#/accounts", style: "text-decoration:none;display:inline-block" }, "Add a key"))];
+  return [kpiRow(a, u, range), chartCard(u, a, set, range, by),
+    h("div", { class: "grid2 top" }, limitsCard(a), budgetsCard(d, sm)),
+    fold("Limits per budget", "windows, spent and room", ...d.pools.filter(p => p.account === p.group).map(p =>
+      h("div", { style: "margin-bottom:12px" }, h("div", { class: "small mut", style: "margin:6px 0 2px" }, p.account + " · " + (POOL[p.pool] || p.pool)),
+        windowTable([["month", p.month], ...Object.entries(p.windows).map(([n, w]) => [WIN[n] || n, w])])))),
+    d.by_client_7d.length ? fold("Spend by key", "last 7 days", h("div", { class: "scroll" }, h("table", {},
+      h("tr", {}, h("th", {}, "key"), h("th", {}, "account / budget"), h("th", {}, "requests"), h("th", {}, "cost")),
+      d.by_client_7d.map(r => h("tr", {}, h("td", {}, r.client), h("td", {}, r.account + " / " + (POOL[r.pool] || r.pool)), h("td", {}, r.n), h("td", {}, eur(r.cost_eur))))))) : null,
+    led.length ? fold("Recent requests", "latest " + led.length, h("div", { class: "scroll" }, h("table", {},
+      h("tr", {}, h("th", {}, "when"), h("th", { class: "l" }, "key"), h("th", { class: "l" }, "model"), h("th", {}, "tokens in/out"), h("th", {}, "cost")),
+      led.map(r => h("tr", {}, h("td", {}, when(r.ts)), h("td", { class: "l" }, r.client || "—"), h("td", { class: "l", title: r.model || "" }, r.model_name || r.endpoint || "—"),
+        h("td", {}, r.prompt_tokens != null ? r.prompt_tokens + " / " + (r.completion_tokens || 0) : "—"), h("td", {}, eur4(r.cost_eur))))))) : null,
+  ];
+}
+
+function kpiRow(a, u, range) {
+  const pct = a.initial_eur ? Math.min(100, a.used_eur / a.initial_eur * 100) : 0;
+  const avg = u.total / RANGE_DAYS[range];
+  const delta = u.prev_total > 0 ? (u.total - u.prev_total) / u.prev_total * 100 : null;
+  const tile = (k, big, sub, extra) => h("div", { class: "card kpi" }, h("div", { class: "k" }, k), h("div", { class: "big" }, big), h("div", { class: "mut small" }, sub), extra);
+  const over = avg > a.fair_daily_eur && a.fair_daily_eur > 0;
+  return h("div", { class: "kpis" },
+    tile("Left this period", eur(a.remaining_eur), `of ${eur(a.initial_eur)} · ${pct.toFixed(0)}% used`,
+      h("div", { class: "bar" }, h("i", { class: pct > 90 ? "hot" : "", style: "width:" + pct + "%" }))),
+    tile("Available now", eur(a.room_eur), a.blocked ? "all budgets blocked" + (a.retry_at ? " until " + when(a.retry_at) : "") : "before the tightest limit",
+      a.blocked ? h("span", { class: "chip bad" }, "blocked") : h("span", { class: "chip ok" }, "ready")),
+    tile("Spent · " + RANGES[range], eur(u.total), plural(u.requests, "request") + (delta == null ? "" : ` · ${delta >= 0 ? "▲" : "▼"} ${Math.abs(delta).toFixed(0)}% vs. before`)),
+    tile("Daily pace", eur(a.fair_daily_eur) + " /day", `you spend ${eur(avg)} /day`,
+      a.fair_daily_eur > 0 ? h("span", { class: "chip " + (over ? "warn" : "ok") }, over ? "over pace" : "under pace") : null));
+}
+
+function chartCard(u, a, set, range, by) {
+  const seg = h("div", { class: "seg" }, Object.keys(RANGES).map(r => h("button", { class: r === range ? "on" : "", onclick: () => set("range", r) }, r)));
+  const sel = h("select", { onchange: e => set("by", e.target.value), title: "Split spending by" },
+    Object.entries(BYS).map(([k, v]) => h("option", { value: k, selected: k === by }, "by " + v.toLowerCase())));
+  const label = n => by === "pool" ? (POOL[n] || n) : n;
+  const legend = h("div", { class: "legend" }, u.series.map((s, i) =>
+    h("span", { class: "lg" }, h("i", { style: "background:" + colorOf(s.name, i) }), label(s.name), h("span", { class: "mut" }, " " + eur4(s.total)))));
+  const box = h("div", { class: "chart" });
+  const draw = () => drawChart(box, u, a, label);
+  requestAnimationFrame(draw);
+  if (window.ResizeObserver) new ResizeObserver(() => draw()).observe(box);
+  return h("div", { class: "card" },
+    h("div", { class: "row", style: "margin-bottom:10px" }, h("h2", { style: "margin:0" }, "Spending"), h("span", { class: "sp" }), seg, sel),
+    box, u.series.length ? legend : null);
+}
+
+function drawChart(box, u, a, label) {
+  const W = box.clientWidth || 720, H = 230, L = 46, R = 8, T = 10, B = 26;
+  const n = u.buckets.length, pw = W - L - R, ph = H - T - B;
+  const sums = u.buckets.map((_, i) => u.series.reduce((t, s) => t + s.values[i], 0));
+  const fair = u.unit === "day" ? a.fair_daily_eur : 0;
+  const peak = Math.max(...sums, 0.0001);
+  const fairShown = fair > 0 && fair <= peak * 2.5;  // a pace line far above the bars would flatten them
+  const top = niceMax(Math.max(peak, fairShown ? fair * 1.05 : 0));
+  const y = v => T + ph - v / top * ph;
+  const bw = pw / n;
+  const root = svg("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Spending over time" });
+  for (let i = 0; i <= 4; i++) {
+    const v = top * i / 4;
+    root.append(svg("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), class: "grid" }), svg("text", { x: L - 8, y: y(v) + 4, class: "axis", "text-anchor": "end" }, short(v)));
+  }
+  const fmtX = t => {
+    const dt = new Date(t * 1000);
+    return u.unit === "hour" ? dt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) :
+      dt.toLocaleDateString("en-GB", u.range === "7d" ? { weekday: "short", day: "numeric" } : { day: "numeric", month: "short" });
+  };
+  const every = u.unit === "hour" ? 4 : n <= 7 ? 1 : 5;
+  const tip = h("div", { class: "tip", hidden: true });
+  u.buckets.forEach((t, i) => {
+    const x = L + i * bw;
+    if ((n - 1 - i) % every === 0) root.append(svg("text", { x: x + bw / 2, y: H - 8, class: "axis", "text-anchor": "middle" }, fmtX(t)));
+    let acc = 0;
+    u.series.forEach((s, si) => {
+      const v = s.values[i];
+      if (v <= 0) return;
+      const y0 = y(acc), y1 = y(acc + v);
+      acc += v;
+      root.append(svg("rect", { x: x + bw * 0.15, y: y1, width: bw * 0.7, height: Math.max(y0 - y1, 1), rx: 1.5, fill: colorOf(s.name, si) }));
+    });
+    const hit = svg("rect", { x, y: T, width: bw, height: ph, fill: "transparent", class: "hit" });
+    const show = () => {
+      const when_ = u.unit === "hour" ? fmtX(t) + " – " + fmtX(t + 3600) : new Date(t * 1000).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+      tip.replaceChildren(h("b", {}, when_), ...u.series.filter(s => s.values[i] > 0).map((s, k) =>
+        h("div", {}, h("i", { class: "dot", style: "background:" + colorOf(s.name, u.series.indexOf(s)) }), label(s.name) + " " + eur4(s.values[i]))),
+        h("div", { class: "tot" }, "Total " + eur4(sums[i])));
+      tip.hidden = false;
+      const tw = tip.offsetWidth;
+      tip.style.left = Math.min(Math.max(x + bw / 2 - tw / 2, 0), W - tw) + "px";
+      tip.style.top = Math.max(y(sums[i]) - tip.offsetHeight - 8, 0) + "px";
+    };
+    hit.addEventListener("mouseenter", show);
+    hit.addEventListener("mouseleave", () => { tip.hidden = true; });
+    root.append(hit);
+  });
+  if (fair > 0 && !fairShown) {
+    root.append(svg("text", { x: W - R - 4, y: T + 10, class: "axis pace-t", "text-anchor": "end" }, "daily pace " + short(fair) + " (above this chart)"));
+  }
+  if (fairShown) {
+    root.append(svg("line", { x1: L, x2: W - R, y1: y(fair), y2: y(fair), class: "pace" }),
+      svg("text", { x: W - R - 4, y: y(fair) - 5, class: "axis pace-t", "text-anchor": "end" }, "daily pace " + short(fair)));
+  }
+  box.replaceChildren(root, tip);
+  if (!u.total) box.append(h("div", { class: "empty" }, "No spend recorded in this range."));
+}
+
+function limitsCard(a) {
+  const rows = [["5 hours", a.windows["5h"]], ["Day", a.windows.day], ["Week", a.windows.week], ["Month", a.month]];
+  return h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Limits right now"),
+    h("div", { class: "mut small", style: "margin:-6px 0 6px" }, "Spend allowed per window. Unspent budget raises the limits automatically."),
+    rows.map(([name, w]) => {
+      const pct = w.cap > 0 ? Math.min(100, w.spent / w.cap * 100) : 100;
+      return h("div", { class: "gauge" }, h("div", {}, name), h("div", {}, h("div", { class: "bar" }, h("i", { class: pct >= 90 ? "hot" : "", style: "width:" + pct + "%" })),
+        h("div", { class: "mut small" }, `${eur(w.spent)} of ${eur(w.cap)}`)),
+        h("div", { class: w.room > 0 ? "ok num" : "bad num" }, eur(w.room) + " left"));
+    }));
+}
+
+function budgetsCard(d, sm) {
+  const rows = d.pools.filter(p => p.account === p.group).map(p => {
+    const pct = p.initial_eur ? Math.min(100, p.used_eur / p.initial_eur * 100) : 0;
+    const state = !p.enabled ? ["off", "warn"] : p.blocked_by ? ["blocked", "bad"] : p.blocked_temporarily ? ["paused", "warn"] : null;
+    return h("div", { class: "brow" },
+      h("div", { class: "row" }, h("b", {}, p.account), h("span", { class: "mut" }, POOL[p.pool] || p.pool),
+        p.members.length > 1 ? h("span", { class: "chip", title: p.members.join(", ") }, p.members.length + " keys, one budget") : null,
+        state ? h("span", { class: "chip " + state[1] }, state[0]) : null, h("span", { class: "sp" }), h("span", { class: "num" }, eur(p.remaining_eur) + " left")),
+      h("div", { class: "bar" }, h("i", { class: pct > 90 ? "hot" : "", style: "width:" + pct + "%" })),
+      h("div", { class: "mut small" }, `${eur(p.used_eur)} of ${eur(p.initial_eur)} · resets in ${Math.max(p.days_left, 0).toFixed(0)} d · can spend ${eur(Math.max(p.room_eur, 0))} now`));
+  });
+  const shared = sm.shared.map(g => h("div", { class: "small mut notice-line" },
+    "Counted once: " + g.members.join(", ") + (g.confidence === "sure" ? " (identical counters)" : " (probably the same, nothing spent yet)")));
+  return h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Budgets"), rows, shared);
+}
+
+// ---------- accounts & Mistral keys ----------
+async function viewAccounts(main) {
+  main.append(h("h1", {}, "Accounts & keys"),
+    h("p", { class: "sub" }, "Vibe Code: key from the Vibe CLI login, charged to the subscription budget (e.g. €127.50 per month). Studio (API): key from console.mistral.ai, charged to a separate API budget."),
+    h("div", { id: "alist" }));
+  const load = act(async () => {
+    const d = await api("GET", "/accounts");
+    const nameIn = h("input", { placeholder: "account name or e-mail", style: "width:260px" });
+    const add = act(async () => { await api("POST", "/accounts", { name: nameIn.value }); nameIn.value = ""; toast("Account added"); load(); });
+    nameIn.addEventListener("keydown", e => { if (e.key === "Enter") add(); });
+    $("#alist").replaceChildren(
+      ...d.accounts.map(a => accountCard(a, d.vibe_cli_available, load)),
+      h("div", { class: "card" }, h("div", { class: "row" }, nameIn, h("button", { class: "pri", onclick: add }, "Add account"))));
+  });
+  load();
+}
+function accountCard(a, vibeCli, reload) {
+  const prio = h("input", { type: "number", value: a.priority, style: "width:72px", title: "Lower number = goes first" });
+  prio.addEventListener("change", act(async () => { await api("PATCH", "/accounts/" + enc(a.name), { priority: +prio.value }); toast("Saved"); }));
+  const keyRow = pool => {
+    const k = a.keys[pool];
+    const label = h("div", { class: "t" }, h("b", {}, POOL[pool]),
+      k ? h("span", { class: "chip " + (k.ok ? "ok" : "bad") }, k.ok ? "set" : "cannot be read") : h("span", { class: "chip" }, "missing"));
+    const info = h("div", { class: "sp mut small" },
+      k ? [h("code", {}, k.hint || "—"), " · " + ({ "vibe-cli": "Vibe CLI sign-in (follows automatically)", keyring: "stored in the system keyring", env: "environment variable", inline: "stored in the database" }[k.source]), k.error ? " · " + k.error : ""] : "—");
+    const btns = [];
+    if (pool === "vibe")
+      btns.push(h("button", { class: "pri", onclick: () => signIn(a.name, reload) }, k ? "Sign in again" : "Sign in with Mistral"));
+    if (pool === "vibe" && vibeCli && !(k && k.source === "vibe-cli"))
+      btns.push(h("button", { onclick: act(async () => { const r = await api("PUT", `/accounts/${enc(a.name)}/keys/vibe`, { source: "vibe-cli" }); toast("Connected to Vibe CLI" + syncNote(r)); reload(); }) }, "Use Vibe CLI"));
+    btns.push(h("button", { onclick: () => pasteKey(a.name, pool, reload) }, k ? "Change key" : "Paste key"));
+    if (k) btns.push(h("button", { class: "ghost danger", onclick: act(async () => { if (confirm("Remove key?")) { await api("DELETE", `/accounts/${enc(a.name)}/keys/${pool}`); reload(); } }) }, "Remove"));
+    return h("div", { class: "keyrow" }, label, info, btns);
+  };
+  return h("div", { class: "card" },
+    h("div", { class: "row" }, h("h2", { style: "margin:0" }, a.name), a.enabled ? null : h("span", { class: "chip warn" }, "disabled"),
+      a.shared_with.length ? h("span", { class: "chip", title: "Same Mistral account, counted as one budget" }, "shares budget with " + a.shared_with.join(", ")) : null,
+      h("span", { class: "sp" }),
+      h("span", { class: "mut small" }, "priority"), prio,
+      h("button", { onclick: act(async () => { await api("PATCH", "/accounts/" + enc(a.name), { enabled: !a.enabled }); reload(); }) }, a.enabled ? "Disable" : "Enable"),
+      h("button", { class: "ghost danger", onclick: act(async () => { if (confirm(`Delete account ${a.name} including its keys? Usage history will be kept.`)) { await api("DELETE", "/accounts/" + enc(a.name)); reload(); } }) }, "Delete")),
+    h("div", { style: "margin-top:8px" }, keyRow("vibe"), keyRow("api")));
+}
+function syncNote(r) {
+  const parts = Object.entries(r.synced || {}).map(([p, v]) => `${POOL[p]}: ${eur(v.used)} / ${eur(v.initial)}`);
+  return parts.length ? " · " + parts.join(", ") : "";
+}
+// Browser sign-in: the user logs in at Mistral in a new tab, we poll until the server has exchanged it for a key.
+async function signIn(name, reload) {
+  const tab = window.open("", "_blank");  // opened inside the click so popup blockers allow it
+  let att;
+  try { att = await api("POST", `/accounts/${enc(name)}/signin`); }
+  catch (e) { tab?.close(); toast(e.message, true); return; }
+  if (tab) tab.location = att.sign_in_url;
+  const msg = h("div", { class: "mut" }, "Waiting for sign-in in the browser…");
+  const m = modal([h("h2", {}, "Sign in with Mistral"),
+    h("p", { class: "small mut" }, "In the new tab, sign in to Mistral and choose a workspace. This page will finish automatically."),
+    h("p", {}, h("a", { href: att.sign_in_url, target: "_blank", rel: "noopener" }, "Open sign-in again")),
+    msg,
+    h("div", { class: "row", style: "margin-top:12px;justify-content:flex-end" }, h("button", { onclick: () => { stop(); api("DELETE", "/signin/" + att.id).catch(() => {}); m.remove(); } }, "Cancel"))]);
+  let stopped = false;
+  const stop = () => { stopped = true; };
+  while (!stopped && document.body.contains(m)) {
+    await new Promise(r => setTimeout(r, 2000));
+    let s;
+    try { s = await api("GET", "/signin/" + att.id); } catch (e) { msg.textContent = e.message; msg.className = "err"; return; }
+    if (s.status === "done") { stop(); m.remove(); toast("Signed in" + syncNote(s)); reload(); return; }
+    if (!["pending", "exchanging"].includes(s.status)) { stop(); msg.textContent = s.message || "Sign-in failed."; msg.className = "err"; return; }
+    if (s.status === "exchanging") msg.textContent = "Finishing…";
+  }
+}
+function pasteKey(name, pool, reload) {
+  const inp = h("input", { type: "password", placeholder: pool === "vibe" ? "Vibe CLI key" : "API key from console.mistral.ai", autocomplete: "off", spellcheck: "false" });
+  const msg = h("div", { class: "err" });
+  const m = modal([h("h2", {}, `${POOL[pool]} key for account ${name}`),
+    h("p", { class: "mut small" }, "The key is checked with Mistral before saving. It is stored in the OS keyring and never shown in full."),
+    inp, msg,
+    h("div", { class: "row", style: "margin-top:12px;justify-content:flex-end" },
+      h("button", { onclick: () => m.remove() }, "Cancel"),
+      h("button", { class: "pri", onclick: async ev => {
+        ev.target.disabled = true; msg.textContent = "";
+        try { const r = await api("PUT", `/accounts/${enc(name)}/keys/${pool}`, { key: inp.value }); m.remove(); toast("Key saved" + syncNote(r)); reload(); }
+        catch (e) { msg.textContent = e.message; ev.target.disabled = false; }
+      } }, "Verify and save"))]);
+  inp.focus();
+}
+
+// ---------- proxy API keys ----------
+async function viewKeys(main) {
+  main.append(h("h1", {}, "API keys"),
+    h("p", { class: "sub" }, "Keys for your tools (Vibe CLI, scripts, editors) to talk to the proxy. The full key is shown only once, when created."),
+    h("div", { id: "klist" }), h("div", { id: "howto" }));
+  const load = act(async () => {
+    const d = await api("GET", "/apikeys");
+    const nameIn = h("input", { placeholder: "name, e.g. vibe-cli", style: "width:220px" });
+    const create = act(async () => { const r = await api("POST", "/apikeys", { name: nameIn.value }); showNewKey(r.key.name, r.secret); load(); });
+    nameIn.addEventListener("keydown", e => { if (e.key === "Enter") create(); });
+    $("#klist").replaceChildren(h("div", { class: "card" },
+      d.keys.length ? h("div", { class: "scroll" }, h("table", {},
+        h("tr", {}, h("th", {}, "Name"), h("th", {}, "Key"), h("th", {}, "Created"), h("th", {}, "Last used"), h("th", {}, "")),
+        d.keys.map(k => h("tr", {}, h("td", {}, k.name), h("td", {}, h("code", {}, k.prefix + "…")), h("td", {}, when(k.created)), h("td", {}, ago(k.last_used)),
+          h("td", {}, h("button", { class: "ghost danger", onclick: act(async () => { if (confirm(`Revoke key ${k.name}? Tools using it will stop working.`)) { await api("DELETE", "/apikeys/" + k.id); load(); } }) }, "Revoke")))))) :
+        h("p", { class: "mut" }, "No keys yet – the proxy is open to every process on this computer. Create a key."),
+      h("div", { class: "row", style: "margin-top:12px" }, nameIn, h("button", { class: "pri", onclick: create }, "Generate key"))));
+    $("#howto").replaceChildren(h("div", { class: "card" }, h("h2", {}, "How to use it"),
+      h("div", { class: "small mut" }, "Base URL (OpenAI/Mistral compatible):"), h("pre", {}, d.base_url),
+      h("div", { class: "small mut" }, "Example:"),
+      h("pre", {}, `curl ${d.base_url}/chat/completions \\\n  -H "Authorization: Bearer mw-…" -H "Content-Type: application/json" \\\n  -d '{"model":"auto","messages":[{"role":"user","content":"Hello"}]}'`),
+      h("div", { class: "small mut" }, "Model ", h("code", {}, "auto"), " picks the model and effort based on query difficulty. ", h("code", {}, "auto-fast"), " stays with cheaper ones, ", h("code", {}, "auto-max"), " aims higher.")));
+  });
+  load();
+}
+function showNewKey(name, secret, first) {
+  const m = modal([h("h2", {}, first ? "Account created. Here is your first API key" : `Key "${name}"`),
+    h("div", { class: "card secret", style: "margin:0 0 12px" }, h("code", { style: "word-break:break-all;font-size:13px" }, secret)),
+    h("p", { class: "small mut" }, "Copy it now. It cannot be shown again; only its hash is stored."),
+    h("div", { class: "row", style: "justify-content:flex-end" },
+      h("button", { onclick: () => copy(secret) }, "Copy"), h("button", { class: "pri", onclick: () => m.remove() }, "Done"))]);
+}
+
+// ---------- model names ----------
+const NAME_SRC = { custom: ["custom", "ok"], "built-in": ["built-in", ""], mistral: ["from Mistral", ""], auto: ["auto", "warn"] };
+async function modelNames(showAll = false) {
+  const box = $("#mlist");
+  if (!box) return;
+  let rows;
+  try { rows = await api("GET", "/models" + (showAll ? "?all=true" : "")); } catch (e) { toast(e.message, true); return; }
+  const all = h("input", { type: "checkbox", checked: showAll, onchange: e => modelNames(e.target.checked) });
+  box.replaceChildren(
+    h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Model names"), h("span", { class: "sp" }),
+      h("label", { style: "margin:0;font-weight:400", class: "row" }, all, "show all Mistral models"),
+      h("button", { onclick: act(async () => { const r = await api("POST", "/models-refresh"); toast(`Loaded ${r.models} models from Mistral`); modelNames(showAll); }) }, "Refresh from Mistral")),
+    h("p", { class: "mut small", style: "margin:6px 0 10px" }, "How models are shown in charts and tables. Aliases of one model are merged. Type a new name and press Enter."),
+    h("div", { class: "scroll" }, h("table", {}, h("tr", {}, h("th", {}, "model id"), h("th", {}, "shown as"), h("th", {}, "source"), h("th", {}, "")),
+      rows.map(r => {
+        const inp = h("input", { value: r.display, style: "width:100%;min-width:180px" });
+        const save = act(async () => { if (inp.value.trim() && inp.value.trim() !== r.display) { await api("PUT", "/models/" + enc(r.key), { display: inp.value }); toast("Saved"); modelNames(showAll); } });
+        inp.addEventListener("keydown", e => { if (e.key === "Enter") save(); });
+        inp.addEventListener("blur", save);
+        const [label, tone] = NAME_SRC[r.source] || [r.source, ""];
+        return h("tr", {}, h("td", { class: "l", title: r.description || "" }, h("code", {}, r.ids[0]), r.ids.length > 1 ? h("span", { class: "mut small" }, " +" + (r.ids.length - 1) + " aliases") : null),
+          h("td", { class: "l" }, inp), h("td", { class: "l" }, h("span", { class: "chip " + tone }, label)),
+          h("td", {}, r.source === "custom" ? h("button", { class: "ghost", onclick: act(async () => { await api("DELETE", "/models/" + enc(r.key)); modelNames(showAll); }) }, "Reset") : ""));
+      }))));
+}
+
+// ---------- settings ----------
+async function viewSettings(main) {
+  const old = h("input", { type: "password", autocomplete: "current-password" });
+  const nw = h("input", { type: "password", autocomplete: "new-password", placeholder: "at least 10 characters" });
+  const change = act(async () => { await api("POST", "/password", { old: old.value, new: nw.value }); old.value = nw.value = ""; toast("Password changed; other sessions have been signed out"); });
+  main.append(h("h1", {}, "Settings"), h("p", { class: "sub" }, "Users who can sign in to this app."),
+    h("div", { class: "card" }, h("h2", {}, "Change password"),
+      h("div", { class: "grid2" }, h("div", {}, h("label", { style: "margin-top:0" }, "Current password"), old), h("div", {}, h("label", { style: "margin-top:0" }, "New password"), nw)),
+      h("div", { style: "margin-top:12px" }, h("button", { class: "pri", onclick: change }, "Change password"))),
+    h("div", { class: "card", id: "ulist" }),
+    h("div", { class: "card", id: "mlist" }));
+  modelNames();
+  const load = act(async () => {
+    const us = await api("GET", "/users");
+    const un = h("input", { placeholder: "name", autocomplete: "off", style: "width:160px" });
+    const up = h("input", { type: "password", placeholder: "password", autocomplete: "new-password", style: "width:180px" });
+    $("#ulist").replaceChildren(h("h2", {}, "Users"),
+      h("table", {}, us.map(u => h("tr", {}, h("td", {}, u.username + (u.username === me.username ? " (you)" : "")), h("td", { class: "mut" }, "since " + when(u.created)),
+        h("td", {}, u.username === me.username ? "" : h("button", { class: "ghost danger", onclick: act(async () => { if (confirm("Delete user " + u.username + "?")) { await api("DELETE", "/users/" + u.id); load(); } }) }, "Delete"))))),
+      h("div", { class: "row", style: "margin-top:12px" }, un, up,
+        h("button", { onclick: act(async () => { await api("POST", "/users", { username: un.value, password: up.value }); toast("User added"); load(); }) }, "Add user")));
+  });
+  load();
+}
+
+boot();
+</script>
+</body>
+</html>

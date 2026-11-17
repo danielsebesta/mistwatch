@@ -1,8 +1,8 @@
 import time
-from dast_mistral.budget import BudgetEngine, DAY
-from dast_mistral.config import Limits
-from dast_mistral.db import DB, Snapshot
-from dast_mistral.pricing import PriceBook
+from mistwatch.budget import BudgetEngine, DAY
+from mistwatch.config import Limits
+from mistwatch.db import DB, Snapshot
+from mistwatch.pricing import PriceBook
 
 
 def mk(initial=127.5, used=0.0, days_left=30.0, **lim):

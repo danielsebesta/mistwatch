@@ -1,4 +1,4 @@
-from dast_mistral.router import decide, apply
+from mistwatch.router import decide, apply
 
 def d(text, **kw):
     body = {"messages": [{"role": "user", "content": text}], **kw}

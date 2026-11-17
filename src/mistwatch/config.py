@@ -8,11 +8,11 @@ from pathlib import Path
 
 
 def home_dir() -> Path:
-    return Path(os.environ.get("DAST_MISTRAL_HOME") or Path.home() / ".dast-mistral")
+    return Path(os.environ.get("MISTWATCH_HOME") or Path.home() / ".mistwatch")
 
 
 def config_path() -> Path:
-    return Path(os.environ.get("DAST_MISTRAL_CONFIG") or home_dir() / "config.toml")
+    return Path(os.environ.get("MISTWATCH_CONFIG") or home_dir() / "config.toml")
 
 
 @dataclass
@@ -68,7 +68,7 @@ class Config:
     port: int = 8787
     upstream: str = "https://api.mistral.ai"
     usd_to_eur: float = 0.86
-    db_path: Path = field(default_factory=lambda: home_dir() / "ledger.db")
+    db_path: Path = field(default_factory=lambda: home_dir() / "mistwatch.db")
     limits: Limits = field(default_factory=Limits)
     router: RouterCfg = field(default_factory=RouterCfg)
     accounts: list[Account] = field(default_factory=list)
@@ -96,7 +96,7 @@ def resolve_secret(ref: str) -> str:
 def load(path: Path | None = None) -> Config:
     path = path or config_path()
     if not path.exists():
-        raise FileNotFoundError(f"{path} not found - run `dast-mistral init` first")
+        raise FileNotFoundError(f"{path} not found - run `mistwatch init` first")
     raw = tomllib.loads(path.read_text(encoding="utf-8"))
     cfg = Config()
     s = raw.get("server", {})
