@@ -16,19 +16,28 @@ const P = t => hexFromArgb(scheme.primaryPalette.tone(t));
 // orange seed (Blend.harmonize would drag green/red/yellow towards orange and blur their meaning).
 const hue = (h, c, t) => hexFromArgb(TonalPalette.fromHueAndChroma(h, c).tone(t));
 
+const E = t => hexFromArgb(scheme.errorPalette.tone(t));
+// Exact M3 dark-scheme roles (tone numbers from the M3 spec). CSS variable names are kept; comments give the M3 role.
 const T = {
-  bg: N(6), surface: N(10), fill: N(17), "fill-2": N(22), line: N(22), "line-strong": NV(60),
-  "text-3": NV(75), "text-2": NV(85), text: N(92),
-  accent: P(75), "accent-ink": P(15),
-  ok: hue(150, 46, 76), warn: hue(100, 62, 84), bad: hue(12, 72, 72),
+  bg: N(6),                 // surface
+  surface: N(12),           // surfaceContainer
+  fill: N(17),              // surfaceContainerHigh
+  "fill-2": N(22),          // surfaceContainerHighest
+  line: NV(30),             // outlineVariant
+  "line-strong": NV(60),    // outline
+  "text-3": NV(80),         // onSurfaceVariant
+  "text-2": N(90),          // onSurface
+  text: N(90),              // onSurface
+  accent: P(80),            // primary
+  "accent-ink": P(20),      // onPrimary
+  "accent-container": P(30),// primaryContainer
+  ok: hue(150, 46, 80), warn: hue(100, 62, 80), bad: E(80),                    // extended colours + error
+  "ok-container": hue(150, 46, 30), "warn-container": hue(100, 62, 30), "bad-container": E(30), // *Container
   s1: P(72), s2: hue(200, 46, 72), s3: hue(255, 42, 78), s4: hue(140, 44, 72), s5: hue(350, 52, 76), s6: hue(105, 54, 80),
   "s-other": NV(45),
 };
 const css = Object.entries(T).map(([k, v]) => `  --${k}:${v};`).join("\n") +
-  "\n  --accent-soft:color-mix(in srgb,var(--accent) 14%,var(--surface));" +
-  "\n  --ok-soft:color-mix(in srgb,var(--ok) 14%,var(--surface));" +
-  "\n  --warn-soft:color-mix(in srgb,var(--warn) 14%,var(--surface));" +
-  "\n  --bad-soft:color-mix(in srgb,var(--bad) 14%,var(--surface));";
+  "\n  --accent-soft:var(--accent-container);--ok-soft:var(--ok-container);--warn-soft:var(--warn-container);--bad-soft:var(--bad-container);";
 
 const file = join(here, "..", "src", "mistwatch", "web", "index.html");
 let html = readFileSync(file, "utf8");
