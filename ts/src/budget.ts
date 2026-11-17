@@ -1,10 +1,13 @@
 import type { DB } from "./db.ts";
+import { createReservationLedger, type Reservation } from "./queue.ts";
 import type { Limits, PoolStatus, PoolStatusDict, WindowStatus } from "./types.ts";
 export const DAY = 86400;
 export const WINDOWS: Record<string, number> = { "5h": 5 / 24, day: 1.0, week: 7.0 };
 export const MIN_DAYS_LEFT = 1 / 24;
 export const poolRoom = (st: PoolStatus): number =>
   Math.min(st.month_room, ...Object.values(st.windows).map((w) => w.room)) - st.inflight;
+export const poolGrossRoom = (st: PoolStatus): number =>
+  Math.min(st.month_room, ...Object.values(st.windows).map((w) => w.room));
 export const poolPressure = (st: PoolStatus): number => {
   const fr = Object.values(st.windows)
     .filter((w) => w.cap > 0)
@@ -58,15 +61,13 @@ export const poolStatusDict = (st: PoolStatus): PoolStatusDict => ({
 });
 export type BudgetEngine = {
   readonly db: DB;
-  inflight: Map<string, number>;
   burst(name: string): number;
   status(account: string, pool: string, now?: number): PoolStatus | null;
-  reserve(account: string, pool: string, est: number): void;
-  release(account: string, pool: string, est: number): void;
+  tryReserve(account: string, pool: string, est: number, room: number): Reservation | null;
 };
 export const createBudgetEngine = (db: DB, limits: Limits): BudgetEngine => {
-  const inflight = new Map<string, number>();
-  const ikey = (account: string, pool: string): string => `${db.canonical(account)}${pool}`;
+  const ledger = createReservationLedger();
+  const ikey = (canon: string, pool: string): string => `${canon}\u0000${pool}`;
   const burst = (name: string): number => {
     const v =
       name === "5h"
@@ -128,7 +129,7 @@ export const createBudgetEngine = (db: DB, limits: Limits): BudgetEngine => {
       windows: {},
       month_room: monthRoom,
       month_retry_at: monthRoom <= 0 ? snap.reset_at : null,
-      inflight: inflight.get(`${canon}${pool}`) ?? 0,
+      inflight: ledger.outstanding(ikey(canon, pool)),
       group: canon,
       members,
     };
@@ -153,17 +154,9 @@ export const createBudgetEngine = (db: DB, limits: Limits): BudgetEngine => {
   };
   const engine: BudgetEngine = {
     db,
-    inflight,
     burst,
     status,
-    reserve: (account, pool, est) => {
-      const k = ikey(account, pool);
-      inflight.set(k, (inflight.get(k) ?? 0) + est);
-    },
-    release: (account, pool, est) => {
-      const k = ikey(account, pool);
-      inflight.set(k, Math.max((inflight.get(k) ?? 0) - est, 0));
-    },
+    tryReserve: (account, pool, est, room) => ledger.tryReserve(ikey(db.canonical(account), pool), est, room),
   };
   return engine;
 };

@@ -1,16 +1,16 @@
-import { createBudgetEngine, poolBlockedBy, poolRetryAt, poolRoom } from "./budget.ts";
 import type { BudgetEngine } from "./budget.ts";
-import { openDb } from "./db.ts";
+import { createBudgetEngine, poolBlockedBy, poolRetryAt, poolRoom } from "./budget.ts";
 import type { DB } from "./db.ts";
+import { openDb } from "./db.ts";
 import { loadLinks } from "./groups.ts";
-import { createModelNames } from "./modelnames.ts";
 import type { ModelNames } from "./modelnames.ts";
-import { createPriceBook } from "./pricing.ts";
+import { createModelNames } from "./modelnames.ts";
 import type { PriceBook } from "./pricing.ts";
-import { createSignIn } from "./signin.ts";
+import { createPriceBook } from "./pricing.ts";
 import type { SignInApi } from "./signin.ts";
-import { createStore } from "./store.ts";
+import { createSignIn } from "./signin.ts";
 import type { Store } from "./store.ts";
+import { createStore } from "./store.ts";
 import type { Account, Config, FetchLike, PoolStatus } from "./types.ts";
 
 export type Candidate = { account: Account; pool: string; status: PoolStatus };
@@ -35,6 +35,7 @@ export type State = {
 export const createState = (cfg: Config, fetchFn: FetchLike = fetch): State => {
   const db = openDb(cfg.db_path);
   const store = createStore(db);
+  const blockedUntil = new Map<string, number>();
   const st: State = {
     cfg,
     db,
@@ -42,9 +43,18 @@ export const createState = (cfg: Config, fetchFn: FetchLike = fetch): State => {
     prices: createPriceBook(cfg.usd_to_eur, cfg.price_overrides),
     store,
     names: createModelNames(db),
-    signin: createSignIn({ cfg, db, store, fetch: fetchFn }),
+    signin: createSignIn({
+      cfg,
+      db,
+      store,
+      fetch: fetchFn,
+      blockedUntil,
+      onSynced: () => {
+        st.lastSync = Date.now() / 1000;
+      },
+    }),
     vibeRe: new RegExp(cfg.limits.vibe_user_agent_regex, "i"),
-    blockedUntil: new Map(),
+    blockedUntil,
     fetch: fetchFn,
     lastSync: 0,
   };
@@ -91,7 +101,12 @@ export const exhaustedInfo = (st: State, now: number): ExhaustedInfo => {
       const status = st.engine.status(account.name, pool, now);
       if (!status) continue;
       const retryAt = poolRetryAt(status);
-      pools.push({ account: account.name, pool, blocked_by: poolBlockedBy(status) ?? "temporarily-blocked", retry_at: retryAt });
+      pools.push({
+        account: account.name,
+        pool,
+        blocked_by: poolBlockedBy(status) ?? "temporarily-blocked",
+        retry_at: retryAt,
+      });
       if (retryAt) retry.push(retryAt);
     }
   }

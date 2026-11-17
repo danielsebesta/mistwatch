@@ -39,11 +39,15 @@ const T = {
 const css = Object.entries(T).map(([k, v]) => `  --${k}:${v};`).join("\n") +
   "\n  --accent-soft:var(--accent-container);--ok-soft:var(--ok-container);--warn-soft:var(--warn-container);--bad-soft:var(--bad-container);";
 
-const file = join(here, "..", "src", "mistwatch", "web", "index.html");
-let html = readFileSync(file, "utf8");
-const nl = html.includes("\r\n") ? "\r\n" : "\n";
-html = html.replace(/(\/\* TOKENS:BEGIN[^\r\n]*\*\/\r?\n)[\s\S]*?(  \/\* TOKENS:END \*\/)/, (_, a, b) => a + css.replace(/\n/g, nl) + nl + b)
-  .replace(/<meta name="theme-color" content="#[0-9a-f]{6}">/, `<meta name="theme-color" content="${T.bg}">`);
-writeFileSync(file, html);
+const root = join(here, "..");
+const cssFile = join(root, "ts", "web", "styles.css");
+const htmlFile = join(root, "ts", "web", "index.html");
+let cssSrc = readFileSync(cssFile, "utf8");
+const nl = cssSrc.includes("\r\n") ? "\r\n" : "\n";
+cssSrc = cssSrc.replace(/(\/\* TOKENS:BEGIN[^\r\n]*\*\/\r?\n)[\s\S]*?(\s*\/\* TOKENS:END \*\/)/, (_, a, b) => a + css.replace(/\n/g, nl) + nl + b);
+writeFileSync(cssFile, cssSrc);
+let html = readFileSync(htmlFile, "utf8");
+html = html.replace(/<meta name="theme-color" content="#[0-9a-f]{6}">/, `<meta name="theme-color" content="${T.bg}">`);
+writeFileSync(htmlFile, html);
 writeFileSync(join(here, "palette.json"), JSON.stringify({ seed: SEED, tokens: T }, null, 2) + "\n");
 console.log(Object.entries(T).map(([k, v]) => `${k.padEnd(12)} ${v}`).join("\n"));

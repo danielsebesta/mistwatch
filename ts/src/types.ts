@@ -156,7 +156,7 @@ export type PoolAgg = {
   retry_at: number | null;
   reset_at: number | null;
 };
-export type SharedGroup = { canonical: string; members: string[]; confidence: string };
+export type SharedGroup = { canonical: string; members: string[]; confidence: "sure" | "likely" };
 export type Summary = { pools: Record<string, PoolAgg>; all: PoolAgg | null; shared: SharedGroup[]; accounts: number };
 export type NameSource = "custom" | "built-in" | "mistral" | "auto";
 export type CatalogEntry = { name: string | null; aliases: string[]; description: string | null };
@@ -172,7 +172,8 @@ export type ModelListing = {
 export type UserRow = { id: number; username: string; created: number };
 export type SessionUser = { id: number; username: string };
 export type ApiKeyRow = { id: number; name: string; prefix: string; created: number; last_used: number | null };
-export type KeyInfo = { source: string; hint: string | null; ok: boolean; error?: string };
+export type KeySource = "vibe-cli" | "keyring" | "env" | "inline";
+export type KeyInfo = { source: KeySource; hint: string | null; ok: boolean; error?: string };
 export type UsageSeries = { name: string; total: number; values: number[] };
 export type UsageResult = {
   range: string;

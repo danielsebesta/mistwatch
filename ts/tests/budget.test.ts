@@ -61,7 +61,7 @@ describe("budget pacing", () => {
   it("inflight reservations reduce room", () => {
     const [, eng, now] = mk();
     const before = poolRoom(must(eng.status("a", "vibe", now)));
-    eng.reserve("a", "vibe", 1.0);
+    eng.tryReserve("a", "vibe", 1.0, 10);
     close(before - poolRoom(must(eng.status("a", "vibe", now))), 1.0);
   });
 });

@@ -45,7 +45,7 @@ describe("shared-budget detection", () => {
     for (const n of ["a", "b"]) seed(db, n, 1.0);
     refreshLinks(db, accounts("a", "b"));
     const e = eng(db);
-    e.reserve("b", "vibe", 0.5);
+    e.tryReserve("b", "vibe", 0.5, 10);
     close(stat(e, "a", NOW + 1).inflight, 0.5);
   });
   it("zero usage merges conservatively then splits on divergence", () => {

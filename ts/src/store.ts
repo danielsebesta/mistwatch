@@ -2,11 +2,14 @@ import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypt
 import { Entry } from "@napi-rs/keyring";
 import { resolveSecret } from "./config.ts";
 import type { DB } from "./db.ts";
-import type { Account, ApiKeyRow, Config, KeyInfo, ManualPool, SessionUser, UserRow } from "./types.ts";
+import { hashPasswordAsync, verifyPasswordAsync } from "./security.ts";
+import type { Account, ApiKeyRow, Config, KeyInfo, KeySource, ManualPool, SessionUser, UserRow } from "./types.ts";
 import { POOLS } from "./types.ts";
 export const NAME_RE = /^[A-Za-z0-9._-]{1,40}$/;
 export const ACCOUNT_RE = /^[A-Za-z0-9._+@-]{1,80}$/;
 export const SESSION_TTL = 30 * 86400;
+export const SESSION_IDLE_S = 7 * 86400;
+const SESSION_TOUCH_S = 60;
 export const KEYRING_SERVICE = "mistwatch";
 export const VIBE_REF = "keyring:ai.mistral.vibe/MISTRAL_API_KEY";
 export const MIN_PASSWORD = 10;
@@ -41,12 +44,14 @@ export const verifyPassword = (pw: string, stored: string): boolean => {
 };
 let dummy: string | null = null;
 const dummyHash = (): string => (dummy ??= hashPassword("dummy-password-for-timing"));
+let dummyAsync: Promise<string> | null = null;
+const dummyHashAsync = (): Promise<string> => (dummyAsync ??= hashPasswordAsync("dummy-password-for-timing"));
 const sha = (token: string): string => createHash("sha256").update(token, "utf8").digest("hex");
 export const checkPasswordPolicy = (pw: string): void => {
   if (pw.length < MIN_PASSWORD) throw new StoreError(`Password must be at least ${MIN_PASSWORD} characters.`);
   if (pw.length > 256) throw new StoreError("Password is too long.");
 };
-export const refKind = (ref: string): string =>
+export const refKind = (ref: string): KeySource =>
   ref === VIBE_REF ? "vibe-cli" : ref.startsWith("keyring:") ? "keyring" : ref.startsWith("env:") ? "env" : "inline";
 export const mask = (key: string): string =>
   key.length > 12 ? `${key.slice(0, 5)}…${key.slice(-4)}` : `…${key.slice(-3)}`;
@@ -217,6 +222,32 @@ export const createStore = (db: DB) => {
       }
       return verifyPassword(password, str(r.pw_hash)) ? { id: num(r.id), username: str(r.username) } : null;
     },
+    createUserAsync: async (username: string, password: string, now = Date.now() / 1000): Promise<number> => {
+      const name = username.trim();
+      if (!/^[A-Za-z0-9._@-]{2,40}$/.test(name))
+        throw new StoreError("Username: 2-40 characters, letters, digits and . _ - @");
+      checkPasswordPolicy(password);
+      if (one("SELECT 1 FROM users WHERE username=?", [name]))
+        throw new StoreError("A user with this name already exists.");
+      return Number(
+        run("INSERT INTO users(username, pw_hash, created) VALUES(?,?,?)", name, await hashPasswordAsync(password), now)
+          .lastInsertRowid,
+      );
+    },
+    verifyLoginAsync: async (username: string, password: string): Promise<SessionUser | null> => {
+      const r = one("SELECT id, username, pw_hash FROM users WHERE username=?", [username.trim()]);
+      const hash = r ? str(r.pw_hash) : await dummyHashAsync();
+      const ok = await verifyPasswordAsync(password, hash);
+      return ok && r ? { id: num(r.id), username: str(r.username) } : null;
+    },
+    setPasswordAsync: async (userId: number, password: string): Promise<void> => {
+      checkPasswordPolicy(password);
+      run("UPDATE users SET pw_hash=? WHERE id=?", await hashPasswordAsync(password), userId);
+    },
+    checkUserPasswordAsync: async (userId: number, password: string): Promise<boolean> => {
+      const r = one("SELECT pw_hash FROM users WHERE id=?", [userId]);
+      return r !== undefined && (await verifyPasswordAsync(password, str(r.pw_hash)));
+    },
     setPassword: (userId: number, password: string): void => {
       checkPasswordPolicy(password);
       run("UPDATE users SET pw_hash=? WHERE id=?", hashPassword(password), userId);
@@ -236,7 +267,7 @@ export const createStore = (db: DB) => {
     },
     createSession: (userId: number, now = Date.now() / 1000): string => {
       const tok = randomBytes(32).toString("base64url");
-      run("DELETE FROM sessions WHERE expires<?", now);
+      run("DELETE FROM sessions WHERE expires<? OR last_seen<?", now, now - SESSION_IDLE_S);
       run(
         "INSERT INTO sessions(token_hash, user_id, created, last_seen, expires) VALUES(?,?,?,?,?)",
         sha(tok),
@@ -250,10 +281,12 @@ export const createStore = (db: DB) => {
     getSession: (token: string | null | undefined, now = Date.now() / 1000): SessionUser | null => {
       if (!token) return null;
       const r = one(
-        "SELECT u.id id, u.username username, s.expires expires FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?",
+        "SELECT u.id id, u.username username, s.expires expires, s.last_seen last_seen FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?",
         [sha(token)],
       );
-      if (!r || num(r.expires) < now) return null;
+      if (!r || num(r.expires) < now || now - num(r.last_seen) > SESSION_IDLE_S) return null;
+      if (now - num(r.last_seen) > SESSION_TOUCH_S)
+        run("UPDATE sessions SET last_seen=? WHERE token_hash=?", now, sha(token));
       return { id: num(r.id), username: str(r.username) };
     },
     deleteSession: (token: string | null | undefined): void => {
