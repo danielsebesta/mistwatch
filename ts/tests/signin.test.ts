@@ -120,6 +120,55 @@ describe("sign-in flow", () => {
     expect(JSON.stringify(signin.get(a.id) ?? {})).not.toContain("signed-in-key-123456");
     expect(synced.v).toBe(true);
   });
+  it("never follows redirects and treats a 3xx as failure", async () => {
+    const seen: RequestInit["redirect"][] = [];
+    const db = openDb(":memory:");
+    const store = createStore(db);
+    store.createAccount("me@example.cz");
+    const cfg = defaultConfig();
+    cfg.db_path = ":memory:";
+    cfg.accounts.splice(0, 0, ...store.listAccounts());
+    const signin = createSignIn({
+      cfg,
+      db,
+      store,
+      fetch: fakeFetch((_url, init) => {
+        seen.push(init?.redirect);
+        return new Response(null, { status: 302, headers: { location: "https://evil.example/" } });
+      }),
+      blockedUntil: new Map(),
+      onSynced: () => undefined,
+      pollIntervalS: 0.01,
+    });
+    await expect(signin.start("me@example.cz", "vibe")).rejects.toBeInstanceOf(SignInError);
+    expect(seen).toEqual(["manual"]);
+  });
+  it("sends manual redirect mode on poll and exchange requests", async () => {
+    const modes: RequestInit["redirect"][] = [];
+    const h = makeHandler({});
+    const db = openDb(":memory:");
+    const store = createStore(db);
+    store.createAccount("me@example.cz");
+    const cfg = defaultConfig();
+    cfg.db_path = ":memory:";
+    cfg.accounts.splice(0, 0, ...store.listAccounts());
+    const signin = createSignIn({
+      cfg,
+      db,
+      store,
+      fetch: fakeFetch((url, init) => {
+        if (/sign-in|poll|exchange/.test(url)) modes.push(init?.redirect);
+        return h(url, init);
+      }),
+      blockedUntil: new Map(),
+      onSynced: () => undefined,
+      pollIntervalS: 0.01,
+    });
+    const a = await signin.start("me@example.cz", "vibe");
+    await wait(signin, a.id, ["done", "error"]);
+    expect(modes.length).toBeGreaterThanOrEqual(4);
+    expect(modes.every((m) => m === "manual")).toBe(true);
+  });
   it("maps denied, expired and error end states", async () => {
     for (const [final, want] of [
       [{ status: "denied" }, "denied"],

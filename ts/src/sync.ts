@@ -18,7 +18,7 @@ const errName = (e: unknown): string => (e instanceof Error ? e.name : "Error");
 type StatusError = Error & { status: number };
 const statusError = (status: number): StatusError => Object.assign(new Error(`HTTP ${status}`), { status });
 const isStatusError = (e: unknown): e is StatusError =>
-  e instanceof Error && typeof (e as { status?: unknown }).status === "number";
+  e instanceof Error && "status" in e && typeof e.status === "number";
 export const parseIso = (s: string): number => {
   const t = Date.parse(s);
   if (Number.isNaN(t)) throw new TypeError(`invalid iso timestamp: ${s}`);

@@ -49,6 +49,9 @@ const boolOf = (v: unknown): boolean | null => {
 };
 const truthyQuery = (v: string | undefined): boolean =>
   v !== undefined && ["1", "true", "yes", "on"].includes(v.toLowerCase());
+const isPool = (s: string): s is Pool => s === "vibe" || s === "api";
+// Same cap as Python: count code points, not UTF-16 units.
+const clip = (s: string): string => Array.from(s).slice(0, 256).join("");
 const statusPayload = (st: State, now: number): StatusResponse => {
   const pools: StatusResponse["pools"] = [];
   for (const a of st.cfg.accounts) {
@@ -68,7 +71,7 @@ const statusPayload = (st: State, now: number): StatusResponse => {
     last_sync: st.lastSync,
     pools,
     summary: summarize(st.engine, st.cfg.accounts, now),
-    by_client_7d: st.db.byClientSince(now - 7 * 86400).map((r) => ({ ...r, pool: r.pool as Pool })),
+    by_client_7d: st.db.byClientSince(now - 7 * 86400).flatMap((r) => (isPool(r.pool) ? [{ ...r, pool: r.pool }] : [])),
   };
 };
 export const createWebApi = (st: State, opts: WebApiOpts = {}): Hono => {
@@ -136,8 +139,8 @@ export const createWebApi = (st: State, opts: WebApiOpts = {}): Hono => {
     const u = st.store.getSession(getCookie(c, COOKIE));
     return c.json({ setup_needed: st.store.countUsers() === 0, user: u });
   });
-  api.post("/setup", async (c) => {
-    csrf(c);
+  let setupChain: Promise<unknown> = Promise.resolve();
+  const setup = async (c: Context): Promise<Response> => {
     if (st.store.countUsers() > 0) throw apiError(409, "An account already exists, please sign in.");
     const b = await jsonBody(c);
     const uid = await st.store.createUserAsync(strOf(b.username), strOf(b.password));
@@ -149,6 +152,13 @@ export const createWebApi = (st: State, opts: WebApiOpts = {}): Hono => {
       out.api_key = { name: row.name, secret };
     }
     return c.json(out);
+  };
+  api.post("/setup", (c) => {
+    csrf(c);
+    // serialised so concurrent first-run requests cannot both pass the empty-users check
+    const run = setupChain.then(() => setup(c));
+    setupChain = run.catch(() => undefined);
+    return run;
   });
   api.post("/login", async (c) => {
     csrf(c);
@@ -159,7 +169,7 @@ export const createWebApi = (st: State, opts: WebApiOpts = {}): Hono => {
     if (!rl.allowed) throw asException(errors.rateLimited(rl.retryAfter));
     const left = lockout.check(name, a);
     if (left > 0) throw asException(errors.locked(left));
-    const u = await st.store.verifyLoginAsync(name, strOf(b.password).slice(0, 256));
+    const u = await st.store.verifyLoginAsync(name, clip(strOf(b.password)));
     if (!u) {
       lockout.fail(name, a);
       throw apiError(401, "Wrong username or password.");
@@ -178,7 +188,7 @@ export const createWebApi = (st: State, opts: WebApiOpts = {}): Hono => {
     const u = requireUser(c);
     lock(u, c);
     const b = await jsonBody(c);
-    if (!(await st.store.checkUserPasswordAsync(u.id, strOf(b.old).slice(0, 256)))) {
+    if (!(await st.store.checkUserPasswordAsync(u.id, clip(strOf(b.old))))) {
       lockout.fail(u.username, addr(c));
       throw apiError(400, "Current password is incorrect.");
     }

@@ -215,6 +215,35 @@ describe("proxy forwarding", () => {
     expect(row.estimated).toBe(1);
     expect(row.completion_tokens).toBe(1);
   });
+  it("books a final usage chunk that has no trailing newline", async () => {
+    const st = baseState(
+      () => new Response('data: {"choices":[],"usage":{"prompt_tokens":1000,"completion_tokens":500}}'),
+    );
+    const r = await createProxy(st).handle(
+      jreq("/v1/chat/completions", { model: "mistral-large-4-0", stream: true }, AUTH),
+    );
+    await r.text();
+    const row = must(st.db.recent()[0]);
+    expect(row.completion_tokens).toBe(500);
+    expect(row.estimated).toBe(0);
+  });
+  it("releases the reservation when the final chunk is malformed", async () => {
+    const st = baseState(() => new Response('data: {"usage":{"prompt_tokens":"broken","completion_tokens":1}}'));
+    const p = createProxy(st);
+    const r = await p.handle(jreq("/v1/chat/completions", { model: "mistral-large-4-0", stream: true }, AUTH));
+    await r.text();
+    expect(must(st.engine.status("a", "api")).inflight).toBe(0);
+    const r2 = await p.handle(jreq("/v1/chat/completions", { model: "mistral-large-4-0", stream: true }, AUTH));
+    expect(r2.status).toBe(200);
+    await r2.text();
+  });
+  it("skips an account whose key is not a valid header value", async () => {
+    const st = baseState(() => okJson());
+    st.cfg.accounts[0] = acct("a", { vibe: "bad​key", api: "bad​key" });
+    const r = await createProxy(st).handle(jreq("/v1/chat/completions", { model: "mistral-large-4-0" }, AUTH));
+    expect(r.status).toBeGreaterThanOrEqual(400);
+    expect(must(st.engine.status("a", "api")).inflight).toBe(0);
+  });
   it("books partial usage when the client disconnects mid-stream", async () => {
     const st = baseState(
       () =>

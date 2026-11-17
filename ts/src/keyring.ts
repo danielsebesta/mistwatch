@@ -40,4 +40,32 @@ export const createKeyring = (store: CredStore): Keyring => ({
     }
   },
 });
-export const keyring: Keyring = createKeyring(napiStore);
+export type AccountStore = {
+  read: (service: string, user: string) => RawCred | null;
+  write: (service: string, user: string, password: string) => void;
+  remove: (service: string, user: string) => void;
+};
+// macOS/Linux backends ignore `target`, so each (service, user) gets its own entry and the account is re-checked.
+export const createAccountKeyring = (store: AccountStore): Keyring => ({
+  get: (service, user) => {
+    const c = store.read(service, user);
+    return c && c.account === user ? c.password : null;
+  },
+  set: (service, user, password) => store.write(service, user, password),
+  drop: (service, user) => {
+    const c = store.read(service, user);
+    if (c && c.account === user) store.remove(service, user);
+  },
+});
+const napiAccountStore: AccountStore = {
+  read: (service, user) => {
+    const password = new Entry(service, user).getPassword();
+    return password === null ? null : { account: user, password };
+  },
+  write: (service, user, password) => new Entry(service, user).setPassword(password),
+  remove: (service, user) => {
+    new Entry(service, user).deletePassword();
+  },
+};
+export const keyring: Keyring =
+  process.platform === "win32" ? createKeyring(napiStore) : createAccountKeyring(napiAccountStore);

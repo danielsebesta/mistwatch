@@ -202,6 +202,27 @@ describe("sessions, setup and login", () => {
     expect(verifyPassword("nope", h)).toBe(false);
     expect(hashPassword("secret-password")).not.toBe(h);
   });
+  it("lets only one of several concurrent setups succeed", async () => {
+    const { app, st } = mkApp();
+    const rs = await Promise.all(
+      ["u1", "u2", "u3"].map((username) => jpost(app, "/api/setup", { username, password: PW }, H)),
+    );
+    expect(rs.map((r) => r.status).sort()).toEqual([200, 409, 409]);
+    expect(st.store.countUsers()).toBe(1);
+  });
+  it("counts password length in code points for setup, login and password change", async () => {
+    const { app } = mkApp();
+    const long = "😀".repeat(130);
+    const setup = await jpost(app, "/api/setup", { username: "daniel", password: long }, H);
+    expect(setup.status).toBe(200);
+    const ok = await jpost(app, "/api/login", { username: "daniel", password: long }, H);
+    expect(ok.status).toBe(200);
+    const cookie = (ok.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+    const next = "🎉".repeat(130);
+    const ch = await jpost(app, "/api/password", { old: long, new: next }, { ...H, cookie });
+    expect(ch.status).toBe(200);
+    expect((await jpost(app, "/api/login", { username: "daniel", password: next }, H)).status).toBe(200);
+  });
   it("sets up the first user, mints a default key and handles login/logout", async () => {
     const { app } = mkApp();
     const { cookie, out } = await login(app);

@@ -87,6 +87,7 @@ const pipe = (
   resp: Response,
   feed: ((c: Uint8Array) => void) | null,
   finish: () => void,
+  signal: AbortSignal,
 ): ReadableStream<Uint8Array> => {
   const reader = resp.body?.getReader();
   let done = false;
@@ -97,6 +98,17 @@ const pipe = (
     finish();
   };
   return new ReadableStream<Uint8Array>({
+    start(c) {
+      signal.addEventListener(
+        "abort",
+        () => {
+          if (done) return;
+          c.error(signal.reason);
+          fin();
+        },
+        { once: true },
+      );
+    },
     async pull(c) {
       if (reader === undefined) {
         c.close();
@@ -385,14 +397,19 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
       }
       if (!key) continue;
       const fresh = cand.status === null ? null : st.engine.status(cand.account.name, cand.pool, Date.now() / 1000);
+      const h = new Headers();
+      try {
+        for (const [k, v] of fwdPairs) h.set(k, v);
+        h.set("authorization", `Bearer ${key}`);
+      } catch {
+        console.error(`invalid key for ${cand.account.name}/${cand.pool}`);
+        continue;
+      }
       const res = fresh === null ? null : st.engine.tryReserve(cand.account.name, cand.pool, est, poolGrossRoom(fresh));
       if (cand.status !== null && res === null) {
         roomSkips += 1;
         continue;
       }
-      const h = new Headers();
-      for (const [k, v] of fwdPairs) h.set(k, v);
-      h.set("authorization", `Bearer ${key}`);
       const ac = new AbortController();
       const onAbort = (s: AbortSignal): void => {
         if (s.aborted) ac.abort(s.reason);
@@ -407,17 +424,13 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
       const held = deferred<void>();
       const early = deferred<Response>();
       let connectTimer: ReturnType<typeof setTimeout> | undefined;
-      let connectTimedOut = false;
       const totalTimer = setTimeout(() => ac.abort(asException(errors.upstreamTimeout())), totalMs);
       totalTimer.unref();
       const heldResolve = (): void => held.resolve();
       const job = queue.run(
         async (sig) => {
           onAbort(sig);
-          connectTimer = setTimeout(() => {
-            connectTimedOut = true;
-            ac.abort(asException(errors.upstreamTimeout()));
-          }, connectMs);
+          connectTimer = setTimeout(() => ac.abort(asException(errors.upstreamTimeout())), connectMs);
           connectTimer.unref();
           try {
             const resp = await st.fetch(`${cfg.upstream}${urlPath}${url.search}`, {
@@ -445,7 +458,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
         resp = await early.promise;
       } catch (e) {
         res?.release();
-        if ((retryable(e) || connectTimedOut) && !req.signal.aborted) {
+        if (retryable(e) && !req.signal.aborted) {
           console.warn(`upstream connect error via ${cand.account.name}:`, e);
           continue;
         }
@@ -483,7 +496,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
             heldResolve();
             return new Response(null, { status: resp.status, headers: hdrs });
           }
-          return respond(pipe(resp, null, heldResolve), resp.status, hdrs);
+          return respond(pipe(resp, null, heldResolve, ac.signal), resp.status, hdrs);
         }
         if (res === null) throw asException(errors.internal());
         const ctx: Ctx = {
@@ -499,13 +512,25 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
         if (wantStream && resp.status === 200) {
           const sse = makeSseParser();
           return respond(
-            pipe(resp, sse.feed, () => {
-              sse.flush();
-              book(ctx, sse.usage() ?? [estIn, estimateTokens(sse.outChars()), 0], 200, sse.usage() === null, {
-                model: sse.model(),
-              });
-              heldResolve();
-            }),
+            pipe(
+              resp,
+              sse.feed,
+              () => {
+                try {
+                  sse.flush();
+                } catch {
+                  // keep what was parsed so far
+                }
+                try {
+                  book(ctx, sse.usage() ?? [estIn, estimateTokens(sse.outChars()), 0], 200, sse.usage() === null, {
+                    model: sse.model(),
+                  });
+                } finally {
+                  heldResolve();
+                }
+              },
+              ac.signal,
+            ),
             resp.status,
             hdrs,
           );

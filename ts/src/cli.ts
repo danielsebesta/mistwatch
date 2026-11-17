@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { dumpJson, merge, opencode, pi } from "./agents.ts";
+import type { PoolStatusDict } from "./types.ts";
 
 const TEMPLATE = `# mistwatch config (server, limits, pricing). Accounts, keys and logins are managed in the web UI.
 [server]
@@ -241,9 +242,10 @@ const cmdStatus = async (args: string[]): Promise<number> => {
   const { createBudgetEngine, poolStatusDict } = await import("./budget.ts");
   const { cfg, db } = await openApp();
   const eng = createBudgetEngine(db, cfg.limits);
+  const pools: PoolStatusDict[] = [];
   const d = {
     last_sync: 0,
-    pools: [] as ReturnType<typeof poolStatusDict>[],
+    pools,
     by_client_7d: db.byClientSince(Date.now() / 1000 - 7 * 86400),
   };
   for (const acc of cfg.accounts) {

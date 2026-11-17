@@ -125,6 +125,7 @@ export const createSignIn = (deps: SignInDeps): SignInApi => {
     try {
       r = await deps.fetch(`${API_URL}/vibe/sign-in/${a.processId}/exchange`, {
         method: "POST",
+        redirect: "manual",
         headers: { "User-Agent": USER_AGENT, "Content-Type": "application/json" },
         body: JSON.stringify({ exchange_token: exchangeToken, code_verifier: a.verifier }),
         signal: AbortSignal.any([a.ctrl.signal, AbortSignal.timeout(20_000)]),
@@ -174,6 +175,7 @@ export const createSignIn = (deps: SignInDeps): SignInApi => {
         let p: Record<string, unknown>;
         try {
           const r = await deps.fetch(a.pollUrl, {
+            redirect: "manual",
             headers: { "User-Agent": USER_AGENT },
             signal: AbortSignal.any([a.ctrl.signal, AbortSignal.timeout(20_000)]),
           });
@@ -227,6 +229,7 @@ export const createSignIn = (deps: SignInDeps): SignInApi => {
     try {
       r = await deps.fetch(`${API_URL}/vibe/sign-in`, {
         method: "POST",
+        redirect: "manual",
         headers: { "User-Agent": USER_AGENT, "Content-Type": "application/json" },
         body: JSON.stringify({ code_challenge: challenge, code_challenge_method: "S256" }),
         signal: AbortSignal.timeout(20_000),
