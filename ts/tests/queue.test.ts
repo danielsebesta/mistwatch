@@ -200,17 +200,19 @@ describe("bounded queue", () => {
     cRunning.abort();
     await e3;
     expect(sawAbort).toBe(true);
-    await expect(p4).resolves.toBe(4); // slot freed for the next item
+    expect(q.active).toBe(1); // the aborted job keeps its slot until fn settles
+    gate2.ok();
+    await expect(p4).resolves.toBe(4); // slot freed once p3's fn settled
     expect(q.active).toBe(0);
-    gate2.ok(); // nothing depends on it: p3's detached fn may still settle
   });
   it("per-item timeout aborts the signal and rejects", async () => {
     const q = createQueue({ concurrency: 1, maxPending: 5 });
     let aborted = false;
+    const gate = deferred<void>();
     const p = q.run(
       async (sig) => {
         sig.addEventListener("abort", () => (aborted = true), { once: true });
-        await new Promise(() => {}); // never settles on its own
+        await gate.p;
       },
       { timeoutMs: 50 },
     );
@@ -218,8 +220,47 @@ describe("bounded queue", () => {
     await vi.advanceTimersByTimeAsync(50);
     await e;
     expect(aborted).toBe(true);
+    expect(q.active).toBe(1); // slot held until the timed-out job settles
+    gate.ok();
+    await vi.advanceTimersByTimeAsync(0);
     expect(q.active).toBe(0);
     await expect(q.run(() => "ok")).resolves.toBe("ok");
+  });
+  it("never runs two job bodies while an aborted job cleans up", async () => {
+    const q = createQueue({ concurrency: 1, maxPending: 10 });
+    let alive = 0;
+    let maxAlive = 0;
+    let started = 0;
+    const mk = () => {
+      const ctrl = new AbortController();
+      const cleanup = deferred<void>();
+      const p = q.run(
+        async (sig) => {
+          started++;
+          alive++;
+          maxAlive = Math.max(maxAlive, alive);
+          await new Promise<void>((res) => sig.addEventListener("abort", () => res(), { once: true }));
+          await cleanup.p;
+          alive--;
+        },
+        { signal: ctrl.signal },
+      );
+      p.catch(() => undefined);
+      return { ctrl, cleanup, p };
+    };
+    const jobs = [mk(), mk(), mk()];
+    for (const j of jobs) {
+      for (let i = 0; i < 20; i++) await Promise.resolve(); // let the job body start
+      j.ctrl.abort();
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+      expect(q.active).toBe(1); // still cleaning up: the slot is not reusable yet
+      j.cleanup.ok();
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+    }
+    for (const j of jobs) await expect(j.p).rejects.toMatchObject({ name: "AbortError" });
+    expect(started).toBe(3);
+    expect(maxAlive).toBe(1);
+    expect(q.active).toBe(0);
   });
   it("default timeoutMs covers the whole wait too", async () => {
     const q = createQueue({ concurrency: 1, maxPending: 5, timeoutMs: 100 });

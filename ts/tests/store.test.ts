@@ -34,6 +34,12 @@ describe("passwords", () => {
     expect(() => checkPasswordPolicy("x".repeat(257))).toThrow("too long");
     expect(() => checkPasswordPolicy("1234567890")).not.toThrow();
   });
+  it("counts password length in code points, not utf-16 units", () => {
+    expect(() => checkPasswordPolicy("😀".repeat(9))).toThrow("at least 10");
+    expect(() => checkPasswordPolicy("😀".repeat(10))).not.toThrow();
+    expect(() => checkPasswordPolicy(`${"x".repeat(255)}😀`)).not.toThrow();
+    expect(() => checkPasswordPolicy(`${"x".repeat(256)}😀`)).toThrow("too long");
+  });
 });
 describe("store", () => {
   it("users, sessions and password change", () => {

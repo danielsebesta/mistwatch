@@ -41,24 +41,25 @@ export const FALLBACK: Price = { input: 0.7, output: 2.1, cached: 0.07 };
 export const PRICES_PER_1K_PAGES_USD = { ocr: 4.0 };
 export type PriceBook = {
   fx: number;
-  prices: Record<string, Price>;
+  prices: ReadonlyMap<string, Price>;
   lookup(model: string | null | undefined): [Price, boolean];
   costEur(model: string | null | undefined, prompt: number, completion: number, cached?: number): [number, boolean];
   pagesCostEur(pages: number): number;
 };
 export const createPriceBook = (usdToEur: number, overrides?: Record<string, PriceOverride>): PriceBook => {
-  const prices: Record<string, Price> = { ...PRICES_USD };
+  const prices = new Map(Object.entries(PRICES_USD));
+  const aliases = new Map(Object.entries(ALIASES));
   for (const [model, p] of Object.entries(overrides ?? {}))
-    prices[model] = { input: p.input, output: p.output, cached: p.cached ?? null };
-  const sortedKeys = Object.keys(prices).sort((a, b) => b.length - a.length);
+    prices.set(model, { input: p.input, output: p.output, cached: p.cached ?? null });
+  const sortedKeys = [...prices.keys()].sort((a, b) => b.length - a.length);
   const lookup = (model: string | null | undefined): [Price, boolean] => {
     const m0 = (model ?? "").toLowerCase();
-    const m = ALIASES[m0] ?? m0;
-    const hit = prices[m];
+    const m = aliases.get(m0) ?? m0;
+    const hit = prices.get(m);
     if (hit) return [hit, true];
     for (const key of sortedKeys) {
       if (m.startsWith(key)) {
-        const p = prices[key];
+        const p = prices.get(key);
         if (p) return [p, true];
       }
     }

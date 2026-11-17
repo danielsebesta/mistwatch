@@ -76,12 +76,17 @@ const hasImage = (messages: Record<string, unknown>[]): boolean =>
     (m) =>
       Array.isArray(m.content) && m.content.some((p) => isRec(p) && (p.type === "image_url" || p.type === "image")),
   );
+export const cpLen = (s: string): number => {
+  let n = 0;
+  for (const _ of s) n++;
+  return n;
+};
 const pyList = (xs: string[]): string => `[${xs.map((x) => `'${x}'`).join(", ")}]`;
 export const scoreRequest = (body: ChatBody): [number, string[], number, boolean] => {
   const msgs = userMsgs(body);
   const lastUser = lastUserText(msgs);
   let totalChars = 0;
-  for (const m of msgs) totalChars += messageText(m.content).length;
+  for (const m of msgs) totalChars += cpLen(messageText(m.content));
   const estTokens = Math.floor(totalChars / 4);
   let s = 0;
   const why: string[] = [];
@@ -89,7 +94,7 @@ export const scoreRequest = (body: ChatBody): [number, string[], number, boolean
     s += n;
     why.push(`${n >= 0 ? "+" : ""}${n} ${r}`);
   };
-  const n = lastUser.length;
+  const n = cpLen(lastUser);
   if (n > 400) add(1, "long prompt");
   if (n > 1500) add(1, "very long prompt");
   if (n > 6000) add(1, "huge prompt");
@@ -125,7 +130,7 @@ export const scoreRequest = (body: ChatBody): [number, string[], number, boolean
 };
 export const worthAsking = (body: ChatBody, score: number): boolean => {
   const last = lastUserText(userMsgs(body));
-  return last.trim().length >= 30 && score < 8;
+  return cpLen(last.trim()) >= 30 && score < 8;
 };
 const ladderAt = (i: number): Step => {
   const s = LADDER[((i % LADDER.length) + LADDER.length) % LADDER.length];

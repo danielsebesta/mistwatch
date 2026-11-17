@@ -3,7 +3,7 @@ import { api, signOut } from "./api.ts";
 import { entriesOf, h, type IconName, ic, logoMark, qs } from "./dom.ts";
 import { eur, pct100 } from "./format.ts";
 import { legal, POOL } from "./labels.ts";
-import { handlers, session } from "./state.ts";
+import { disposeView, handlers, session } from "./state.ts";
 import { act, badge } from "./ui.ts";
 import { viewAccounts } from "./views/accounts.ts";
 import { viewAuth } from "./views/auth.ts";
@@ -61,9 +61,8 @@ const loadSummary = async (): Promise<void> => {
 };
 
 const render = (): void => {
-  clearInterval(session.timer);
+  disposeView();
   clearInterval(session.sumTimer);
-  handlers.resume = () => {};
   const me = session.me;
   const app = qs("#app");
   if (!me || !app) return;
@@ -120,7 +119,7 @@ const render = (): void => {
 };
 
 const boot = async (): Promise<void> => {
-  clearInterval(session.timer);
+  disposeView();
   clearInterval(session.sumTimer);
   let s: SessionResponse;
   try {
@@ -143,7 +142,7 @@ window.addEventListener("hashchange", () => {
 });
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
-    clearInterval(session.timer);
+    handlers.pause();
     clearInterval(session.sumTimer);
     return;
   }

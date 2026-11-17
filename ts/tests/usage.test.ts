@@ -77,3 +77,8 @@ describe("usage buckets", () => {
     expect(() => usage(db, "1y", "model", NOW)).toThrow("unknown range");
   });
 });
+describe("range validation", () => {
+  it.each(["constructor", "__proto__", "toString"])("rejects range %s", (r) => {
+    expect(() => usage(openDb(":memory:"), r, "model", NOW)).toThrow("unknown range");
+  });
+});

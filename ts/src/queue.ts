@@ -133,9 +133,11 @@ export const createQueue = (opts: QueueOpts): Queue => {
     if (it.done) return;
     it.done = true;
     it.cleanup();
-    active--;
     if (succeeded) it.ok(val);
     else it.fail(val);
+  };
+  const release = (): void => {
+    active--;
     pump();
   };
   const pump = (): void => {
@@ -158,10 +160,13 @@ export const createQueue = (opts: QueueOpts): Queue => {
         it.onAbort = () => rej(sig.reason);
         sig.addEventListener("abort", it.onAbort, { once: true });
       });
-      Promise.race([Promise.resolve().then(() => it.fn(sig)), aborted]).then(
+      const work = Promise.resolve().then(() => it.fn(sig));
+      Promise.race([work, aborted]).then(
         (v) => settle(it, true, v),
         (e) => settle(it, false, e),
       );
+      // the slot is held until the job itself settles, even after the caller was rejected
+      work.then(release, release);
     }
   };
   const run = <T>(fn: (signal: AbortSignal) => T | Promise<T>, o: QueueRunOpts = {}): Promise<T> => {

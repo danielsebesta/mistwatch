@@ -47,7 +47,7 @@ const bisectRight = (xs: number[], x: number): number => {
   return lo;
 };
 export const usage = (db: DB, range: string, by: string, now: number, names?: ModelNames): UsageResult => {
-  const spec = RANGES[range];
+  const spec = Object.hasOwn(RANGES, range) ? RANGES[range] : undefined;
   if (!spec) throw new Error("unknown range");
   if (!DIMENSIONS.includes(by)) throw new Error("unknown grouping");
   const nm = names ?? createModelNames(db);

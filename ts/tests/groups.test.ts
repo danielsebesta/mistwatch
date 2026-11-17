@@ -127,3 +127,11 @@ describe("shared-budget detection", () => {
     expect(db.links.size).toBe(0);
   });
 });
+describe("prototype-named accounts", () => {
+  it("dedupes `__proto__` and `normal` with identical snapshots", () => {
+    const db = openDb(":memory:");
+    for (const n of ["__proto__", "normal"]) seed(db, n, 20.5, 0.004);
+    refreshLinks(db, accounts("__proto__", "normal"));
+    expect([...db.links]).toEqual([["normal", "__proto__"]]);
+  });
+});

@@ -37,6 +37,14 @@ describe("promptView", () => {
     };
     expect(promptView(long)).toContain("long conversation (12 messages)");
   });
+  it("truncates by code points without lone surrogates", () => {
+    const v = promptView(body("😀".repeat(1900)));
+    expect(v).toBe(`${"😀".repeat(1200)}
+[...]
+${"😀".repeat(600)}`);
+    expect(/\p{Cs}/u.test(v)).toBe(false);
+    expect(promptView(body("😀".repeat(1800)))).toBe("😀".repeat(1800));
+  });
   it("truncates very long prompts keeping head and tail", () => {
     const v = promptView(body(`${"a".repeat(1200)}MID${"z".repeat(700)}`));
     expect(v).toContain("[...]");

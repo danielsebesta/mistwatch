@@ -128,6 +128,7 @@ const pipe = (
 };
 const makeSseParser = (): {
   feed: (c: Uint8Array) => void;
+  flush: () => void;
   usage: () => [number, number, number] | null;
   model: () => string | null;
   outChars: () => number;
@@ -167,7 +168,8 @@ const makeSseParser = (): {
       }
     }
   };
-  return { feed, usage: () => usage, model: () => model, outChars: () => outChars };
+  const flush = (): void => feed(new Uint8Array([10]));
+  return { feed, flush, usage: () => usage, model: () => model, outChars: () => outChars };
 };
 export type ProxyOpts = {
   bodyLimit?: number | undefined;
@@ -382,10 +384,8 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
         continue;
       }
       if (!key) continue;
-      const res =
-        cand.status === null
-          ? null
-          : st.engine.tryReserve(cand.account.name, cand.pool, est, poolGrossRoom(cand.status));
+      const fresh = cand.status === null ? null : st.engine.status(cand.account.name, cand.pool, Date.now() / 1000);
+      const res = fresh === null ? null : st.engine.tryReserve(cand.account.name, cand.pool, est, poolGrossRoom(fresh));
       if (cand.status !== null && res === null) {
         roomSkips += 1;
         continue;
@@ -406,14 +406,19 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
       };
       const held = deferred<void>();
       const early = deferred<Response>();
-      const connectTimer = setTimeout(() => ac.abort(asException(errors.upstreamTimeout())), connectMs);
+      let connectTimer: ReturnType<typeof setTimeout> | undefined;
+      let connectTimedOut = false;
       const totalTimer = setTimeout(() => ac.abort(asException(errors.upstreamTimeout())), totalMs);
-      connectTimer.unref();
       totalTimer.unref();
       const heldResolve = (): void => held.resolve();
       const job = queue.run(
         async (sig) => {
           onAbort(sig);
+          connectTimer = setTimeout(() => {
+            connectTimedOut = true;
+            ac.abort(asException(errors.upstreamTimeout()));
+          }, connectMs);
+          connectTimer.unref();
           try {
             const resp = await st.fetch(`${cfg.upstream}${urlPath}${url.search}`, {
               method: req.method,
@@ -440,7 +445,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
         resp = await early.promise;
       } catch (e) {
         res?.release();
-        if (retryable(e) && !req.signal.aborted) {
+        if ((retryable(e) || connectTimedOut) && !req.signal.aborted) {
           console.warn(`upstream connect error via ${cand.account.name}:`, e);
           continue;
         }
@@ -495,6 +500,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
           const sse = makeSseParser();
           return respond(
             pipe(resp, sse.feed, () => {
+              sse.flush();
               book(ctx, sse.usage() ?? [estIn, estimateTokens(sse.outChars()), 0], 200, sse.usage() === null, {
                 model: sse.model(),
               });

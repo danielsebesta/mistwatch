@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { apply, decide, decisionHeader } from "../src/router.ts";
+import { apply, decide, decisionHeader, scoreRequest } from "../src/router.ts";
 import type { ChatBody } from "../src/types.ts";
 
 const d = (text: string, kw: Record<string, unknown> = {}) =>
   decide({ messages: [{ role: "user", content: text }], ...kw });
 describe("router", () => {
+  it("counts code points like Python", () => {
+    const r = d(`debug ${"😀".repeat(751)}`, { tools: [{}] });
+    expect(r.score).toBe(4);
+    expect(r.reason).toContain("long prompt");
+    expect(r.model).toBe("mistral-large-4-0");
+    expect(r.effort).toBe("medium");
+    expect(scoreRequest({ messages: [{ role: "user", content: "😀".repeat(400) }] })[2]).toBe(100);
+  });
   it("trivial goes small", () => {
     const r = d("ahoj");
     expect(r.model).toBe("mistral-small-2603");

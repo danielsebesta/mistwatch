@@ -61,6 +61,7 @@ backend = "mistral"
 `;
 export const merge = (dst: Record<string, unknown>, src: Record<string, unknown>): Record<string, unknown> => {
   for (const [k, v] of Object.entries(src)) {
+    if (k === "__proto__" || k === "constructor" || k === "prototype") continue;
     const cur = dst[k];
     dst[k] = isRec(v) && isRec(cur) ? merge(cur, v) : v;
   }

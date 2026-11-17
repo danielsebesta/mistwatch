@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { messageText, truthy } from "./router.ts";
+import { cpLen, messageText, truthy } from "./router.ts";
 import type { ChatBody, FetchLike } from "./types.ts";
 export const SYSTEM =
   "Rate how hard the user's last request is for an AI assistant on a 0-10 integer scale. " +
@@ -28,7 +28,10 @@ export const promptView = (body: ChatBody): string => {
       break;
     }
   }
-  if (last.length > 1800) last = `${last.slice(0, 1200)}\n[...]\n${last.slice(-600)}`;
+  if (cpLen(last) > 1800) {
+    const cps = Array.from(last);
+    last = `${cps.slice(0, 1200).join("")}\n[...]\n${cps.slice(-600).join("")}`;
+  }
   const notes: string[] = [];
   if (truthy(body.tools)) notes.push("the assistant has tools available");
   if (msgs.some((m) => m.role === "tool")) notes.push("this is mid-way through an agentic tool loop");

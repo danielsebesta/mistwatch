@@ -1,3 +1,4 @@
+import { attrValue } from "./attr.ts";
 export type Kid = Node | string | number | boolean | null | undefined | Kid[];
 export type Props = {
   class?: string | null;
@@ -46,12 +47,13 @@ export const h = <K extends keyof HTMLElementTagNameMap>(
 ): HTMLElementTagNameMap[K] => {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(props ?? {})) {
-    if (v === null || v === undefined || v === false) continue;
-    if (k === "class") el.className = String(v);
-    else if (k.startsWith("on") && typeof v === "function") el.addEventListener(k.slice(2), v as EventListener);
+    const a = attrValue(k, v);
+    if (k.startsWith("on") && typeof v === "function") el.addEventListener(k.slice(2), v as EventListener);
+    else if (a === null) continue;
+    else if (k === "class") el.className = a;
     else if (k === "value") (el as { value: unknown }).value = v;
-    else if (k === "checked" || k === "disabled" || k === "selected" || k === "hidden") Reflect.set(el, k, Boolean(v));
-    else el.setAttribute(k, v === true ? "" : String(v));
+    else if (k === "checked" || k === "disabled" || k === "selected" || k === "hidden") Reflect.set(el, k, true);
+    else el.setAttribute(k, a);
   }
   const add = (k: Kid): void => {
     if (k === null || k === undefined || k === false) return;

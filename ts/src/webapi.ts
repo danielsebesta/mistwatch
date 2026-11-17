@@ -10,7 +10,7 @@ import { type AppException, apiErrorBody, appError, asException, errorHeaders, e
 import { summarize } from "./groups.ts";
 import { createLoginLockout, createRateLimiter, type RateLimiter } from "./ratelimit.ts";
 import { truthy } from "./router.ts";
-import { bodyWithinLimit, localRequestAllowed } from "./security.ts";
+import { bodyWithinLimit, localRequestAllowed, readLimitedBody } from "./security.ts";
 import { SignInError } from "./signin.ts";
 import { blockKey, reloadAccounts, type State } from "./state.ts";
 import { SESSION_TTL, StoreError, VIBE_REF, vibeCliKeyPresent } from "./store.ts";
@@ -104,9 +104,10 @@ export const createWebApi = (st: State, opts: WebApiOpts = {}): Hono => {
   };
   const jsonBody = async (c: Context): Promise<Record<string, unknown>> => {
     if (!bodyWithinLimit(c.req.header("content-length"), BODY_LIMIT)) throw asException(errors.tooLarge());
+    const raw = await readLimitedBody(c.req.raw.body, BODY_LIMIT);
     let data: unknown;
     try {
-      data = await c.req.json();
+      data = JSON.parse(new TextDecoder().decode(raw));
     } catch {
       throw apiError(400, "Request body must be a JSON object.");
     }

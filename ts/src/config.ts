@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Entry } from "@napi-rs/keyring";
 import { parse } from "smol-toml";
+import { type Keyring, keyring } from "./keyring.ts";
 import type { Account, Client, Config, Limits, ManualPool, PriceOverride, RouterCfg } from "./types.ts";
 export const homeDir = (): string => process.env.MISTWATCH_HOME || join(homedir(), ".mistwatch");
 export const configPath = (): string => process.env.MISTWATCH_CONFIG || join(homeDir(), "config.toml");
@@ -84,34 +84,36 @@ const reqArray = (v: unknown, what: string): unknown[] => {
   return v;
 };
 const parseKeys = (v: unknown): Record<string, string> => {
-  const out: Record<string, string> = {};
-  for (const [k, x] of Object.entries(optTable(v, "account.keys"))) out[k] = pyStr(x);
-  return out;
+  return Object.fromEntries(Object.entries(optTable(v, "account.keys")).map(([k, x]) => [k, pyStr(x)]));
 };
 const parseManual = (v: unknown): Record<string, ManualPool> => {
-  const out: Record<string, ManualPool> = {};
-  for (const [pool, mv] of Object.entries(optTable(v, "account.manual"))) {
-    const mp: ManualPool = {};
-    for (const [k, x] of Object.entries(reqTable(mv, "account.manual entry"))) {
-      if (typeof x === "string" || typeof x === "number" || typeof x === "boolean") mp[k] = x;
-      else if (typeof x === "bigint") mp[k] = Number(x);
-      else throw new TypeError(`account.manual.${pool}.${k} must be a primitive, not ${describe(x)}`);
-    }
-    out[pool] = mp;
-  }
-  return out;
+  return Object.fromEntries(
+    Object.entries(optTable(v, "account.manual")).map(([pool, mv]) => [
+      pool,
+      Object.fromEntries(
+        Object.entries(reqTable(mv, "account.manual entry")).map(([k, x]): [string, string | number | boolean] => {
+          if (typeof x === "string" || typeof x === "number" || typeof x === "boolean") return [k, x];
+          if (typeof x === "bigint") return [k, Number(x)];
+          throw new TypeError(`account.manual.${pool}.${k} must be a primitive, not ${describe(x)}`);
+        }),
+      ),
+    ]),
+  );
 };
 const parseOverrides = (v: unknown): Record<string, PriceOverride> => {
-  const out: Record<string, PriceOverride> = {};
-  for (const [model, p] of Object.entries(optTable(v, "pricing.models"))) {
-    const t = reqTable(p, `price override for ${model}`);
-    out[model] = {
-      input: pyFloat(t.input),
-      output: pyFloat(t.output),
-      cached: t.cached === undefined ? undefined : pyFloat(t.cached),
-    };
-  }
-  return out;
+  return Object.fromEntries(
+    Object.entries(optTable(v, "pricing.models")).map(([model, p]) => {
+      const t = reqTable(p, `price override for ${model}`);
+      return [
+        model,
+        {
+          input: pyFloat(t.input),
+          output: pyFloat(t.output),
+          cached: t.cached === undefined ? undefined : pyFloat(t.cached),
+        },
+      ];
+    }),
+  );
 };
 export const loadConfig = (path?: string): Config => {
   const p = path ?? configPath();
@@ -160,7 +162,7 @@ export const loadConfig = (path?: string): Config => {
   }
   return cfg;
 };
-export const resolveSecret = (ref: string): string => {
+export const resolveSecret = (ref: string, kr: Keyring = keyring): string => {
   if (ref.startsWith("env:")) {
     const v = process.env[ref.slice(4)];
     if (!v) throw new Error(`environment variable ${ref.slice(4)} is not set`);
@@ -171,7 +173,7 @@ export const resolveSecret = (ref: string): string => {
     const i = rest.indexOf("/");
     const service = i < 0 ? rest : rest.slice(0, i);
     const user = i < 0 ? "" : rest.slice(i + 1);
-    const v = new Entry(service, user).getPassword();
+    const v = kr.get(service, user);
     if (!v) throw new Error(`no keyring entry ${service}/${user}`);
     return v;
   }

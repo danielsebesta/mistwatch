@@ -80,6 +80,10 @@ describe("agents.merge", () => {
     merge(dst, { p: 5, arr: [2, 3] });
     expect(dst).toEqual({ p: 5, arr: [2, 3] });
   });
+  it("ignores prototype keys", () => {
+    merge({}, JSON.parse('{"__proto__":{"polluted":true},"constructor":{"prototype":{"polluted":true}}}'));
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
 });
 
 describe("agents.render", () => {

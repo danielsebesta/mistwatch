@@ -16,14 +16,14 @@ export const BUILTIN: [RegExp, string][] = [
   [/^ministral-14b(-latest|-2512)?$/, "Ministral 3 14B"],
   [/^codestral(-latest|-2508)?$|^mistral-code(-fim)?-latest$/, "Codestral"],
 ];
-const BRANDS: Record<string, string> = {
-  glm: "GLM",
-  ocr: "OCR",
-  tts: "TTS",
-  gpt: "GPT",
-  deepseek: "DeepSeek",
-  llm: "LLM",
-};
+const BRANDS = new Map([
+  ["glm", "GLM"],
+  ["ocr", "OCR"],
+  ["tts", "TTS"],
+  ["gpt", "GPT"],
+  ["deepseek", "DeepSeek"],
+  ["llm", "LLM"],
+]);
 const DROP_PREFIX = new Set(["zai"]);
 const VERSION = /^v?\d{1,2}$/;
 const SIZE = /^\d+(\.\d+)?[bkm]$/;
@@ -36,7 +36,7 @@ export const builtin = (modelId: string): string | null => {
   return null;
 };
 const word = (tok: string): string => {
-  const b = BRANDS[tok];
+  const b = BRANDS.get(tok);
   if (b) return b;
   if (SIZE.test(tok)) return tok.toUpperCase();
   if (VNUM.test(tok)) return tok.toUpperCase();
@@ -101,25 +101,25 @@ const parseAliases = (v: unknown): string[] => {
   }
 };
 export const createModelNames = (db: DB) => {
-  let over: Record<string, string> = {};
-  let cat: Record<string, CatalogEntry> = {};
+  let over = new Map<string, string>();
+  let cat = new Map<string, CatalogEntry>();
   const reload = (): void => {
-    const o: Record<string, string> = {};
-    for (const r of db.stmt("SELECT model_id, display FROM model_names").all()) o[str(r.model_id)] = str(r.display);
+    const o = new Map<string, string>();
+    for (const r of db.stmt("SELECT model_id, display FROM model_names").all()) o.set(str(r.model_id), str(r.display));
     over = o;
-    const c: Record<string, CatalogEntry> = {};
+    const c = new Map<string, CatalogEntry>();
     for (const r of db.stmt("SELECT model_id, name, aliases, description FROM model_catalog").all()) {
-      c[str(r.model_id)] = {
+      c.set(str(r.model_id), {
         name: optStr(r.name),
         aliases: parseAliases(r.aliases),
         description: optStr(r.description),
-      };
+      });
     }
     cat = c;
   };
   reload();
   const groupKey = (modelId: string): string => {
-    const c = cat[modelId];
+    const c = cat.get(modelId);
     return c?.name || modelId;
   };
   const resolve = (modelId: string | null | undefined): [string, NameSource] => {
@@ -127,7 +127,7 @@ export const createModelNames = (db: DB) => {
     if (!m) return ["(unknown)", "auto"];
     const key = groupKey(m);
     for (const k of [m, key]) {
-      const o = over[k];
+      const o = over.get(k);
       if (o !== undefined) return [o, "custom"];
     }
     for (const k of [m, key]) {
@@ -211,7 +211,7 @@ export const createModelNames = (db: DB) => {
       }
       const ids = new Set(seen.keys());
       for (const s of LADDER) ids.add(s.model);
-      if (includeAll) for (const k of Object.keys(cat)) ids.add(k);
+      if (includeAll) for (const k of cat.keys()) ids.add(k);
       const groups = new Map<string, { ids: string[]; calls: number; last: number }>();
       for (const i of [...ids].sort()) {
         const gk = groupKey(i);
@@ -225,12 +225,12 @@ export const createModelNames = (db: DB) => {
         g.calls += n;
         g.last = Math.max(g.last, last);
       }
-      for (const k of Object.keys(over)) if (!groups.has(k)) groups.set(k, { ids: [k], calls: 0, last: 0 });
+      for (const k of over.keys()) if (!groups.has(k)) groups.set(k, { ids: [k], calls: 0, last: 0 });
       const out: ModelListing[] = [];
       for (const [k, g] of groups) {
         const first = g.ids[0];
         const [display, source] = resolve(first ?? null);
-        const ce = first !== undefined ? cat[first] : undefined;
+        const ce = first !== undefined ? cat.get(first) : undefined;
         out.push({
           key: k,
           ids: g.ids,

@@ -12,37 +12,96 @@ import type {
 } from "../../../shared/api.ts";
 import { api } from "../api.ts";
 import { entriesOf, h, ic, type Kid, keysOf, svg } from "../dom.ts";
+import { latest, stepTab } from "../flow.ts";
 import { ago, errMsg, eur, eur4, niceMax, pct100, plural, short, when } from "../format.ts";
 import { asBy, asRange, BYS, colorOf, PERIOD_DAYS, poolLabel, RANGE_DAYS, RANGES, winLabel } from "../labels.ts";
-import { handlers, pref, session } from "../state.ts";
+import { handlers, pref } from "../state.ts";
 import { toast } from "../toast.ts";
 import { act, badge, emptyState, errState, fold, pageHead, skel, td } from "../ui.ts";
 
 type SetPref = (k: "range" | "by", v: string) => void;
 
+const refresh = (slot: HTMLElement, kids: HTMLElement[]): void => {
+  // Keep a focused control alive; the next refresh replaces the slot.
+  if (!slot.contains(document.activeElement)) slot.replaceChildren(...kids);
+};
+
+type Controls = { head: HTMLElement; sync: (range: UsageRange, by: UsageBy) => void };
+
+const chartControls = (set: SetPref): Controls => {
+  const keys = keysOf(RANGES);
+  const tabs = keys.map((r) => h("button", { class: "tab", role: "tab", onclick: () => set("range", r) }, r));
+  const strip = h("div", { class: "tabs", role: "tablist", "aria-label": "Time range" }, tabs);
+  strip.addEventListener("keydown", (e) => {
+    const from = tabs.findIndex((t) => t === document.activeElement);
+    const to = stepTab(tabs.length, from, e.key);
+    const next = to === null ? undefined : keys[to];
+    if (next === undefined) return;
+    e.preventDefault();
+    tabs[to ?? 0]?.focus();
+    set("range", next);
+  });
+  const sel = h(
+    "select",
+    { class: "input", style: "width:auto", "aria-label": "Split spending by", onchange: () => set("by", sel.value) },
+    entriesOf(BYS).map(([k, v]) => h("option", { value: k }, `by ${v.toLowerCase()}`)),
+  );
+  const sync = (range: UsageRange, by: UsageBy): void => {
+    tabs.forEach((t, i) => {
+      const on = keys[i] === range;
+      t.setAttribute("aria-selected", String(on));
+      t.tabIndex = on ? 0 : -1;
+    });
+    if (sel.value !== by) sel.value = by;
+  };
+  return {
+    head: h("div", { class: "card-h" }, h("h2", {}, "Spending"), h("span", { class: "grow" }), strip, sel),
+    sync,
+  };
+};
+
 export const viewDash = async (main: HTMLElement): Promise<void> => {
   let range = asRange(pref.get("range", "7d"));
   let by = asBy(pref.get("by", "model"));
+  let active = true;
+  let timer = 0;
+  const guard = latest();
   const syncMeta = h("p", {}, "Loading…");
   const body = h("div", { class: "stack" }, dashSkeleton());
-  const load = async () => {
+  const slot = (): HTMLElement => h("div", { style: "display:contents" });
+  const topSlot = slot();
+  const chartSlot = slot();
+  const restSlot = slot();
+  const set: SetPref = (k, v) => {
+    if (k === "range") range = asRange(v);
+    else by = asBy(v);
+    pref.set(k, v);
+    controls.sync(range, by);
+    void load();
+  };
+  const controls = chartControls(set);
+  const chartSec = h("section", { class: "card", "aria-label": "Spending over time" }, controls.head, chartSlot);
+  controls.sync(range, by);
+  const load = async (): Promise<void> => {
+    const ticket = guard.next();
+    const [r, b] = [range, by];
     let d: StatusResponse, u: UsageResponse, led: LedgerRow[];
     try {
-      [d, u, led] = await Promise.all([api.status(), api.usage(range, by), api.ledger(18)]);
+      [d, u, led] = await Promise.all([api.status(), api.usage(r, b), api.ledger(18)]);
     } catch (e) {
-      if (body.isConnected && !body.dataset.ok) body.replaceChildren(errState(errMsg(e), load));
+      if (active && guard.isCurrent(ticket) && body.isConnected && !body.dataset.ok)
+        body.replaceChildren(errState(errMsg(e), load));
       return;
     }
-    if (!body.isConnected) return;
+    if (!active || !guard.isCurrent(ticket) || !body.isConnected) return;
+    if (!body.dataset.ok) body.replaceChildren(topSlot, chartSec, restSlot);
     body.dataset.ok = "1";
     syncMeta.textContent = `Last sync with Mistral: ${d.last_sync ? ago(d.last_sync) : "not yet"}`;
-    const set = (k: "range" | "by", v: string) => {
-      if (k === "range") range = asRange(v);
-      else by = asBy(v);
-      pref.set(k, v);
-      load();
-    };
-    body.replaceChildren(...dashBody(d, u, led, set, range, by));
+    const parts = dashBody(d, u, led, r, b);
+    chartSec.hidden = !parts.chart;
+    refresh(topSlot, parts.top);
+    refresh(chartSlot, parts.chart ?? []);
+    refresh(restSlot, parts.rest);
   };
   const syncBtn = h(
     "button",
@@ -51,22 +110,33 @@ export const viewDash = async (main: HTMLElement): Promise<void> => {
       onclick: act(async () => {
         toast("Syncing with Mistral…");
         await api.sync();
-        load();
+        void load();
       }),
     },
     ic("refresh"),
     "Sync now",
   );
-  main.append(pageHead("Overview", syncMeta, syncBtn), body);
-  await load();
-  const poll = (): void => {
-    if (!document.hidden) session.timer = setInterval(load, 10000);
+  const stop = (): void => {
+    clearInterval(timer);
+    timer = 0;
   };
-  poll();
+  const poll = (): void => {
+    stop();
+    if (active && !document.hidden) timer = setInterval(() => void load(), 10000);
+  };
+  handlers.pause = stop;
   handlers.resume = () => {
+    if (!active) return;
     poll();
     void load();
   };
+  handlers.dispose = () => {
+    active = false;
+    stop();
+  };
+  main.append(pageHead("Overview", syncMeta, syncBtn), body);
+  await load();
+  poll();
 };
 
 const dashSkeleton = (): HTMLElement => {
@@ -133,161 +203,161 @@ const dashBody = (
   d: StatusResponse,
   u: UsageResponse,
   led: LedgerRow[],
-  set: SetPref,
   range: UsageRange,
   by: UsageBy,
-): HTMLElement[] => {
+): { top: HTMLElement[]; chart: HTMLElement[] | null; rest: HTMLElement[] } => {
   const sm = d.summary;
   const a = sm.all;
   if (!a) {
-    return [
-      h(
-        "div",
-        { class: "card" },
-        emptyState(
-          "key",
-          "Nothing to watch yet",
-          "Add a Mistral account and key. Mistwatch will track your budget and help you spread it out.",
-          h("a", { class: "btn pri", href: "#/accounts" }, ic("plus"), "Add an account"),
+    return {
+      chart: null,
+      rest: [],
+      top: [
+        h(
+          "div",
+          { class: "card" },
+          emptyState(
+            "key",
+            "Nothing to watch yet",
+            "Add a Mistral account and key. Mistwatch will track your budget and help you spread it out.",
+            h("a", { class: "btn pri", href: "#/accounts" }, ic("plus"), "Add an account"),
+          ),
         ),
-      ),
-    ];
+      ],
+    };
   }
   const poolRows = d.pools.filter((p) => p.account === p.group);
-  return [
-    summaryStrip(a),
-    chartCard(u, a, set, range, by),
-    h(
-      "div",
-      { class: "dash-split" },
-      h("div", { class: "stack aside" }, poolsCard(sm, poolRows), limitsCard(a)),
-      led.length
-        ? h(
-            "div",
-            { class: "card rec" },
-            h(
-              "div",
-              { class: "card-h" },
-              h("h2", {}, "Recent requests"),
-              h("span", { class: "mut sm" }, `latest ${led.length}`),
-            ),
-            h(
-              "div",
-              { class: "tw" },
-              h(
-                "table",
-                { class: "tbl stack" },
-                h(
-                  "thead",
-                  {},
-                  h(
-                    "tr",
-                    {},
-                    h("th", {}, "When"),
-                    h("th", {}, "Key"),
-                    h("th", {}, "Model"),
-                    h("th", { class: "n" }, "Tokens in / out"),
-                    h("th", { class: "n" }, "Cost"),
-                  ),
-                ),
-                h(
-                  "tbody",
-                  {},
-                  led.map((r) =>
-                    h(
-                      "tr",
-                      {},
-                      td("When", "", when(r.ts)),
-                      td("Key", "max trunc", r.client || "—"),
-                      h(
-                        "td",
-                        { "data-l": "Model", class: "max trunc", title: r.model ?? "" },
-                        r.model_name ?? r.endpoint ?? "—",
-                      ),
-                      td(
-                        "Tokens in / out",
-                        "n",
-                        r.prompt_tokens !== null ? `${r.prompt_tokens} / ${r.completion_tokens ?? 0}` : "—",
-                      ),
-                      td("Cost", "n", eur4(r.cost_eur)),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          )
-        : h(
-            "div",
-            { class: "card rec" },
-            h("div", { class: "card-h" }, h("h2", {}, "Recent requests")),
-            emptyState(
-              "clock",
-              "No requests yet",
-              "Requests sent through Mistwatch show up here.",
-              h("a", { class: "btn", href: "#/keys" }, "Create an API key"),
-            ),
-          ),
-    ),
-    h(
-      "div",
-      {},
-      fold(
-        "Limits per budget",
-        "spent and what is left",
-        ...poolRows.map((p) =>
+  const split = h(
+    "div",
+    { class: "dash-split" },
+    h("div", { class: "stack aside" }, poolsCard(sm, poolRows), limitsCard(a)),
+    led.length
+      ? h(
+          "div",
+          { class: "card rec" },
           h(
             "div",
-            { style: "margin-bottom:var(--sp-4)" },
-            h("div", { class: "sm mut", style: "margin:var(--sp-2) 0" }, `${p.account} · ${poolLabel(p.pool)}`),
-            windowTable([
-              ["Month", p.month],
-              ...entriesOf(p.windows).map(([n, w]) => [winLabel(n), w] as [string, PoolWindow]),
-            ]),
+            { class: "card-h" },
+            h("h2", {}, "Recent requests"),
+            h("span", { class: "mut sm" }, `latest ${led.length}`),
           ),
-        ),
-      ),
-      d.by_client_7d.length
-        ? fold(
-            "Spend by key",
-            "last 7 days",
+          h(
+            "div",
+            { class: "tw" },
             h(
-              "div",
-              { class: "tw" },
+              "table",
+              { class: "tbl stack" },
               h(
-                "table",
-                { class: "tbl stack" },
+                "thead",
+                {},
                 h(
-                  "thead",
+                  "tr",
                   {},
+                  h("th", {}, "When"),
+                  h("th", {}, "Key"),
+                  h("th", {}, "Model"),
+                  h("th", { class: "n" }, "Tokens in / out"),
+                  h("th", { class: "n" }, "Cost"),
+                ),
+              ),
+              h(
+                "tbody",
+                {},
+                led.map((r) =>
                   h(
                     "tr",
                     {},
-                    h("th", {}, "Key"),
-                    h("th", {}, "Account / budget"),
-                    h("th", { class: "n" }, "Requests"),
-                    h("th", { class: "n" }, "Cost"),
-                  ),
-                ),
-                h(
-                  "tbody",
-                  {},
-                  d.by_client_7d.map((r) =>
+                    td("When", "", when(r.ts)),
+                    td("Key", "max trunc", r.client || "—"),
                     h(
-                      "tr",
-                      {},
-                      td("Key", "max trunc", r.client),
-                      td("Account / budget", "max trunc", `${r.account} / ${poolLabel(r.pool)}`),
-                      td("Requests", "n", r.n),
-                      td("Cost", "n", eur(r.cost_eur)),
+                      "td",
+                      { "data-l": "Model", class: "max trunc", title: r.model ?? "" },
+                      r.model_name ?? r.endpoint ?? "—",
                     ),
+                    td(
+                      "Tokens in / out",
+                      "n",
+                      r.prompt_tokens !== null ? `${r.prompt_tokens} / ${r.completion_tokens ?? 0}` : "—",
+                    ),
+                    td("Cost", "n", eur4(r.cost_eur)),
                   ),
                 ),
               ),
             ),
-          )
-        : null,
+          ),
+        )
+      : h(
+          "div",
+          { class: "card rec" },
+          h("div", { class: "card-h" }, h("h2", {}, "Recent requests")),
+          emptyState(
+            "clock",
+            "No requests yet",
+            "Requests sent through Mistwatch show up here.",
+            h("a", { class: "btn", href: "#/keys" }, "Create an API key"),
+          ),
+        ),
+  );
+  const fl = h(
+    "div",
+    {},
+    fold(
+      "Limits per budget",
+      "spent and what is left",
+      ...poolRows.map((p) =>
+        h(
+          "div",
+          { style: "margin-bottom:var(--sp-4)" },
+          h("div", { class: "sm mut", style: "margin:var(--sp-2) 0" }, `${p.account} · ${poolLabel(p.pool)}`),
+          windowTable([
+            ["Month", p.month],
+            ...entriesOf(p.windows).map(([n, w]) => [winLabel(n), w] as [string, PoolWindow]),
+          ]),
+        ),
+      ),
     ),
-  ];
+    d.by_client_7d.length
+      ? fold(
+          "Spend by key",
+          "last 7 days",
+          h(
+            "div",
+            { class: "tw" },
+            h(
+              "table",
+              { class: "tbl stack" },
+              h(
+                "thead",
+                {},
+                h(
+                  "tr",
+                  {},
+                  h("th", {}, "Key"),
+                  h("th", {}, "Account / budget"),
+                  h("th", { class: "n" }, "Requests"),
+                  h("th", { class: "n" }, "Cost"),
+                ),
+              ),
+              h(
+                "tbody",
+                {},
+                d.by_client_7d.map((r) =>
+                  h(
+                    "tr",
+                    {},
+                    td("Key", "max trunc", r.client),
+                    td("Account / budget", "max trunc", `${r.account} / ${poolLabel(r.pool)}`),
+                    td("Requests", "n", r.n),
+                    td("Cost", "n", eur(r.cost_eur)),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        )
+      : null,
+  );
+  return { top: [summaryStrip(a)], chart: chartCard(u, a, range, by), rest: [split, fl] };
 };
 
 const summaryStrip = (a: AggStatus): HTMLElement => {
@@ -353,36 +423,7 @@ const summaryStrip = (a: AggStatus): HTMLElement => {
   );
 };
 
-const chartCard = (u: UsageResponse, a: AggStatus, set: SetPref, range: UsageRange, by: UsageBy): HTMLElement => {
-  const tabs = h(
-    "div",
-    { class: "tabs", role: "tablist", "aria-label": "Time range" },
-    keysOf(RANGES).map((r) =>
-      h(
-        "button",
-        {
-          class: "tab",
-          role: "tab",
-          "aria-selected": r === range,
-          tabindex: r === range ? 0 : -1,
-          onclick: () => set("range", r),
-        },
-        r,
-      ),
-    ),
-  );
-  tabs.addEventListener("keydown", (e) => {
-    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-    const keys = keysOf(RANGES);
-    const i = keys.indexOf(range);
-    const next = keys[(i + (e.key === "ArrowRight" ? 1 : keys.length - 1)) % keys.length];
-    if (next) set("range", next);
-  });
-  const sel = h(
-    "select",
-    { class: "input", style: "width:auto", "aria-label": "Split spending by", onchange: () => set("by", sel.value) },
-    entriesOf(BYS).map(([k, v]) => h("option", { value: k, selected: k === by }, `by ${v.toLowerCase()}`)),
-  );
+const chartCard = (u: UsageResponse, a: AggStatus, range: UsageRange, by: UsageBy): HTMLElement[] => {
   const label = (n: string): string => (by === "pool" ? poolLabel(n) : n);
   const avg = u.total / RANGE_DAYS[range];
   const delta = u.prev_total > 0 ? ((u.total - u.prev_total) / u.prev_total) * 100 : null;
@@ -410,10 +451,7 @@ const chartCard = (u: UsageResponse, a: AggStatus, set: SetPref, range: UsageRan
     });
     ro.observe(box);
   }
-  return h(
-    "section",
-    { class: "card", "aria-label": "Spending over time" },
-    h("div", { class: "card-h" }, h("h2", {}, "Spending"), h("span", { class: "grow" }), tabs, sel),
+  return [
     h(
       "div",
       { class: "row sm", style: "margin:calc(var(--sp-2)*-1) 0 var(--sp-3);gap:var(--sp-1) var(--sp-4)" },
@@ -435,7 +473,7 @@ const chartCard = (u: UsageResponse, a: AggStatus, set: SetPref, range: UsageRan
     ),
     box,
     u.series.length ? legend : null,
-  );
+  ].flatMap((x) => (x ? [x] : []));
 };
 
 const drawChart = (box: HTMLElement, u: UsageResponse, a: AggStatus, label: (n: string) => string): void => {

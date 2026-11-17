@@ -1,7 +1,7 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { Entry } from "@napi-rs/keyring";
 import { resolveSecret } from "./config.ts";
 import type { DB } from "./db.ts";
+import { type Keyring, keyring } from "./keyring.ts";
 import { hashPasswordAsync, verifyPasswordAsync } from "./security.ts";
 import type { Account, ApiKeyRow, Config, KeyInfo, KeySource, ManualPool, SessionUser, UserRow } from "./types.ts";
 import { POOLS } from "./types.ts";
@@ -48,37 +48,37 @@ let dummyAsync: Promise<string> | null = null;
 const dummyHashAsync = (): Promise<string> => (dummyAsync ??= hashPasswordAsync("dummy-password-for-timing"));
 const sha = (token: string): string => createHash("sha256").update(token, "utf8").digest("hex");
 export const checkPasswordPolicy = (pw: string): void => {
-  if (pw.length < MIN_PASSWORD) throw new StoreError(`Password must be at least ${MIN_PASSWORD} characters.`);
-  if (pw.length > 256) throw new StoreError("Password is too long.");
+  const len = Array.from(pw).length;
+  if (len < MIN_PASSWORD) throw new StoreError(`Password must be at least ${MIN_PASSWORD} characters.`);
+  if (len > 256) throw new StoreError("Password is too long.");
 };
 export const refKind = (ref: string): KeySource =>
   ref === VIBE_REF ? "vibe-cli" : ref.startsWith("keyring:") ? "keyring" : ref.startsWith("env:") ? "env" : "inline";
 export const mask = (key: string): string =>
   key.length > 12 ? `${key.slice(0, 5)}…${key.slice(-4)}` : `…${key.slice(-3)}`;
-export const saveSecret = (account: string, pool: string, value: string): string => {
+export const saveSecret = (account: string, pool: string, value: string, kr: Keyring = keyring): string => {
   if (process.env.MISTWATCH_NO_KEYRING) return value;
   try {
     const user = `${account}/${pool}`;
-    const e = new Entry(KEYRING_SERVICE, user);
-    e.setPassword(value);
-    if (e.getPassword() === value) return `keyring:${KEYRING_SERVICE}/${user}`;
+    kr.set(KEYRING_SERVICE, user, value);
+    if (kr.get(KEYRING_SERVICE, user) === value) return `keyring:${KEYRING_SERVICE}/${user}`;
   } catch {
     // no usable keyring on this machine
   }
   return value;
 };
-export const dropSecret = (ref: string): void => {
+export const dropSecret = (ref: string, kr: Keyring = keyring): void => {
   if (!ref.startsWith(`keyring:${KEYRING_SERVICE}/`)) return;
   try {
     const rest = ref.slice(8);
-    new Entry(KEYRING_SERVICE, rest.slice(rest.indexOf("/") + 1)).deletePassword();
+    kr.drop(KEYRING_SERVICE, rest.slice(rest.indexOf("/") + 1));
   } catch {
     // best effort: a missing keyring entry is fine
   }
 };
-export const vibeCliKeyPresent = (): boolean => {
+export const vibeCliKeyPresent = (kr: Keyring = keyring): boolean => {
   try {
-    return Boolean(new Entry("ai.mistral.vibe", "MISTRAL_API_KEY").getPassword());
+    return Boolean(kr.get("ai.mistral.vibe", "MISTRAL_API_KEY"));
   } catch {
     return false;
   }
@@ -102,28 +102,31 @@ const isSpace = (c: string): boolean => {
 const parseKeys = (v: unknown): Record<string, string> => {
   const o: unknown = JSON.parse(str(v));
   if (!isRec(o)) throw new TypeError("accounts.keys is not an object");
-  const out: Record<string, string> = {};
-  for (const [k, x] of Object.entries(o)) {
-    if (typeof x !== "string") throw new TypeError("accounts.keys values must be strings");
-    out[k] = x;
-  }
-  return out;
+  return Object.fromEntries(
+    Object.entries(o).map(([k, x]): [string, string] => {
+      if (typeof x !== "string") throw new TypeError("accounts.keys values must be strings");
+      return [k, x];
+    }),
+  );
 };
 const parseManual = (v: unknown): Record<string, ManualPool> => {
   const o: unknown = JSON.parse(str(v));
   if (!isRec(o)) throw new TypeError("accounts.manual is not an object");
-  const out: Record<string, ManualPool> = {};
-  for (const [pool, mv] of Object.entries(o)) {
-    if (!isRec(mv)) throw new TypeError("accounts.manual values must be objects");
-    const mp: ManualPool = {};
-    for (const [k, x] of Object.entries(mv)) {
-      if (typeof x !== "string" && typeof x !== "number" && typeof x !== "boolean")
-        throw new TypeError("accounts.manual values must be primitives");
-      mp[k] = x;
-    }
-    out[pool] = mp;
-  }
-  return out;
+  return Object.fromEntries(
+    Object.entries(o).map(([pool, mv]) => {
+      if (!isRec(mv)) throw new TypeError("accounts.manual values must be objects");
+      return [
+        pool,
+        Object.fromEntries(
+          Object.entries(mv).map(([k, x]): [string, string | number | boolean] => {
+            if (typeof x !== "string" && typeof x !== "number" && typeof x !== "boolean")
+              throw new TypeError("accounts.manual values must be primitives");
+            return [k, x];
+          }),
+        ),
+      ];
+    }),
+  );
 };
 export const createStore = (db: DB) => {
   const touched = new Map<number, number>();
@@ -184,9 +187,9 @@ export const createStore = (db: DB) => {
     if (!acct) throw new StoreError("Account does not exist.");
     let newRef: string;
     if (opts.value != null) {
-      const v = opts.value.trim();
-      if (v.length < 8 || [...v].some(isSpace)) throw new StoreError("Key looks invalid.");
-      newRef = saveSecret(name, pool, v);
+      const chars = Array.from(opts.value.trim());
+      if (chars.length < 8 || chars.some(isSpace)) throw new StoreError("Key looks invalid.");
+      newRef = saveSecret(name, pool, chars.join(""));
     } else if (opts.ref) {
       newRef = opts.ref;
     } else {
@@ -337,7 +340,7 @@ export const createStore = (db: DB) => {
     setKey,
     removeKey: (name: string, pool: string): void => {
       const acct = getAccount(name);
-      if (!acct || !(pool in acct.keys)) return;
+      if (!acct || !Object.hasOwn(acct.keys, pool)) return;
       const ref = acct.keys[pool];
       if (ref !== undefined) dropSecret(ref);
       delete acct.keys[pool];

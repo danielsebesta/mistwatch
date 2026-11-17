@@ -45,27 +45,27 @@ const sameSnaps = (a: Record<string, Snapshot>, b: Record<string, Snapshot>): bo
   return true;
 };
 export const refreshLinks = (db: DB, accounts: Account[]): Map<string, string> => {
-  const snaps: Record<string, Record<string, Snapshot>> = {};
+  const snaps = new Map<string, Record<string, Snapshot>>();
   for (const a of accounts) {
     const per: Record<string, Snapshot> = {};
     for (const p of POOLS) {
       const s = db.latestSnapshot(a.name, p);
       if (s) per[p] = s;
     }
-    if (Object.keys(per).length) snaps[a.name] = per;
+    if (Object.keys(per).length) snaps.set(a.name, per);
   }
-  if (!Object.keys(snaps).length) return db.links;
+  if (!snaps.size) return db.links;
   let newest = -Infinity;
-  for (const per of Object.values(snaps)) for (const s of Object.values(per)) newest = Math.max(newest, s.ts);
-  const fresh: Record<string, Record<string, Snapshot>> = {};
+  for (const per of snaps.values()) for (const s of Object.values(per)) newest = Math.max(newest, s.ts);
+  const fresh = new Map<string, Record<string, Snapshot>>();
   const stale = new Set<string>();
-  for (const [n, per] of Object.entries(snaps)) {
+  for (const [n, per] of snaps) {
     let minTs = Infinity;
     for (const s of Object.values(per)) minTs = Math.min(minTs, s.ts);
-    if (minTs >= newest - SAME_PASS_S) fresh[n] = per;
+    if (minTs >= newest - SAME_PASS_S) fresh.set(n, per);
     else stale.add(n);
   }
-  const names = Object.keys(fresh).sort();
+  const names = [...fresh.keys()].sort();
   const parent = new Map<string, string>(names.map((n) => [n, n]));
   const find = (x: string): string => {
     let cur = x;
@@ -79,9 +79,9 @@ export const refreshLinks = (db: DB, accounts: Account[]): Map<string, string> =
   for (let i = 0; i < names.length; i++) {
     const x = names[i];
     if (x === undefined) continue;
-    const fx = fresh[x];
+    const fx = fresh.get(x);
     for (const y of names.slice(i + 1)) {
-      const fy = fresh[y];
+      const fy = fresh.get(y);
       if (fx && fy && sameSnaps(fx, fy)) parent.set(find(y), find(x));
     }
   }
@@ -109,7 +109,7 @@ export const refreshLinks = (db: DB, accounts: Account[]): Map<string, string> =
       const pc = prio.get(canon) ?? 999;
       if (pm < pc || (pm === pc && m < canon)) canon = m;
     }
-    const per = fresh[canon];
+    const per = fresh.get(canon);
     const spent = per ? Object.values(per).some((s) => s.used_eur > EPS_EUR) : false;
     for (const m of members) {
       if (m !== canon) {

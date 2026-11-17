@@ -98,7 +98,7 @@ export type LedgerRow = {
   cached_tokens: number | null;
   cost_eur: number;
   source: "proxy" | "sync";
-  estimated: number;
+  estimated: number | null;
   status: number | null;
   latency_ms: number | null;
   model_name: string | null;

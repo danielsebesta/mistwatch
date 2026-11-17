@@ -47,7 +47,7 @@ export const createApp = (st: State, opts: AppOpts = {}): Hono => {
       return;
     }
     const e = errors.forbidden("forbidden host");
-    const isApi = c.req.path.startsWith("/api/");
+    const isApi = c.req.path === "/api" || c.req.path.startsWith("/api/");
     return new Response(JSON.stringify(isApi ? apiErrorBody(e) : proxyErrorBody(e)), {
       status: e.status,
       headers: { "content-type": "application/json", ...errorHeaders(e) },
@@ -138,7 +138,10 @@ export const startServer = async (
     return closing;
   };
   if (opts.signals !== false) {
-    const onSignal = () => void close().finally(() => process.exit(0));
+    const onSignal = () =>
+      void close()
+        .catch((e: unknown) => console.error("shutdown error:", e))
+        .finally(() => process.exit(0));
     process.once("SIGINT", onSignal);
     process.once("SIGTERM", onSignal);
   }

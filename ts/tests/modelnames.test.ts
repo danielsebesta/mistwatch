@@ -116,3 +116,19 @@ describe("charts and listing", () => {
     expect(calls).toBe(1);
   });
 });
+describe("prototype-named models", () => {
+  it.each(["constructor", "__proto__", "toString"])("%s resolves as an unknown name", (id) => {
+    const n = createModelNames(openDb(":memory:"));
+    expect(n.resolve(id)[1]).toBe("auto");
+    expect(() => n.listing(true)).not.toThrow();
+  });
+  it("stores and lists overrides under prototype-like ids", () => {
+    const n = createModelNames(openDb(":memory:"));
+    n.setOverride("__proto__", "Proto");
+    n.setOverride("constructor", "Ctor");
+    expect(n.resolve("__proto__")).toEqual(["Proto", "custom"]);
+    expect(n.resolve("constructor")).toEqual(["Ctor", "custom"]);
+    expect(n.listing().map((r) => r.key)).toEqual(expect.arrayContaining(["__proto__", "constructor"]));
+    expect(n.resolve("toString")[1]).toBe("auto");
+  });
+});
