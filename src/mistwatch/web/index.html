@@ -3,130 +3,333 @@
 <head>
 <meta charset="utf-8">
 <title>Mistwatch</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Local budget watcher and pacing proxy for Mistral accounts">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230a6a87' stroke-width='2' stroke-linecap='round'%3E%3Crect x='2' y='2' width='20' height='20' rx='6'/%3E%3Cpath d='M6.5 9h11M6.5 12.5h8M6.5 16h5'/%3E%3C/svg%3E">
+<script>
+// Apply the saved theme before first paint (no flash). "system" = no attribute.
+try { const t = localStorage.getItem("mw.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
 <style>
+/* ==========================================================================
+   Mistwatch UI — "the quiet instrument"
+   Small type, generous space, one accent. Colour is reserved for data and status.
+   All components are styled from the tokens below; light-dark() picks the theme.
+   ========================================================================== */
 :root{
-  /* tokens read from mistral.ai: warm off-white page, 1px hairlines, 6px controls, near-black primary, flame accent */
-  --bg:#f5f4ef;--card:#fbfbf8;--line:#e4e3de;--text:#18181b;--mut:#71717a;--ink:#09090b;--ink-t:#fafafa;
-  --acc:#ff5229;--acc2:#ff8204;--flame:linear-gradient(90deg,#ff8204,#ff5229 55%,#e51300);
-  --ok:#2b8a57;--bad:#c4001d;--warn:#b7791f;--chip:rgba(7,7,11,.05);--bar:#ebe9e0;--code:#ebe9e0;
-  --r:6px;--rc:8px;--shadow:0 1px 2px rgba(21,21,31,.03),0 2px 4px rgba(21,21,31,.02)}
-@media (prefers-color-scheme:dark){:root{
-  --bg:#09090b;--card:#151524;--line:#31313a;--text:#fafafa;--mut:#a1a1aa;--ink:#fafafa;--ink-t:#09090b;
-  --acc:#ff6a2b;--ok:#4cc38a;--bad:#ff6b6b;--warn:#e0a94a;--chip:rgba(255,255,255,.07);--bar:#26263a;--code:#1d1d30;--shadow:none}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
-a{color:var(--acc)}
-.wrap{max-width:960px;margin:0 auto;padding:0 20px 60px}
-header{border-bottom:1px solid var(--line);background:var(--card)}
-header .wrap{display:flex;align-items:center;gap:24px;height:54px;padding-bottom:0}
-.logo{font-weight:500;letter-spacing:-.01em;display:flex;align-items:center;gap:9px;font-size:16px}
-.logo svg{display:block}
-nav{display:flex;gap:2px;flex:1;min-width:0}
-nav a{color:var(--mut);text-decoration:none;padding:6px 12px;border-radius:var(--r);font-weight:400;white-space:nowrap}
-nav a:hover{background:var(--chip)}
-nav a.on{color:var(--text);background:var(--chip)}
-.who{color:var(--mut);font-size:13px}
-.sum{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--text);padding:5px 11px;border-radius:var(--r);background:var(--chip);font-size:13px;white-space:nowrap}
-.sum .mini{width:54px;height:5px;background:var(--bar);border-radius:3px;overflow:hidden}
-.sum .mini i{display:block;height:100%;background:var(--flame)}
-.sum.bad{color:var(--bad)}
-.big{font-size:26px;font-weight:500;letter-spacing:-.02em;line-height:1.1}
-.stat{min-width:0}
-.stat .k{color:var(--mut);font-size:12.5px}
-.notice{border-left:3px solid var(--acc2);background:color-mix(in srgb,var(--acc2) 8%,var(--card))}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:14px}
-.kpi{margin:0}.kpi .k{color:var(--mut);font-size:12.5px;margin-bottom:4px}.kpi .bar{margin:10px 0 0}.kpi .chip{margin-top:8px}
-.num{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:500}
-.seg{display:inline-flex;background:var(--chip);border-radius:var(--r);padding:2px}
-.seg button{background:transparent;border-radius:4px;padding:3px 11px;font-size:13px;color:var(--mut)}
-.seg button.on{background:var(--card);color:var(--text);box-shadow:var(--shadow)}
-.chart{position:relative}.chart svg{display:block;width:100%}
-.chart .grid{stroke:var(--line);stroke-width:1}
-.chart .axis{fill:var(--mut);font-size:11px;font-variant-numeric:tabular-nums}
-.chart .pace{stroke:var(--text);stroke-width:1;stroke-dasharray:4 4;opacity:.5}
-.chart .pace-t{fill:var(--text);opacity:.7}
-.chart .hit:hover{fill:var(--chip)}
-.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--ink-t);padding:8px 10px;border-radius:6px;font-size:12px;z-index:5;white-space:nowrap;line-height:1.5}
-.tip .dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
-.tip .tot{border-top:1px solid rgba(128,128,128,.4);margin-top:4px;padding-top:4px}
-.empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--mut)}
-.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;font-size:12.5px}
-.lg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px}
-.gauge{display:grid;grid-template-columns:64px 1fr auto;gap:12px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
-.gauge .bar{margin:0 0 3px}
-.brow{padding:12px 0;border-top:1px solid var(--line)}
-.brow .row{flex-wrap:nowrap}.brow .row b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.brow .chip{white-space:nowrap}.brow .bar{margin:8px 0 4px}
-.notice-line{margin-top:6px;padding-top:10px;border-top:1px dashed var(--line)}
-.grid2.top{align-items:start;margin-bottom:14px}
-details.fold{background:var(--card);border:1px solid var(--line);border-radius:var(--rc);margin-bottom:10px}
-details.fold summary{display:flex;align-items:center;gap:10px;padding:12px 18px;cursor:pointer;list-style:none;font-weight:500}
-details.fold summary::-webkit-details-marker{display:none}
-details.fold summary::before{content:"\25B8";color:var(--mut);transition:transform .15s}
-details.fold[open] summary::before{transform:rotate(90deg)}
-.foldbody{padding:0 18px 14px}
-@media(max-width:1100px){.sum .more,.who{display:none}}
-@media(max-width:900px){.sum .mini{display:none}}
-@media(max-width:640px){header .wrap{gap:10px}nav a{padding:6px 7px;font-size:13px}.sum{display:none}}
-h1{font-size:28px;line-height:1.15;font-weight:500;margin:34px 0 6px;letter-spacing:-.02em}
-h2{font-size:15px;font-weight:500;margin:0 0 10px;letter-spacing:-.005em}
-.sub{color:var(--mut);margin:0 0 18px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:var(--rc);padding:18px 20px;margin-bottom:14px;box-shadow:var(--shadow)}
-.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.sp{flex:1}
-.mut{color:var(--mut)}
-.small{font-size:12.5px}
-.chip{display:inline-block;font-size:12px;padding:2px 9px;border-radius:4px;background:var(--chip);color:var(--mut);font-weight:500}
-.chip.ok{color:var(--ok)}.chip.bad{color:var(--bad)}.chip.warn{color:var(--warn)}
-.ok{color:var(--ok)}.bad{color:var(--bad)}
-button,.btn{font:inherit;cursor:pointer;border:1px solid transparent;background:var(--chip);color:var(--text);padding:7px 13px;border-radius:var(--r);font-weight:400}
-button:hover{background:var(--chip)}
-button.pri{background:var(--ink);border-color:var(--ink);color:var(--ink-t)}
-button.pri:hover{background:var(--ink);opacity:.86}
-button.danger{color:var(--bad)}
-button.ghost{border-color:transparent;background:transparent;color:var(--mut)}
-button:disabled{opacity:.5;cursor:default}
-input,select{font:inherit;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:8px 11px;min-width:0}
-input:focus{outline:2px solid color-mix(in srgb,var(--acc) 35%,transparent);border-color:var(--acc)}
-label{display:block;font-weight:500;margin:12px 0 4px}
-.bar{height:6px;background:var(--bar);border-radius:3px;overflow:hidden;margin:12px 0 6px}
-.bar i{display:block;height:100%;background:var(--flame);border-radius:3px}
-.bar i.hot{background:linear-gradient(90deg,#ff5229,#c4001d)}
-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-th,td{padding:6px 8px;border-top:1px solid var(--line);text-align:right;white-space:nowrap}
-th{color:var(--mut);font-weight:500;font-size:12.5px}
-th:first-child,td:first-child{text-align:left}
-td.l,th.l{text-align:left}
-.scroll{overflow-x:auto}
-code,pre{background:var(--code);border-radius:4px;font:12.5px/1.5 "DM Mono","Space Mono",ui-monospace,Consolas,monospace}
-code{padding:1px 5px}
-pre{padding:10px 12px;overflow-x:auto;margin:8px 0;white-space:pre-wrap;word-break:break-all}
-.keyrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap}
-.keyrow .t{width:150px}
-.keyrow .t b{display:block}
-.auth{max-width:380px;margin:12vh auto 0;padding:0 20px}
-.auth .card{padding:22px}
-.auth h1{margin-top:0}
-.auth input{width:100%}
-.err{color:var(--bad);min-height:20px;margin:8px 0 0}
-.secret{border:1px solid var(--acc2);background:color-mix(in srgb,var(--acc2) 9%,var(--card))}
-.toast{position:fixed;right:18px;bottom:18px;background:var(--text);color:var(--bg);padding:10px 14px;border-radius:var(--r);max-width:360px;box-shadow:0 6px 24px rgba(0,0,0,.25);z-index:9}
-.toast.bad{background:var(--bad);color:#fff}
-.flame{height:3px;background:var(--flame)}
-.modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:20px;z-index:8}
-.modal .card{width:min(460px,100%);margin:0;border-radius:12px}
-.modal input{width:100%}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-@media(max-width:700px){.grid2{grid-template-columns:1fr}.keyrow .t{width:100%}nav a{padding:6px 8px}.who{display:none}}
+  color-scheme:light dark;
+  /* neutrals (cool grey): page, surface, subtle fills, hairlines, control borders, three text steps */
+  --bg:light-dark(#f4f5f7,#0d1013);
+  --surface:light-dark(#ffffff,#14181d);
+  --fill:light-dark(#eceef1,#1c2128);
+  --fill-2:light-dark(#e0e3e8,#272e37);
+  --line:light-dark(#e0e3e8,#252c35);
+  --line-strong:light-dark(#858d99,#6a7584);
+  --text-3:light-dark(#565e6a,#9aa4b2);
+  --text-2:light-dark(#353c46,#c5ccd5);
+  --text:light-dark(#12161c,#edf0f4);
+  /* the one accent, used for the primary action, focus, selection and the "used" part of bars */
+  --accent:light-dark(#0a6a87,#58bfdd);
+  --accent-ink:light-dark(#ffffff,#05202a);
+  --accent-soft:color-mix(in srgb,var(--accent) 12%,var(--surface));
+  /* semantic: budget OK / tight / exhausted. Always paired with an icon and a word. */
+  --ok:light-dark(#17703f,#5ccb8c);
+  --warn:light-dark(#8a5700,#e6b34f);
+  --bad:light-dark(#b42318,#ff8f86);
+  --ok-soft:color-mix(in srgb,var(--ok) 12%,var(--surface));
+  --warn-soft:color-mix(in srgb,var(--warn) 14%,var(--surface));
+  --bad-soft:color-mix(in srgb,var(--bad) 11%,var(--surface));
+  /* categorical series for charts (muted, distinguishable, no purple) */
+  --s1:light-dark(#2b7a99,#5dbbd9);
+  --s2:light-dark(#6c8230,#aac45a);
+  --s3:light-dark(#b0701a,#e0a24a);
+  --s4:light-dark(#5b6c9a,#94a5d3);
+  --s5:light-dark(#ad4c45,#e5867e);
+  --s6:light-dark(#3a8c7d,#6fcab9);
+  --s-other:light-dark(#a1a9b4,#566170);
+  /* type: system stacks, 6 steps */
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"Cascadia Mono",Menlo,Consolas,monospace;
+  --t-xs:.75rem;--t-sm:.8125rem;--t-md:.9375rem;--t-lg:1.125rem;
+  --t-xl:clamp(1.25rem,.9rem + 1vw,1.625rem);--t-2xl:clamp(1.5rem,1rem + 1.6vw,2.125rem);
+  /* 4px grid (rem so it follows text scaling), one radius scale, one shadow */
+  --sp-1:.25rem;--sp-2:.5rem;--sp-3:.75rem;--sp-4:1rem;--sp-5:1.25rem;--sp-6:1.5rem;--sp-8:2rem;--sp-10:2.5rem;
+  --r-1:.25rem;--r-2:.375rem;--r-3:.625rem;
+  --shadow:0 1px 2px light-dark(rgb(16 24 40/.06),rgb(0 0 0/.35)),0 0 0 1px light-dark(rgb(16 24 40/.02),transparent);
+  --ctl:2.25rem;--side:14rem;--tabbar:3.5rem;
+  --ease:160ms cubic-bezier(.2,.6,.2,1);
+}
+:root[data-theme=light]{color-scheme:light}
+:root[data-theme=dark]{color-scheme:dark}
+@media (pointer:coarse),(max-width:56rem){:root{--ctl:2.75rem}}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:400 var(--t-md)/1.5 var(--sans);-webkit-font-smoothing:antialiased;min-height:100dvh;overflow-wrap:anywhere}
+h1,h2,h3,p{margin:0}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-1)}
+[hidden]{display:none!important}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.mut{color:var(--text-3)}.sm{font-size:var(--t-sm)}.xs{font-size:var(--t-xs)}
+.mono{font-family:var(--mono);font-size:.92em}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.tnum{font-variant-numeric:tabular-nums}
+.trunc{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap}
+.row.nw{flex-wrap:nowrap}
+.grow{flex:1 1 auto;min-width:0}
+.stack{display:grid;gap:var(--sp-4)}
+.stack>*,.cols>*{min-width:0}
+.ic{width:1rem;height:1rem;flex:none;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- shell: sidebar on wide screens, top bar + bottom tab bar on narrow ---------- */
+.shell{display:grid;grid-template-columns:var(--side) minmax(0,1fr);min-height:100dvh}
+.side{position:sticky;top:0;height:100dvh;display:flex;flex-direction:column;gap:var(--sp-5);padding:var(--sp-5) var(--sp-3);border-right:1px solid var(--line);background:var(--surface);overflow-y:auto}
+.brand{display:flex;align-items:center;gap:var(--sp-2);font-weight:600;letter-spacing:-.01em;font-size:var(--t-md);padding-inline:var(--sp-2);color:var(--text);text-decoration:none}
+.brand svg{width:1.375rem;height:1.375rem;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round}
+.brand .m1{stroke:var(--accent)}
+.nav{display:grid;gap:2px}
+.nav a{display:flex;align-items:center;gap:var(--sp-3);min-height:var(--ctl);padding:0 var(--sp-3);border-radius:var(--r-2);color:var(--text-2);text-decoration:none;font-size:var(--t-sm);font-weight:500;transition:background var(--ease),color var(--ease)}
+.nav a:hover{background:var(--fill)}
+.nav a[aria-current=page]{background:var(--accent-soft);color:var(--accent)}
+.side-sum{margin-top:auto;padding:var(--sp-3);border:1px solid var(--line);border-radius:var(--r-3);display:grid;gap:var(--sp-2);text-decoration:none;color:var(--text)}
+.side-sum:hover{background:var(--fill)}
+.side-foot{display:flex;align-items:center;gap:var(--sp-1);padding-inline:var(--sp-1)}
+.side-foot .who{flex:1;min-width:0;font-size:var(--t-sm);color:var(--text-3)}
+.main{min-width:0}
+.page{width:100%;max-width:76rem;margin-inline:auto;padding:clamp(1rem,2.4vw,2rem) clamp(1rem,3vw,2.25rem) var(--sp-10)}
+.top{display:none}
+.tabbar{display:none}
+@media (max-width:56rem){
+  .shell{grid-template-columns:minmax(0,1fr)}
+  .side{display:none}
+  .top{display:flex;align-items:center;gap:var(--sp-3);position:sticky;top:0;z-index:5;padding:var(--sp-2) max(var(--sp-4),env(safe-area-inset-right)) var(--sp-2) max(var(--sp-4),env(safe-area-inset-left));padding-top:max(var(--sp-2),env(safe-area-inset-top));background:var(--surface);border-bottom:1px solid var(--line)}
+  .top .brand{padding:0}
+  .top .sumv{margin-left:auto;display:flex;align-items:center;gap:var(--sp-2);min-width:0;text-decoration:none;color:var(--text);font-size:var(--t-sm)}
+  .tabbar{display:grid;grid-template-columns:repeat(4,1fr);position:fixed;inset:auto 0 0 0;z-index:5;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);padding-inline:env(safe-area-inset-left) env(safe-area-inset-right)}
+  .tabbar a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:var(--tabbar);padding:var(--sp-1);color:var(--text-3);text-decoration:none;font-size:var(--t-xs);font-weight:500}
+  .tabbar a[aria-current=page]{color:var(--accent)}
+  .page{padding-bottom:calc(var(--tabbar) + env(safe-area-inset-bottom) + var(--sp-8))}
+}
+
+/* ---------- surfaces ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-3);box-shadow:var(--shadow);padding:var(--sp-5)}
+.card-h{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;margin-bottom:var(--sp-4)}
+.card-h h2{font-size:var(--t-md);font-weight:600;letter-spacing:-.005em}
+.page-h{display:flex;align-items:flex-end;gap:var(--sp-3) var(--sp-4);flex-wrap:wrap;margin-bottom:var(--sp-6)}
+.page-h h1{font-size:var(--t-2xl);font-weight:600;letter-spacing:-.025em;line-height:1.15}
+.page-h p{color:var(--text-3);font-size:var(--t-sm);max-width:60ch}
+.page-h .act{margin-left:auto}
+.lead{color:var(--text-3);font-size:var(--t-sm);max-width:64ch;margin:calc(var(--sp-3)*-1) 0 var(--sp-5)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:var(--sp-4);align-items:start}
+
+/* ---------- buttons ---------- */
+.btn{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-2);min-height:var(--ctl);padding:0 var(--sp-4);border:1px solid var(--line-strong);border-radius:var(--r-2);background:var(--surface);color:var(--text);font:500 var(--t-sm)/1 var(--sans);text-decoration:none;cursor:pointer;white-space:nowrap;transition:background var(--ease),border-color var(--ease),color var(--ease),transform var(--ease);touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.btn:hover{background:var(--fill)}
+.btn:active{background:var(--fill-2);transform:translateY(1px)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.pri:hover{background:color-mix(in srgb,var(--accent) 88%,var(--text))}
+.btn.pri:active{background:color-mix(in srgb,var(--accent) 78%,var(--text))}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--text-2)}
+.btn.ghost:hover{background:var(--fill)}
+.btn.danger{color:var(--bad);border-color:var(--bad);background:transparent}
+.btn.danger:hover{background:var(--bad-soft)}
+.btn.danger.solid{background:var(--bad);color:var(--surface);border-color:var(--bad)}
+.btn.icon{padding:0;width:var(--ctl)}
+.btn.sm{min-height:calc(var(--ctl) - .375rem);padding:0 var(--sp-3)}
+.btn:disabled,.btn[aria-disabled=true]{opacity:.5;cursor:not-allowed;pointer-events:none}
+.btn.wide{width:100%}
+
+/* ---------- inputs ---------- */
+label.f{display:grid;gap:var(--sp-1);font-size:var(--t-sm);font-weight:500;color:var(--text-2)}
+.input,select.input{appearance:none;width:100%;min-width:0;min-height:var(--ctl);padding:0 var(--sp-3);border:1px solid var(--line-strong);border-radius:var(--r-2);background:var(--surface);color:var(--text);font:400 var(--t-sm)/1.2 var(--sans);transition:border-color var(--ease),box-shadow var(--ease)}
+select.input{padding-right:var(--sp-8);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23858d99' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .5rem center;background-size:1rem}
+.input:hover{border-color:var(--text-3)}
+.input:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 28%,transparent)}
+.input::placeholder{color:var(--text-3)}
+.input:disabled{opacity:.55}
+@media (pointer:coarse),(max-width:56rem){.input,select.input{font-size:1rem}}
+.input.short{width:5rem}
+.field-row{display:flex;gap:var(--sp-3);flex-wrap:wrap;align-items:end}
+.field-row>label{flex:1 1 14rem}
+.switch{position:relative;appearance:none;flex:none;width:2.25rem;height:1.375rem;padding:0;border:1px solid var(--line-strong);border-radius:999px;background:var(--fill-2);cursor:pointer;transition:background var(--ease),border-color var(--ease)}
+.switch::before{content:"";position:absolute;inset:-.7rem -.3rem}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:1rem;height:1rem;border-radius:50%;background:var(--text-2);transition:transform var(--ease),background var(--ease)}
+.switch[aria-checked=true]{background:var(--accent);border-color:var(--accent)}
+.switch[aria-checked=true]::after{transform:translateX(.875rem);background:var(--accent-ink)}
+.check{display:inline-flex;align-items:center;gap:var(--sp-2);font-size:var(--t-sm);min-height:var(--ctl);cursor:pointer}
+.check input{width:1.125rem;height:1.125rem;accent-color:var(--accent);margin:0}
+
+/* ---------- badges ---------- */
+.badge{display:inline-flex;align-items:center;gap:.3rem;height:1.375rem;padding:0 .5rem;border-radius:var(--r-1);font-size:var(--t-xs);font-weight:500;background:var(--fill);color:var(--text-2);white-space:nowrap}
+.badge .ic{width:.8125rem;height:.8125rem;stroke-width:2.2}
+.badge.ok{background:var(--ok-soft);color:var(--ok)}
+.badge.warn{background:var(--warn-soft);color:var(--warn)}
+.badge.bad{background:var(--bad-soft);color:var(--bad)}
+.badge.info{background:var(--accent-soft);color:var(--accent)}
+.tx-ok{color:var(--ok)}.tx-warn{color:var(--warn)}.tx-bad{color:var(--bad)}
+
+/* ---------- tabs (segmented) ---------- */
+.tabs{display:inline-flex;padding:2px;gap:2px;border-radius:var(--r-2);background:var(--fill)}
+.tab{appearance:none;border:0;background:transparent;color:var(--text-3);font:500 var(--t-sm)/1 var(--sans);min-height:calc(var(--ctl) - .5rem);padding:0 var(--sp-3);border-radius:calc(var(--r-2) - 2px);cursor:pointer;transition:background var(--ease),color var(--ease);touch-action:manipulation}
+.tab:hover{color:var(--text)}
+.tab[aria-selected=true]{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+
+/* ---------- summary strip ---------- */
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12.5rem),1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-3);overflow:hidden;box-shadow:var(--shadow);margin-bottom:var(--sp-4)}
+.cell{background:var(--surface);padding:var(--sp-4) var(--sp-5);display:grid;gap:var(--sp-1);align-content:start;min-width:0}
+.cell .k{font-size:var(--t-xs);font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em}
+.cell .v{font-size:var(--t-xl);font-weight:600;letter-spacing:-.025em;line-height:1.2;font-variant-numeric:tabular-nums}
+.cell .s{font-size:var(--t-sm);color:var(--text-3);min-height:1.25rem}
+
+/* ---------- bars ---------- */
+.mini{height:.25rem;border-radius:2px;background:var(--fill-2);overflow:hidden;margin-top:var(--sp-1)}
+.mini i{display:block;height:100%;background:var(--accent);border-radius:2px}
+.mini i.warn{background:var(--warn)}.mini i.bad{background:var(--bad)}
+.pbar{position:relative;height:.625rem;border-radius:3px;background:var(--fill-2);margin:var(--sp-3) 0 var(--sp-2)}
+.pbar .fill{position:absolute;left:0;top:0;bottom:0;border-radius:3px 0 0 3px;background:var(--accent);transition:width 400ms ease}
+.pbar .fill.warn{background:var(--warn)}.pbar .fill.bad{background:var(--bad)}
+.pbar .res{position:absolute;top:0;bottom:0;right:0;border-radius:0 3px 3px 0;background:repeating-linear-gradient(135deg,var(--line-strong) 0 1px,transparent 1px 4px);opacity:.6}
+.pbar .mark{position:absolute;top:-.25rem;bottom:-.25rem;width:2px;margin-left:-1px;background:var(--text);border-radius:1px}
+.keyline{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-4);font-size:var(--t-xs);color:var(--text-3);margin-top:var(--sp-4);padding-top:var(--sp-3);border-top:1px solid var(--line)}
+.keyline span{display:inline-flex;align-items:center;gap:var(--sp-2)}
+.sw{display:inline-block;width:.625rem;height:.625rem;border-radius:2px;background:var(--accent)}
+.sw.mark{width:2px;height:.75rem;background:var(--text)}
+.sw.res{background:repeating-linear-gradient(135deg,var(--line-strong) 0 1px,transparent 1px 3px);outline:1px solid var(--line)}
+.prow{padding:var(--sp-4) 0;border-top:1px solid var(--line)}
+.prow:first-of-type{border-top:0;padding-top:0}
+.wrow{display:grid;grid-template-columns:4.5rem minmax(0,1fr) auto;gap:var(--sp-3);align-items:center;padding:var(--sp-3) 0;border-top:1px solid var(--line)}
+.wrow:first-of-type{border-top:0;padding-top:0}
+.min0{min-width:0}
+.wrow .mini{margin:var(--sp-1) 0 0;height:.375rem}
+
+/* ---------- chart ---------- */
+.chart{position:relative;min-height:11rem}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart .g{stroke:var(--line);stroke-width:1}
+.chart .ax{fill:var(--text-3);font:400 11px var(--sans);font-variant-numeric:tabular-nums}
+.chart .pace{stroke:var(--text-2);stroke-width:1;stroke-dasharray:3 4}
+.chart .hit{fill:transparent;touch-action:pan-y}
+.chart .hit:hover,.chart .hit.on{fill:color-mix(in srgb,var(--text) 6%,transparent)}
+.tip{position:absolute;z-index:3;pointer-events:none;background:var(--text);color:var(--bg);padding:var(--sp-2) var(--sp-3);border-radius:var(--r-2);font-size:var(--t-xs);line-height:1.5;white-space:nowrap;box-shadow:0 4px 16px rgb(0 0 0/.25)}
+.tip i{display:inline-block;width:.5rem;height:.5rem;border-radius:2px;margin-right:.4rem}
+.tip .t{border-top:1px solid color-mix(in srgb,var(--bg) 35%,transparent);margin-top:var(--sp-1);padding-top:var(--sp-1);font-weight:600}
+.empty-chart{position:absolute;inset:0;display:grid;place-items:center;color:var(--text-3);font-size:var(--t-sm);pointer-events:none}
+.legend{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-4);margin-top:var(--sp-3);font-size:var(--t-xs)}
+.legend span{display:inline-flex;align-items:center;gap:.4rem;min-width:0;max-width:100%}
+.legend i{width:.625rem;height:.625rem;border-radius:2px;flex:none}
+
+/* ---------- tables ---------- */
+.tw{overflow-x:auto;container-type:inline-size;margin-inline:calc(var(--sp-5)*-1);padding-inline:var(--sp-5)}
+.tbl{width:100%;border-collapse:collapse;font-size:var(--t-sm)}
+.tbl th{font-size:var(--t-xs);font-weight:500;color:var(--text-3);text-align:left;padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:var(--sp-3);border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:0}
+.tbl .n{text-align:right;font-family:var(--mono);font-size:.92em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl th.n{font-family:var(--sans);font-size:var(--t-xs)}
+.tbl th:first-child,.tbl td:first-child{padding-left:0}.tbl th:last-child,.tbl td:last-child{padding-right:0}
+.tbl .max{max-width:14rem}
+.tbl.wide{min-width:36rem}
+@container (max-width:34rem){
+  .tbl.stack thead{display:none}
+  .tbl.stack,.tbl.stack tbody,.tbl.stack tr,.tbl.stack td{display:block;width:100%}
+  .tbl.stack tr{padding:var(--sp-3) 0;border-bottom:1px solid var(--line)}
+  .tbl.stack tr:last-child{border-bottom:0}
+  .tbl.stack td{display:flex;justify-content:space-between;align-items:center;gap:var(--sp-4);padding:var(--sp-1) 0;border:0;text-align:right}
+  .tbl.stack td::before{content:attr(data-l);color:var(--text-3);font-size:var(--t-xs);text-align:left;flex:none}
+  .tbl.stack td.max{max-width:none}
+}
+
+/* ---------- details / empty / skeleton / code ---------- */
+details.fold{border:1px solid var(--line);border-radius:var(--r-3);background:var(--surface);box-shadow:var(--shadow)}
+details.fold+details.fold,.card+details.fold,details.fold+.card{margin-top:var(--sp-3)}
+details.fold>summary{display:flex;align-items:center;gap:var(--sp-3);min-height:var(--ctl);padding:var(--sp-2) var(--sp-5);cursor:pointer;list-style:none;font-weight:600;font-size:var(--t-md);border-radius:var(--r-3)}
+details.fold>summary::-webkit-details-marker{display:none}
+details.fold>summary .ic{transition:transform var(--ease);color:var(--text-3)}
+details.fold[open]>summary .ic{transform:rotate(90deg)}
+details.fold>.fb{padding:0 var(--sp-5) var(--sp-5)}
+.empty{display:grid;justify-items:start;gap:var(--sp-3);padding:var(--sp-2) 0}
+.empty .ei{width:2.25rem;height:2.25rem;border-radius:var(--r-2);background:var(--fill);color:var(--text-3);display:grid;place-items:center}
+.empty .ei .ic{width:1.125rem;height:1.125rem}
+.empty h2{font-size:var(--t-md);font-weight:600}
+.empty p{color:var(--text-3);font-size:var(--t-sm);max-width:56ch}
+.sk{background:var(--fill);border-radius:var(--r-2);animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.45}}
+.code{position:relative;background:var(--fill);border-radius:var(--r-2);padding:var(--sp-3) 3rem var(--sp-3) var(--sp-3)}
+.code pre{margin:0;font:400 var(--t-xs)/1.6 var(--mono);white-space:pre-wrap;word-break:break-all}
+.code .btn{position:absolute;top:var(--sp-1);right:var(--sp-1)}
+code{font-family:var(--mono);font-size:.9em;background:var(--fill);padding:.1rem .35rem;border-radius:var(--r-1)}
+.keybox{display:flex;align-items:center;gap:var(--sp-2);background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 40%,var(--line));border-radius:var(--r-2);padding:var(--sp-3)}
+.keybox code{background:transparent;padding:0;font-size:var(--t-sm);word-break:break-all;flex:1;min-width:0}
+.notice{display:flex;gap:var(--sp-3);align-items:flex-start;padding:var(--sp-3) var(--sp-4);border-radius:var(--r-2);background:var(--bad-soft);color:var(--text);font-size:var(--t-sm)}
+.notice .ic{color:var(--bad);margin-top:.15rem}
+.notice.warn{background:var(--warn-soft)}.notice.warn .ic{color:var(--warn)}
+.err{color:var(--bad);font-size:var(--t-sm);min-height:1.25rem}
+
+/* ---------- accounts ---------- */
+.acct{container-type:inline-size}
+.keyrow{display:grid;grid-template-columns:9rem minmax(0,1fr) auto;gap:var(--sp-3) var(--sp-4);align-items:center;padding:var(--sp-3) 0;border-top:1px solid var(--line)}
+.keyrow .kl{display:grid;gap:var(--sp-1);justify-items:start}
+.keyrow .ki{min-width:0;display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;font-size:var(--t-sm);color:var(--text-3)}
+.keyrow .ki code{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.keyrow .ka{display:flex;gap:var(--sp-2);flex-wrap:wrap}
+@container (max-width:44rem){.keyrow{grid-template-columns:minmax(0,1fr)}}
+.acct-h{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;margin-bottom:var(--sp-3)}
+.acct-h h2{font-size:var(--t-lg);font-weight:600;letter-spacing:-.01em;min-width:0}
+
+/* ---------- toasts ---------- */
+.toasts{position:fixed;z-index:30;left:50%;transform:translateX(-50%);bottom:max(var(--sp-4),env(safe-area-inset-bottom));display:grid;gap:var(--sp-2);width:min(26rem,calc(100% - 2rem));pointer-events:none}
+@media (max-width:56rem){.toasts{bottom:calc(var(--tabbar) + env(safe-area-inset-bottom) + var(--sp-3))}}
+.toast{pointer-events:auto;display:flex;align-items:flex-start;gap:var(--sp-3);padding:var(--sp-3) var(--sp-4);border-radius:var(--r-3);background:var(--text);color:var(--bg);font-size:var(--t-sm);box-shadow:0 8px 28px rgb(0 0 0/.28);animation:rise var(--ease)}
+.toast.bad{background:var(--bad);color:var(--surface)}
+@keyframes rise{from{opacity:0;transform:translateY(.5rem)}}
+
+/* ---------- dialog (full-screen sheet on phones) ---------- */
+dialog.dlg{padding:0;border:1px solid var(--line);border-radius:var(--r-3);background:var(--surface);color:var(--text);width:min(30rem,calc(100% - 2rem));max-height:calc(100dvh - 2rem);box-shadow:0 16px 48px rgb(0 0 0/.3);overflow:auto}
+dialog.dlg::backdrop{background:rgb(8 12 16/.5)}
+.dlg form,.dlg>div{display:grid;gap:var(--sp-4);padding:var(--sp-5)}
+.dlg h2{font-size:var(--t-lg);font-weight:600;letter-spacing:-.01em}
+.dlg .acts{display:flex;gap:var(--sp-2);justify-content:flex-end;flex-wrap:wrap}
+@media (max-width:40rem){
+  dialog.dlg{width:100%;max-width:none;height:100dvh;max-height:none;margin:0;border:0;border-radius:0}
+  .dlg>div{min-height:100dvh;align-content:start;padding:max(var(--sp-5),env(safe-area-inset-top)) max(var(--sp-5),env(safe-area-inset-right)) max(var(--sp-5),env(safe-area-inset-bottom)) max(var(--sp-5),env(safe-area-inset-left))}
+  .dlg .acts{position:sticky;bottom:0;background:var(--surface);padding-top:var(--sp-3)}
+  .dlg .acts .btn{flex:1}
+}
+
+/* ---------- sign in ---------- */
+.auth{min-height:100dvh;display:grid;place-items:center;padding:var(--sp-5) max(var(--sp-4),env(safe-area-inset-right)) var(--sp-5) max(var(--sp-4),env(safe-area-inset-left))}
+.auth .box{width:min(23.5rem,100%);display:grid;gap:var(--sp-5)}
+.auth .brand{padding:0;font-size:var(--t-lg);justify-content:center}
+.auth .brand svg{width:1.75rem;height:1.75rem}
+.auth .card{display:grid;gap:var(--sp-4);padding:var(--sp-6)}
+.auth h1{font-size:var(--t-xl);font-weight:600;letter-spacing:-.02em}
+.auth p.lead{margin:calc(var(--sp-2)*-1) 0 0}
+.auth .foot{text-align:center;font-size:var(--t-xs);color:var(--text-3)}
+
+@media (pointer:coarse),(max-width:56rem){
+  .tab{min-height:var(--ctl);min-width:var(--ctl);padding:0 var(--sp-4)}.btn.sm{min-height:var(--ctl)}
+  .top .brand,.top .sumv,.side-sum{min-height:var(--ctl)}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+  .sk{animation:none}
+}
 </style>
 </head>
 <body>
+<noscript><p style="padding:1rem">Mistwatch needs JavaScript.</p></noscript>
 <div id="app"></div>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<div class="toasts" id="alerts" role="alert" style="bottom:calc(max(1rem,env(safe-area-inset-bottom)) + 0px)"></div>
 <script>
 "use strict";
 // ---------- tiny helpers ----------
 const enc = encodeURIComponent;
 const $ = (sel, el = document) => el.querySelector(sel);
+const NS = "http://www.w3.org/2000/svg";
 function h(tag, props, ...kids) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(props || {})) {
@@ -134,11 +337,51 @@ function h(tag, props, ...kids) {
     if (k === "class") el.className = v;
     else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
     else if (k === "value") el.value = v;
+    else if (k === "checked" || k === "disabled" || k === "selected" || k === "hidden") el[k] = !!v;
     else el.setAttribute(k, v === true ? "" : v);
   }
-  for (const k of kids.flat()) if (k != null && k !== false) el.append(k.nodeType ? k : document.createTextNode(String(k)));
+  for (const k of kids.flat(2)) if (k != null && k !== false) el.append(k.nodeType ? k : document.createTextNode(String(k)));
   return el;
 }
+function svg(tag, attrs, ...kids) {
+  const el = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v);
+  for (const k of kids) if (k != null) el.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return el;
+}
+const ICONS = {
+  overview: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+  accounts: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.8c1.7.7 2.8 2.4 3 5.2"/>',
+  key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9m-3 3 3 3"/>',
+  settings: '<path d="M4 6h8M18 6h2M4 12h2M12 12h8M4 18h10M20 18h0"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+  alert: '<path d="M12 4 2.8 19.5h18.4z"/><path d="M12 10v4.5M12 17.4v.1"/>',
+  x: '<path d="m6 6 12 12M18 6 6 18"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.1"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+  moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>',
+  monitor: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+  refresh: '<path d="M20 11a8 8 0 0 0-14.5-4M4 4v4h4M4 13a8 8 0 0 0 14.5 4M20 20v-4h-4"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  logout: '<path d="M9 4H5v16h4M16 8l4 4-4 4M20 12H9"/>',
+  chevron: '<path d="m9 6 6 6-6 6"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+};
+function ic(name) {
+  const s = svg("svg", { class: "ic", viewBox: "0 0 24 24", "aria-hidden": "true", focusable: "false" });
+  s.innerHTML = ICONS[name] || "";
+  return s;
+}
+function logoMark() {
+  const s = svg("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" });
+  s.innerHTML = '<rect x="2.5" y="2.5" width="19" height="19" rx="6"/><path class="m1" d="M7 9h10"/><path d="M7 12.5h7.5" opacity=".75"/><path d="M7 16h4.5" opacity=".5"/>';
+  return s;
+}
+const BADGE_ICON = { ok: "check", warn: "alert", bad: "x", info: "info" };
+const badge = (tone, text, title) => h("span", { class: "badge " + (tone || ""), title }, BADGE_ICON[tone] ? ic(BADGE_ICON[tone]) : null, text);
+
 async function api(method, path, body) {
   const r = await fetch("/api" + path, {
     method, credentials: "same-origin",
@@ -148,16 +391,18 @@ async function api(method, path, body) {
   let data = null;
   try { data = await r.json(); } catch (e) { /* empty body */ }
   if (r.status === 401 && path !== "/login") { me = null; boot(); throw new Error("Your session has expired."); }
-  if (!r.ok) throw new Error((data && (data.detail || data.message)) || "Error " + r.status);
+  if (!r.ok) {
+    const err = new Error((data && (data.detail || data.message)) || "Error " + r.status);
+    err.status = r.status;
+    throw err;
+  }
   return data;
 }
-let toastTimer;
 function toast(msg, bad) {
-  $(".toast")?.remove();
-  const t = h("div", { class: "toast" + (bad ? " bad" : "") }, msg);
-  document.body.append(t);
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.remove(), bad ? 6000 : 3000);
+  const box = $(bad ? "#alerts" : "#toasts");
+  const t = h("div", { class: "toast" + (bad ? " bad" : "") }, ic(bad ? "alert" : "check"), h("span", {}, msg));
+  box.replaceChildren(t);
+  setTimeout(() => t.remove(), bad ? 7000 : 3200);
 }
 const act = fn => async (...a) => { try { await fn(...a); } catch (e) { toast(e.message, true); } };
 const plural = (n, word) => n + " " + word + (n === 1 ? "" : "s");
@@ -173,38 +418,63 @@ function ago(ts) {
   return Math.round(s / 86400) + " d ago";
 }
 const POOL = { vibe: "Vibe Code", api: "Studio (API)" };
-const WIN = { "5h": "5 hours", day: "day", week: "week" };
-async function copy(text) {
-  try { await navigator.clipboard.writeText(text); toast("Copied"); } catch (e) { toast("Copy failed", true); }
+const WIN = { "5h": "5 hours", day: "Day", week: "Week" };
+const pct100 = v => Math.max(0, Math.min(100, v));
+
+function copyBtn(text, label = "Copy") {
+  const b = h("button", { class: "btn ghost icon", type: "button", "aria-label": label, title: label });
+  b.append(ic("copy"));
+  b.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(text); } catch (e) { toast("Copy failed", true); return; }
+    b.replaceChildren(ic("check")); b.setAttribute("aria-label", "Copied"); toast("Copied to clipboard");
+    setTimeout(() => { b.replaceChildren(ic("copy")); b.setAttribute("aria-label", label); }, 1600);
+  });
+  return b;
 }
+const codeBlock = text => h("div", { class: "code" }, h("pre", {}, text), copyBtn(text));
+
+// ---------- dialogs ----------
 function modal(content) {
-  const m = h("div", { class: "modal", onclick: e => { if (e.target === m) m.remove(); } }, h("div", { class: "card" }, content));
-  document.body.append(m);
-  return m;
+  const d = h("dialog", { class: "dlg" }, h("div", {}, content));
+  d.addEventListener("close", () => d.remove());
+  d.addEventListener("click", e => { if (e.target === d) d.close(); });
+  document.body.append(d);
+  d.showModal();
+  d.remove = () => { if (d.open) d.close(); else HTMLElement.prototype.remove.call(d); };
+  return d;
+}
+function confirmDlg({ title, body, ok = "Confirm", danger = false }) {
+  return new Promise(res => {
+    let done = false;
+    const finish = v => { if (!done) { done = true; res(v); } m.remove(); };
+    const m = modal([h("h2", {}, title), h("p", { class: "mut sm" }, body),
+      h("div", { class: "acts" }, h("button", { class: "btn", onclick: () => finish(false) }, "Cancel"),
+        h("button", { class: "btn " + (danger ? "danger solid" : "pri"), onclick: () => finish(true) }, ok))]);
+    m.addEventListener("close", () => finish(false));
+  });
 }
 
-// ---------- brand ----------
-function logo(size = 18) {
-  // 5x5 pixel "M" in the flame colours, in the spirit of Mistral's pixel emblem
-  const rows = ["#ff8204", "#ff8204", "#ff5229", "#e51300", "#c4001d"];
-  const on = ["10001", "11011", "10101", "10001", "10001"];
-  const NS = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("viewBox", "0 0 5 5"); svg.setAttribute("width", size); svg.setAttribute("height", size);
-  svg.setAttribute("shape-rendering", "crispEdges"); svg.setAttribute("aria-hidden", "true");
-  on.forEach((row, y) => [...row].forEach((c, x) => {
-    if (c !== "1") return;
-    const r = document.createElementNS(NS, "rect");
-    r.setAttribute("x", x); r.setAttribute("y", y); r.setAttribute("width", 1); r.setAttribute("height", 1); r.setAttribute("fill", rows[y]);
-    svg.append(r);
-  }));
-  return h("div", { class: "logo" }, svg, h("span", {}, "Mistwatch"));
+// ---------- theme ----------
+const THEMES = ["system", "light", "dark"];
+const themeNow = () => { const t = localStorage.getItem("mw.theme"); return t === "light" || t === "dark" ? t : "system"; };
+function setTheme(t) {
+  if (t === "system") { localStorage.removeItem("mw.theme"); delete document.documentElement.dataset.theme; }
+  else { localStorage.setItem("mw.theme", t); document.documentElement.dataset.theme = t; }
+}
+function themeButton() {
+  const draw = () => { const t = themeNow(); b.replaceChildren(ic(t === "dark" ? "moon" : t === "light" ? "sun" : "monitor")); b.title = b.ariaLabel = "Theme: " + t + " (click to change)"; };
+  const b = h("button", { class: "btn ghost icon", type: "button", onclick: () => { setTheme(THEMES[(THEMES.indexOf(themeNow()) + 1) % 3]); draw(); } });
+  draw();
+  return b;
 }
 
 // ---------- shell ----------
-let me = null, timer = null;
+let me = null, timer = null, sumTimer = null;
 const app = $("#app");
-const ROUTES = { "": ["Overview", viewDash], "#/accounts": ["Accounts & keys", viewAccounts], "#/keys": ["API keys", viewKeys], "#/settings": ["Settings", viewSettings] };
+const ROUTES = {
+  "": ["Overview", "overview", viewDash], "#/accounts": ["Accounts", "accounts", viewAccounts],
+  "#/keys": ["API keys", "key", viewKeys], "#/settings": ["Settings", "settings", viewSettings],
+};
 
 async function boot() {
   clearInterval(timer);
@@ -215,88 +485,112 @@ async function boot() {
   if (!me) return viewAuth("login");
   render();
 }
-let sumTimer = null;
 async function loadSummary() {
-  const el = $("#sum");
-  if (!el) return;
+  const els = document.querySelectorAll(".sumv");
+  if (!els.length) return;
   let d;
   try { d = await api("GET", "/summary"); } catch (e) { return; }
   const a = d.all;
-  if (!a) { el.replaceChildren("No budget"); el.className = "sum"; return; }
-  const pct = a.initial_eur ? Math.min(100, a.used_eur / a.initial_eur * 100) : 0;
-  const tip = Object.entries(d.pools).map(([p, v]) => `${POOL[p]}: ${eur(v.remaining_eur)} left of ${eur(v.initial_eur)}` +
-    (v.budgets > 1 ? ` (${plural(v.budgets, "budget")})` : "")).join("\n") + "\nCan spend now: " + eur(a.room_eur);
-  el.title = tip;
-  el.className = "sum" + (a.blocked ? " bad" : "");
-  el.replaceChildren(h("span", { class: "mini" }, h("i", { style: "width:" + pct + "%" })),
-    h("b", {}, eur(a.remaining_eur)), h("span", { class: "mut" }, "left"),
-    h("span", { class: "mut more" }, a.blocked ? "· exhausted" : "· now " + eur(a.room_eur)));
+  els.forEach(el => {
+    el.replaceChildren();
+    if (!a) { el.append(h("span", { class: "mut sm" }, "No budget yet")); return; }
+    const used = a.initial_eur ? pct100(a.used_eur / a.initial_eur * 100) : 0;
+    el.title = Object.entries(d.pools).map(([p, v]) => `${POOL[p]}: ${eur(v.remaining_eur)} left of ${eur(v.initial_eur)}`).join("\n") + "\nCan spend now: " + eur(a.room_eur);
+    if (el.dataset.full) el.append(h("span", { class: "xs mut" }, "Left in total"));
+    el.append(h("span", { class: "row nw", style: "gap:.5rem" }, h("b", { class: "num" }, eur(a.remaining_eur)), el.dataset.full ? null : h("span", { class: "mut" }, "left"),
+      a.blocked ? badge("bad", "exhausted") : null));
+    if (el.dataset.full) {
+      el.append(h("span", { class: "mini" }, h("i", { class: a.blocked ? "bad" : "", style: "width:" + used + "%" })),
+        h("span", { class: "xs mut" }, a.blocked ? "All budgets used up" : "Can spend now " + eur(a.room_eur)));
+    }
+  });
 }
 function render() {
-  clearInterval(timer);
-  clearInterval(sumTimer);
+  clearInterval(timer); clearInterval(sumTimer);
   const route = ROUTES[location.hash] ? location.hash : "";
-  const main = h("main", { class: "wrap" });
+  const links = cls => Object.entries(ROUTES).map(([r, [label, icon]]) =>
+    h("a", { href: r || "#/", "aria-current": r === route ? "page" : null }, ic(icon), cls ? h("span", {}, label) : label));
+  const main = h("main", { class: "page", id: "main", tabindex: "-1" });
   app.replaceChildren(
-    h("div", { class: "flame" }),
-    h("header", {}, h("div", { class: "wrap" },
-      logo(),
-      h("nav", {}, Object.entries(ROUTES).map(([r, [label]]) =>
-        h("a", { href: r || "#/", class: r === route ? "on" : "" }, label))),
-      h("a", { class: "sum", id: "sum", href: "#/", title: "Total across all accounts and keys" }, "…"),
-      h("span", { class: "who" }, me.username),
-      h("button", { class: "ghost", onclick: act(async () => { await api("POST", "/logout"); me = null; boot(); }) }, "Sign out"))),
-    main);
-  ROUTES[route][1](main);
+    h("div", { class: "shell" },
+      h("aside", { class: "side" },
+        h("a", { class: "brand", href: "#/" }, logoMark(), "Mistwatch"),
+        h("nav", { class: "nav", "aria-label": "Main" }, links(false)),
+        h("a", { class: "side-sum sumv", "data-full": "1", href: "#/", title: "Total across all accounts and keys" }),
+        h("div", { class: "side-foot" }, h("span", { class: "who trunc", title: me.username }, me.username), themeButton(),
+          h("button", { class: "btn ghost icon", "aria-label": "Sign out", title: "Sign out", onclick: act(signOut) }, ic("logout")))),
+      h("div", { class: "main" },
+        h("header", { class: "top" }, h("a", { class: "brand", href: "#/" }, logoMark(), "Mistwatch"),
+          h("a", { class: "sumv", href: "#/" }), themeButton()),
+        main)),
+    h("nav", { class: "tabbar", "aria-label": "Main" }, links(true)));
+  ROUTES[route][2](main);
   loadSummary();
   sumTimer = setInterval(loadSummary, 15000);
 }
-window.addEventListener("hashchange", () => { if (me) render(); });
+async function signOut() { await api("POST", "/logout"); me = null; boot(); }
+window.addEventListener("hashchange", () => { if (me) { render(); scrollTo(0, 0); } });
+
+const pageHead = (title, sub, ...actions) => h("div", { class: "page-h" },
+  h("div", { class: "grow" }, h("h1", {}, title), sub ? h("p", {}, sub) : null), actions.length ? h("div", { class: "act row" }, actions) : null);
+const emptyState = (icon, title, text, ...actions) => h("div", { class: "empty" }, h("div", { class: "ei" }, ic(icon)), h("h2", {}, title), h("p", {}, text), actions.length ? h("div", { class: "row" }, actions) : null);
+const skel = (w, hgt = "1rem") => h("div", { class: "sk", style: `width:${w};height:${hgt}` });
+const errState = (msg, retry) => h("div", { class: "card" }, emptyState("alert", "Could not load this view", msg, h("button", { class: "btn", onclick: retry }, ic("refresh"), "Try again")));
 
 // ---------- login / first-run setup ----------
 function viewAuth(mode) {
   const setup = mode === "setup";
-  const u = h("input", { autocomplete: "username", placeholder: "username", autofocus: true });
-  const p = h("input", { type: "password", autocomplete: setup ? "new-password" : "current-password", placeholder: setup ? "password (at least 10 characters)" : "password" });
-  const p2 = setup ? h("input", { type: "password", autocomplete: "new-password", placeholder: "password again" }) : null;
-  const err = h("div", { class: "err" });
-  const go = async () => {
-    err.textContent = "";
+  const u = h("input", { class: "input", id: "u", autocomplete: "username", autocapitalize: "none", spellcheck: "false", required: true });
+  const p = h("input", { class: "input", id: "p", type: "password", autocomplete: setup ? "new-password" : "current-password", required: true });
+  const p2 = setup ? h("input", { class: "input", id: "p2", type: "password", autocomplete: "new-password", required: true }) : null;
+  const err = h("div", { class: "err", role: "alert" });
+  const btn = h("button", { class: "btn pri wide", type: "submit" }, setup ? "Create account" : "Sign in");
+  let lock = null;
+  const startLock = secs => {
+    clearInterval(lock);
+    let left = secs;
+    btn.disabled = true;
+    const tick = () => {
+      if (left <= 0) { clearInterval(lock); btn.disabled = false; err.replaceChildren(); return; }
+      err.replaceChildren(h("div", { class: "notice warn" }, ic("clock"), h("span", {}, `Too many attempts. Try again in ${left} s.`)));
+      left--;
+    };
+    tick(); lock = setInterval(tick, 1000);
+  };
+  const go = async e => {
+    e.preventDefault();
+    err.replaceChildren();
     if (setup && p.value !== p2.value) { err.textContent = "Passwords do not match."; return; }
+    btn.disabled = true;
     try {
       const r = await api("POST", setup ? "/setup" : "/login", { username: u.value, password: p.value });
       await boot();
       if (r.api_key) showNewKey(r.api_key.name, r.api_key.secret, true);
-    } catch (e) { err.textContent = e.message; }
+    } catch (ex) {
+      const m = ex.status === 429 && /(\d+)\s*s/.exec(ex.message);
+      if (m) startLock(+m[1]); else { err.textContent = ex.message; btn.disabled = false; }
+    }
   };
-  for (const i of [u, p, p2]) i?.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
-  app.replaceChildren(h("div", { class: "auth" },
-    h("div", { style: "margin-bottom:18px" }, logo(22)),
-    h("div", { class: "card" },
-      h("h1", {}, setup ? "Create account" : "Sign in"),
-      setup ? h("p", { class: "sub" }, "First run. This account will manage keys and limits.") : null,
-      h("label", {}, "User"), u, h("label", {}, "Password"), p,
-      setup ? [h("label", {}, "Password again"), p2] : null,
-      err,
-      h("div", { style: "margin-top:14px" }, h("button", { class: "pri", style: "width:100%", onclick: go }, setup ? "Create account" : "Sign in")))));
+  app.replaceChildren(h("div", { class: "auth" }, h("div", { class: "box" },
+    h("div", { class: "brand" }, logoMark(), "Mistwatch"),
+    h("form", { class: "card", onsubmit: go, novalidate: true },
+      h("h1", {}, setup ? "Create your account" : "Sign in"),
+      setup ? h("p", { class: "lead" }, "First run. This account manages keys and limits.") : null,
+      h("label", { class: "f", for: "u" }, "Username", u), h("label", { class: "f", for: "p" }, "Password", p),
+      setup ? h("label", { class: "f", for: "p2" }, "Password again", p2) : null,
+      setup ? h("p", { class: "xs mut" }, "At least 10 characters.") : null,
+      err, btn),
+    h("p", { class: "foot" }, "Local only · 127.0.0.1 · independent tool, not affiliated with Mistral AI"))));
+  u.focus();
 }
 
 // ---------- dashboard ----------
-// Flame colours first (Mistral's palette), neutrals after; "other" always gets the last, quietest one.
-const SERIES = ["#ff8204", "#ff5229", "#c4001d", "#f2b705", "#52525b", "#a1a1aa"];
-const OTHER_COLOR = "#d4d4d8";
-const colorOf = (name, i) => name === "other" ? OTHER_COLOR : SERIES[i % SERIES.length];
+const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)", "var(--s5)", "var(--s6)"];
+const colorOf = (name, i) => name === "other" ? "var(--s-other)" : SERIES[i % SERIES.length];
 const pref = { get: (k, d) => localStorage.getItem("mw." + k) || d, set: (k, v) => localStorage.setItem("mw." + k, v) };
 const RANGES = { "24h": "24 hours", "7d": "7 days", "30d": "30 days" };
 const BYS = { model: "Model", client: "API key", account: "Account", pool: "Budget type" };
 const RANGE_DAYS = { "24h": 1, "7d": 7, "30d": 30 };
-
-function svg(tag, attrs, ...kids) {
-  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
-  for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v);
-  for (const k of kids) if (k != null) el.append(k.nodeType ? k : document.createTextNode(String(k)));
-  return el;
-}
 const niceMax = v => {
   if (v <= 0) return 1;
   const p = Math.pow(10, Math.floor(Math.log10(v)));
@@ -306,89 +600,118 @@ const niceMax = v => {
 const short = v => v >= 100 ? "€" + Math.round(v) : v >= 10 ? "€" + v.toFixed(0) : v >= 1 ? "€" + v.toFixed(1).replace(/\.0$/, "") : "€" + v.toFixed(2);
 
 function fold(title, hint, ...content) {
-  return h("details", { class: "fold" }, h("summary", {}, h("span", {}, title), hint ? h("span", { class: "mut small" }, hint) : null), h("div", { class: "foldbody" }, content));
+  return h("details", { class: "fold" }, h("summary", {}, ic("chevron"), h("span", {}, title), hint ? h("span", { class: "mut sm" }, hint) : null), h("div", { class: "fb" }, content));
 }
-function windowTable(rows) {
-  return h("div", { class: "scroll" }, h("table", {},
-    h("tr", {}, h("th", {}, "window"), h("th", {}, "spent"), h("th", {}, "limit"), h("th", {}, "left"), h("th", {}, "")),
-    rows.map(([n, w]) => h("tr", {}, h("td", {}, n), h("td", {}, eur(w.spent)), h("td", {}, eur(w.cap)),
-      h("td", { class: w.room > 0 ? "ok" : "bad" }, eur(w.room)), h("td", { class: "mut" }, w.retry_at ? "free from " + when(w.retry_at) : "")))));
-}
+const td = (label, cls, ...kids) => h("td", { "data-l": label, class: cls || "" }, kids);
 
 async function viewDash(main) {
   let range = pref.get("range", "7d"), by = pref.get("by", "model");
   if (!RANGES[range]) range = "7d";
   if (!BYS[by]) by = "model";
-  const sub = h("p", { class: "sub" }, "Loading…");
-  const body = h("div");
-  main.append(h("h1", {}, "Overview"), sub, body);
+  const syncMeta = h("p", {}, "Loading…");
+  const syncBtn = h("button", { class: "btn", onclick: act(async () => { toast("Syncing with Mistral…"); await api("POST", "/sync"); load(); }) }, ic("refresh"), "Sync now");
+  const body = h("div", { class: "stack" }, dashSkeleton());
+  main.append(pageHead("Overview", syncMeta, syncBtn), body);
   const load = async () => {
     let d, u, led;
-    try { [d, u, led] = await Promise.all([api("GET", "/status"), api("GET", `/usage?range=${range}&by=${by}`), api("GET", "/ledger?limit=15")]); } catch (e) { return; }
+    try { [d, u, led] = await Promise.all([api("GET", "/status"), api("GET", `/usage?range=${range}&by=${by}`), api("GET", "/ledger?limit=15")]); }
+    catch (e) { if (body.isConnected && !body.dataset.ok) body.replaceChildren(errState(e.message, load)); return; }
     if (!body.isConnected) return;
-    sub.replaceChildren("Last sync with Mistral: " + (d.last_sync ? ago(d.last_sync) : "not yet") + " · ",
-      h("button", { class: "ghost small", onclick: act(async () => { toast("Syncing…"); await api("POST", "/sync"); load(); }) }, "sync now"));
+    body.dataset.ok = "1";
+    syncMeta.textContent = "Last sync with Mistral: " + (d.last_sync ? ago(d.last_sync) : "not yet");
     const set = (k, v) => { if (k === "range") range = v; else by = v; pref.set(k, v); load(); };
     body.replaceChildren(...dashBody(d, u, led, set, range, by));
   };
   await load();
   timer = setInterval(load, 10000);
 }
+function dashSkeleton() {
+  return h("div", { class: "stack", "aria-busy": "true", "aria-label": "Loading" },
+    h("div", { class: "strip" }, [0, 1, 2, 3].map(() => h("div", { class: "cell" }, skel("40%", ".75rem"), skel("65%", "1.75rem"), skel("80%", ".75rem")))),
+    h("div", { class: "card" }, skel("30%", "1rem"), h("div", { style: "height:1rem" }), skel("100%", "10rem")),
+    h("div", { class: "cols" }, h("div", { class: "card" }, skel("50%"), h("div", { style: "height:.75rem" }), skel("100%", "5rem")), h("div", { class: "card" }, skel("50%"), h("div", { style: "height:.75rem" }), skel("100%", "5rem"))));
+}
+
+function windowTable(rows) {
+  return h("div", { class: "tw" }, h("table", { class: "tbl stack" },
+    h("thead", {}, h("tr", {}, h("th", {}, "Window"), h("th", { class: "n" }, "Spent"), h("th", { class: "n" }, "Limit"), h("th", { class: "n" }, "Left"), h("th", {}, ""))),
+    h("tbody", {}, rows.map(([n, w]) => h("tr", {}, td("Window", "", n), td("Spent", "n", eur(w.spent)), td("Limit", "n", eur(w.cap)),
+      td("Left", "n " + (w.room > 0 ? "tx-ok" : "tx-bad"), eur(w.room)), td("", "mut xs", w.retry_at ? "free from " + when(w.retry_at) : ""))))));
+}
 
 function dashBody(d, u, led, set, range, by) {
   const sm = d.summary, a = sm.all;
-  if (!a) return [h("div", { class: "card" }, h("h2", {}, "No data yet"),
-    h("p", { class: "mut" }, "Add a Mistral account and key so the proxy knows what to draw from."),
-    h("a", { class: "btn pri", href: "#/accounts", style: "text-decoration:none;display:inline-block" }, "Add a key"))];
-  return [kpiRow(a, u, range), chartCard(u, a, set, range, by),
-    h("div", { class: "grid2 top" }, limitsCard(a), budgetsCard(d, sm)),
-    fold("Limits per budget", "windows, spent and room", ...d.pools.filter(p => p.account === p.group).map(p =>
-      h("div", { style: "margin-bottom:12px" }, h("div", { class: "small mut", style: "margin:6px 0 2px" }, p.account + " · " + (POOL[p.pool] || p.pool)),
-        windowTable([["month", p.month], ...Object.entries(p.windows).map(([n, w]) => [WIN[n] || n, w])])))),
-    d.by_client_7d.length ? fold("Spend by key", "last 7 days", h("div", { class: "scroll" }, h("table", {},
-      h("tr", {}, h("th", {}, "key"), h("th", {}, "account / budget"), h("th", {}, "requests"), h("th", {}, "cost")),
-      d.by_client_7d.map(r => h("tr", {}, h("td", {}, r.client), h("td", {}, r.account + " / " + (POOL[r.pool] || r.pool)), h("td", {}, r.n), h("td", {}, eur(r.cost_eur))))))) : null,
-    led.length ? fold("Recent requests", "latest " + led.length, h("div", { class: "scroll" }, h("table", {},
-      h("tr", {}, h("th", {}, "when"), h("th", { class: "l" }, "key"), h("th", { class: "l" }, "model"), h("th", {}, "tokens in/out"), h("th", {}, "cost")),
-      led.map(r => h("tr", {}, h("td", {}, when(r.ts)), h("td", { class: "l" }, r.client || "—"), h("td", { class: "l", title: r.model || "" }, r.model_name || r.endpoint || "—"),
-        h("td", {}, r.prompt_tokens != null ? r.prompt_tokens + " / " + (r.completion_tokens || 0) : "—"), h("td", {}, eur4(r.cost_eur))))))) : null,
+  if (!a) return [h("div", { class: "card" }, emptyState("key", "Nothing to watch yet",
+    "Add a Mistral account and a key. Mistwatch then tracks its budget and paces your spending.",
+    h("a", { class: "btn pri", href: "#/accounts" }, ic("plus"), "Add an account")))];
+  const poolRows = d.pools.filter(p => p.account === p.group);
+  return [
+    summaryStrip(a),
+    chartCard(u, a, set, range, by),
+    h("div", { class: "cols" }, poolsCard(d, sm, poolRows), limitsCard(a)),
+    led.length ? h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", {}, "Recent requests"), h("span", { class: "mut sm" }, "latest " + led.length)),
+      h("div", { class: "tw" }, h("table", { class: "tbl stack" },
+        h("thead", {}, h("tr", {}, h("th", {}, "When"), h("th", {}, "Key"), h("th", {}, "Model"), h("th", { class: "n" }, "Tokens in / out"), h("th", { class: "n" }, "Cost"))),
+        h("tbody", {}, led.map(r => h("tr", {}, td("When", "", when(r.ts)), td("Key", "max trunc", r.client || "—"),
+          h("td", { "data-l": "Model", class: "max trunc", title: r.model || "" }, r.model_name || r.endpoint || "—"),
+          td("Tokens in / out", "n", r.prompt_tokens != null ? r.prompt_tokens + " / " + (r.completion_tokens || 0) : "—"), td("Cost", "n", eur4(r.cost_eur)))))))) :
+      h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", {}, "Recent requests")), emptyState("clock", "No requests yet", "Requests sent through the proxy show up here.", h("a", { class: "btn", href: "#/keys" }, "Create an API key"))),
+    h("div", {}, fold("Limits per budget", "windows, spent and room", ...poolRows.map(p =>
+      h("div", { style: "margin-bottom:var(--sp-4)" }, h("div", { class: "sm mut", style: "margin:var(--sp-2) 0" }, p.account + " · " + (POOL[p.pool] || p.pool)),
+        windowTable([["Month", p.month], ...Object.entries(p.windows).map(([n, w]) => [WIN[n] || n, w])])))),
+    d.by_client_7d.length ? fold("Spend by key", "last 7 days", h("div", { class: "tw" }, h("table", { class: "tbl stack" },
+      h("thead", {}, h("tr", {}, h("th", {}, "Key"), h("th", {}, "Account / budget"), h("th", { class: "n" }, "Requests"), h("th", { class: "n" }, "Cost"))),
+      h("tbody", {}, d.by_client_7d.map(r => h("tr", {}, td("Key", "max trunc", r.client), td("Account / budget", "max trunc", r.account + " / " + (POOL[r.pool] || r.pool)), td("Requests", "n", r.n), td("Cost", "n", eur(r.cost_eur)))))))) : null),
   ];
 }
 
-function kpiRow(a, u, range) {
-  const pct = a.initial_eur ? Math.min(100, a.used_eur / a.initial_eur * 100) : 0;
-  const avg = u.total / RANGE_DAYS[range];
-  const delta = u.prev_total > 0 ? (u.total - u.prev_total) / u.prev_total * 100 : null;
-  const tile = (k, big, sub, extra) => h("div", { class: "card kpi" }, h("div", { class: "k" }, k), h("div", { class: "big" }, big), h("div", { class: "mut small" }, sub), extra);
-  const over = avg > a.fair_daily_eur && a.fair_daily_eur > 0;
-  return h("div", { class: "kpis" },
-    tile("Left this period", eur(a.remaining_eur), `of ${eur(a.initial_eur)} · ${pct.toFixed(0)}% used`,
-      h("div", { class: "bar" }, h("i", { class: pct > 90 ? "hot" : "", style: "width:" + pct + "%" }))),
-    tile("Available now", eur(a.room_eur), a.blocked ? "all budgets blocked" + (a.retry_at ? " until " + when(a.retry_at) : "") : "before the tightest limit",
-      a.blocked ? h("span", { class: "chip bad" }, "blocked") : h("span", { class: "chip ok" }, "ready")),
-    tile("Spent · " + RANGES[range], eur(u.total), plural(u.requests, "request") + (delta == null ? "" : ` · ${delta >= 0 ? "▲" : "▼"} ${Math.abs(delta).toFixed(0)}% vs. before`)),
-    tile("Daily pace", eur(a.fair_daily_eur) + " /day", `you spend ${eur(avg)} /day`,
-      a.fair_daily_eur > 0 ? h("span", { class: "chip " + (over ? "warn" : "ok") }, over ? "over pace" : "under pace") : null));
+function summaryStrip(a) {
+  const pct = a.initial_eur ? pct100(a.used_eur / a.initial_eur * 100) : 0;
+  const wins = [["5 hours", a.windows["5h"]], ["Day", a.windows.day], ["Week", a.windows.week], ["Month", a.month]].filter(([, w]) => w && w.cap > 0);
+  const tight = wins.sort((x, y) => x[1].room / x[1].cap - y[1].room / y[1].cap)[0];
+  const tightPct = tight ? pct100(tight[1].spent / tight[1].cap * 100) : 0;
+  const resetIn = a.reset_at ? (a.reset_at - Date.now() / 1000) / 86400 : null;
+  const cell = (k, v, s, extra, cls) => h("div", { class: "cell" }, h("div", { class: "k" }, k), h("div", { class: "v " + (cls || "") }, v), h("div", { class: "s" }, s), extra);
+  return h("section", { class: "strip", "aria-label": "Summary" },
+    cell("Spent this period", eur(a.used_eur), `of ${eur(a.initial_eur)} · ${pct.toFixed(0)}% used`, h("div", { class: "mini" }, h("i", { class: pct >= 90 ? "bad" : pct >= 75 ? "warn" : "", style: "width:" + pct + "%" }))),
+    cell("Available now", eur(a.room_eur), a.blocked ? badge("bad", "Blocked" + (a.retry_at ? " until " + when(a.retry_at) : "")) : badge("ok", "Ready", "Before the tightest limit")),
+    tight ? cell("Tightest window", eur(Math.max(tight[1].room, 0)), `${tight[0]} · ${eur(tight[1].spent)} of ${eur(tight[1].cap)}`,
+      h("div", { class: "mini" }, h("i", { class: tightPct >= 95 ? "bad" : tightPct >= 80 ? "warn" : "", style: "width:" + tightPct + "%" }))) : null,
+    resetIn != null ? cell("Resets", resetIn < 1 ? "< 1 day" : "in " + Math.round(resetIn) + " d", new Date(a.reset_at * 1000).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })) : null);
 }
 
 function chartCard(u, a, set, range, by) {
-  const seg = h("div", { class: "seg" }, Object.keys(RANGES).map(r => h("button", { class: r === range ? "on" : "", onclick: () => set("range", r) }, r)));
-  const sel = h("select", { onchange: e => set("by", e.target.value), title: "Split spending by" },
+  const tabs = h("div", { class: "tabs", role: "tablist", "aria-label": "Time range" }, Object.keys(RANGES).map(r =>
+    h("button", { class: "tab", role: "tab", "aria-selected": r === range, tabindex: r === range ? 0 : -1, onclick: () => set("range", r) }, r)));
+  tabs.addEventListener("keydown", e => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    const keys = Object.keys(RANGES), i = keys.indexOf(range);
+    set("range", keys[(i + (e.key === "ArrowRight" ? 1 : keys.length - 1)) % keys.length]);
+  });
+  const sel = h("select", { class: "input", style: "width:auto", "aria-label": "Split spending by", onchange: e => set("by", e.target.value) },
     Object.entries(BYS).map(([k, v]) => h("option", { value: k, selected: k === by }, "by " + v.toLowerCase())));
   const label = n => by === "pool" ? (POOL[n] || n) : n;
+  const avg = u.total / RANGE_DAYS[range];
+  const delta = u.prev_total > 0 ? (u.total - u.prev_total) / u.prev_total * 100 : null;
+  const over = a.fair_daily_eur > 0 && avg > a.fair_daily_eur;
   const legend = h("div", { class: "legend" }, u.series.map((s, i) =>
-    h("span", { class: "lg" }, h("i", { style: "background:" + colorOf(s.name, i) }), label(s.name), h("span", { class: "mut" }, " " + eur4(s.total)))));
+    h("span", {}, h("i", { style: "background:" + colorOf(s.name, i) }), h("span", { class: "trunc" }, label(s.name)), h("span", { class: "mut num" }, eur4(s.total)))));
   const box = h("div", { class: "chart" });
   const draw = () => drawChart(box, u, a, label);
   requestAnimationFrame(draw);
   if (window.ResizeObserver) new ResizeObserver(() => draw()).observe(box);
-  return h("div", { class: "card" },
-    h("div", { class: "row", style: "margin-bottom:10px" }, h("h2", { style: "margin:0" }, "Spending"), h("span", { class: "sp" }), seg, sel),
+  return h("section", { class: "card", "aria-label": "Spending over time" },
+    h("div", { class: "card-h" }, h("h2", {}, "Spending"), h("span", { class: "grow" }), tabs, sel),
+    h("div", { class: "row sm", style: "margin:calc(var(--sp-2)*-1) 0 var(--sp-3);gap:var(--sp-1) var(--sp-4)" },
+      h("span", {}, h("b", { class: "num" }, eur(u.total)), h("span", { class: "mut" }, " in " + RANGES[range] + " · " + plural(u.requests, "request"))),
+      delta == null ? null : h("span", { class: "mut" }, `${delta >= 0 ? "up" : "down"} ${Math.abs(delta).toFixed(0)}% vs. previous`),
+      a.fair_daily_eur > 0 ? [h("span", { class: "mut num" }, `avg ${eur(avg)}/day · pace ${eur(a.fair_daily_eur)}/day`), over ? badge("warn", "Over pace") : badge("ok", "Under pace")] : null),
     box, u.series.length ? legend : null);
 }
 
 function drawChart(box, u, a, label) {
-  const W = box.clientWidth || 720, H = 230, L = 46, R = 8, T = 10, B = 26;
+  const W = Math.max(box.clientWidth || 640, 200), narrow = W < 460;
+  const H = Math.round(Math.min(Math.max(W * 0.38, 170), 280)), L = narrow ? 36 : 44, R = 4, T = 10, B = 24;
   const n = u.buckets.length, pw = W - L - R, ph = H - T - B;
   const sums = u.buckets.map((_, i) => u.series.reduce((t, s) => t + s.values[i], 0));
   const fair = u.unit === "day" ? a.fair_daily_eur : 0;
@@ -397,125 +720,147 @@ function drawChart(box, u, a, label) {
   const top = niceMax(Math.max(peak, fairShown ? fair * 1.05 : 0));
   const y = v => T + ph - v / top * ph;
   const bw = pw / n;
-  const root = svg("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Spending over time" });
-  for (let i = 0; i <= 4; i++) {
-    const v = top * i / 4;
-    root.append(svg("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), class: "grid" }), svg("text", { x: L - 8, y: y(v) + 4, class: "axis", "text-anchor": "end" }, short(v)));
+  const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "xMidYMid meet", role: "img", "aria-label": `Spending over ${RANGES[u.range]}: total ${eur(u.total)}` });
+  const ticks = narrow ? 2 : 4;
+  for (let i = 0; i <= ticks; i++) {
+    const v = top * i / ticks;
+    root.append(svg("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), class: "g" }), svg("text", { x: L - 6, y: y(v) + 4, class: "ax", "text-anchor": "end" }, short(v)));
   }
   const fmtX = t => {
     const dt = new Date(t * 1000);
     return u.unit === "hour" ? dt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) :
-      dt.toLocaleDateString("en-GB", u.range === "7d" ? { weekday: "short", day: "numeric" } : { day: "numeric", month: "short" });
+      dt.toLocaleDateString("en-GB", u.range === "7d" && !narrow ? { weekday: "short", day: "numeric" } : { day: "numeric", month: narrow ? "numeric" : "short" });
   };
-  const every = u.unit === "hour" ? 4 : n <= 7 ? 1 : 5;
+  const every = u.unit === "hour" ? (narrow ? 6 : 4) : n <= 7 ? (narrow ? 2 : 1) : (narrow ? 7 : 5);
   const tip = h("div", { class: "tip", hidden: true });
+  let active = null;
   u.buckets.forEach((t, i) => {
     const x = L + i * bw;
-    if ((n - 1 - i) % every === 0) root.append(svg("text", { x: x + bw / 2, y: H - 8, class: "axis", "text-anchor": "middle" }, fmtX(t)));
+    if ((n - 1 - i) % every === 0) root.append(svg("text", { x: x + bw / 2, y: H - 6, class: "ax", "text-anchor": "middle" }, fmtX(t)));
     let acc = 0;
     u.series.forEach((s, si) => {
       const v = s.values[i];
       if (v <= 0) return;
       const y0 = y(acc), y1 = y(acc + v);
       acc += v;
-      root.append(svg("rect", { x: x + bw * 0.15, y: y1, width: bw * 0.7, height: Math.max(y0 - y1, 1), rx: 1.5, fill: colorOf(s.name, si) }));
+      root.append(svg("rect", { x: x + bw * 0.16, y: y1, width: bw * 0.68, height: Math.max(y0 - y1, 1), rx: 1.5, style: "fill:" + colorOf(s.name, si) }));
     });
-    const hit = svg("rect", { x, y: T, width: bw, height: ph, fill: "transparent", class: "hit" });
+    const hit = svg("rect", { x, y: T, width: bw, height: ph, class: "hit" });
     const show = () => {
+      active?.classList.remove("on"); hit.classList.add("on"); active = hit;
       const when_ = u.unit === "hour" ? fmtX(t) + " – " + fmtX(t + 3600) : new Date(t * 1000).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
-      tip.replaceChildren(h("b", {}, when_), ...u.series.filter(s => s.values[i] > 0).map((s, k) =>
-        h("div", {}, h("i", { class: "dot", style: "background:" + colorOf(s.name, u.series.indexOf(s)) }), label(s.name) + " " + eur4(s.values[i]))),
-        h("div", { class: "tot" }, "Total " + eur4(sums[i])));
+      tip.replaceChildren(h("b", {}, when_), ...u.series.filter(s => s.values[i] > 0).map(s =>
+        h("div", {}, h("i", { style: "background:" + colorOf(s.name, u.series.indexOf(s)) }), label(s.name) + " " + eur4(s.values[i]))),
+        h("div", { class: "t" }, "Total " + eur4(sums[i])));
       tip.hidden = false;
       const tw = tip.offsetWidth;
-      tip.style.left = Math.min(Math.max(x + bw / 2 - tw / 2, 0), W - tw) + "px";
+      tip.style.left = Math.min(Math.max(x + bw / 2 - tw / 2, 0), Math.max(W - tw, 0)) + "px";
       tip.style.top = Math.max(y(sums[i]) - tip.offsetHeight - 8, 0) + "px";
     };
-    hit.addEventListener("mouseenter", show);
-    hit.addEventListener("mouseleave", () => { tip.hidden = true; });
+    const hide = () => { tip.hidden = true; hit.classList.remove("on"); };
+    hit.addEventListener("pointerenter", show);
+    hit.addEventListener("pointerdown", show);
+    hit.addEventListener("pointerleave", e => { if (e.pointerType === "mouse") hide(); });
     root.append(hit);
   });
-  if (fair > 0 && !fairShown) {
-    root.append(svg("text", { x: W - R - 4, y: T + 10, class: "axis pace-t", "text-anchor": "end" }, "daily pace " + short(fair) + " (above this chart)"));
-  }
-  if (fairShown) {
-    root.append(svg("line", { x1: L, x2: W - R, y1: y(fair), y2: y(fair), class: "pace" }),
-      svg("text", { x: W - R - 4, y: y(fair) - 5, class: "axis pace-t", "text-anchor": "end" }, "daily pace " + short(fair)));
-  }
-  box.replaceChildren(root, tip);
-  if (!u.total) box.append(h("div", { class: "empty" }, "No spend recorded in this range."));
+  if (fair > 0 && !fairShown) root.append(svg("text", { x: W - R, y: T - 1, class: "ax", "text-anchor": "end" }, "pace " + short(fair) + "/day, above this chart"));
+  if (fairShown) root.append(svg("line", { x1: L, x2: W - R, y1: y(fair), y2: y(fair), class: "pace" }),
+    svg("text", { x: W - R, y: y(fair) - 4, class: "ax", "text-anchor": "end" }, "pace " + short(fair)));
+  const sr = h("table", { class: "sr" }, h("caption", {}, "Spending per " + u.unit),
+    h("tbody", {}, u.buckets.map((t, i) => h("tr", {}, h("th", { scope: "row" }, fmtX(t)), h("td", {}, eur4(sums[i]))))));
+  box.replaceChildren(root, tip, sr);
+  if (!u.total) box.append(h("div", { class: "empty-chart" }, "No spend recorded in this range."));
 }
 
 function limitsCard(a) {
   const rows = [["5 hours", a.windows["5h"]], ["Day", a.windows.day], ["Week", a.windows.week], ["Month", a.month]];
-  return h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Limits right now"),
-    h("div", { class: "mut small", style: "margin:-6px 0 6px" }, "Spend allowed per window. Unspent budget raises the limits automatically."),
+  return h("section", { class: "card", "aria-label": "Limits right now" }, h("div", { class: "card-h" }, h("h2", {}, "Limits right now")),
+    h("p", { class: "mut sm", style: "margin:calc(var(--sp-2)*-1) 0 var(--sp-4)" }, "Allowed spend per window. Unspent budget raises the limits automatically."),
     rows.map(([name, w]) => {
-      const pct = w.cap > 0 ? Math.min(100, w.spent / w.cap * 100) : 100;
-      return h("div", { class: "gauge" }, h("div", {}, name), h("div", {}, h("div", { class: "bar" }, h("i", { class: pct >= 90 ? "hot" : "", style: "width:" + pct + "%" })),
-        h("div", { class: "mut small" }, `${eur(w.spent)} of ${eur(w.cap)}`)),
-        h("div", { class: w.room > 0 ? "ok num" : "bad num" }, eur(w.room) + " left"));
+      const pct = w.cap > 0 ? pct100(w.spent / w.cap * 100) : 100;
+      const tone = pct >= 95 ? "bad" : pct >= 80 ? "warn" : "";
+      return h("div", { class: "wrow" }, h("div", { class: "sm" }, name),
+        h("div", { class: "min0" }, h("div", { class: "mini" }, h("i", { class: tone, style: "width:" + pct + "%" })), h("div", { class: "mut xs num", style: "margin-top:.25rem" }, `${eur(w.spent)} of ${eur(w.cap)}`)),
+        h("div", { class: "num sm " + (w.room > 0 ? "" : "tx-bad") }, w.room > 0 ? eur(w.room) + " left" : badge("bad", "none left")));
     }));
 }
 
-function budgetsCard(d, sm) {
-  const rows = d.pools.filter(p => p.account === p.group).map(p => {
-    const pct = p.initial_eur ? Math.min(100, p.used_eur / p.initial_eur * 100) : 0;
-    const state = !p.enabled ? ["off", "warn"] : p.blocked_by ? ["blocked", "bad"] : p.blocked_temporarily ? ["paused", "warn"] : null;
-    return h("div", { class: "brow" },
-      h("div", { class: "row" }, h("b", {}, p.account), h("span", { class: "mut" }, POOL[p.pool] || p.pool),
-        p.members.length > 1 ? h("span", { class: "chip", title: p.members.join(", ") }, p.members.length + " keys, one budget") : null,
-        state ? h("span", { class: "chip " + state[1] }, state[0]) : null, h("span", { class: "sp" }), h("span", { class: "num" }, eur(p.remaining_eur) + " left")),
-      h("div", { class: "bar" }, h("i", { class: pct > 90 ? "hot" : "", style: "width:" + pct + "%" })),
-      h("div", { class: "mut small" }, `${eur(p.used_eur)} of ${eur(p.initial_eur)} · resets in ${Math.max(p.days_left, 0).toFixed(0)} d · can spend ${eur(Math.max(p.room_eur, 0))} now`));
+const PERIOD_DAYS = 30.44;
+function poolsCard(d, sm, rows) {
+  const items = rows.map(p => {
+    const init = p.initial_eur || 0;
+    const usedF = init ? Math.min(1, p.used_eur / init) : 0;
+    const capF = init ? Math.max(0, (init - p.reserve_eur) / init) : 1;
+    const elapsed = Math.min(1, Math.max(0, 1 - p.days_left / PERIOD_DAYS));
+    const fairEur = (init - p.reserve_eur) * elapsed;  // fair share of the usable budget by now
+    const exhausted = p.remaining_eur <= p.reserve_eur + 0.005 || usedF >= capF;
+    const ahead = !exhausted && p.used_eur > fairEur * 1.1 + 0.5;
+    const tone = exhausted ? "bad" : ahead ? "warn" : "";
+    const state = !p.enabled ? badge("", "Off") : p.blocked_by ? badge("bad", "Blocked: " + p.blocked_by) : p.blocked_temporarily ? badge("warn", "Paused") :
+      exhausted ? badge("bad", "Exhausted") : ahead ? badge("warn", "Ahead of pace") : badge("ok", "On pace");
+    const bar = h("div", { class: "pbar", role: "img", "aria-label": `${eur(p.used_eur)} of ${eur(init)} used. Fair share so far ${eur(Math.max(fairEur, 0))}. Reserve ${eur(p.reserve_eur)}.` },
+      h("i", { class: "fill " + tone, style: `width:${usedF * 100}%` }), h("i", { class: "res", style: `left:${capF * 100}%` }), h("i", { class: "mark", style: `left:${elapsed * 100}%` }));
+    return h("div", { class: "prow" },
+      h("div", { class: "row nw" }, h("b", { class: "trunc", title: p.account }, p.account), h("span", { class: "mut sm" }, POOL[p.pool] || p.pool),
+        h("span", { class: "grow" }), h("b", { class: "num" }, eur(p.remaining_eur)), h("span", { class: "mut sm" }, "left")),
+      bar,
+      h("div", { class: "row", style: "gap:var(--sp-1) var(--sp-3)" }, state,
+        p.members.length > 1 ? h("span", { class: "badge info", title: p.members.join(", ") }, p.members.length + " keys, one budget") : null,
+        h("span", { class: "mut xs tnum" }, `${eur(p.used_eur)} of ${eur(init)} · resets in ${Math.max(p.days_left, 0).toFixed(0)} d · can spend ${eur(Math.max(p.room_eur, 0))} now`)));
   });
-  const shared = sm.shared.map(g => h("div", { class: "small mut notice-line" },
+  const shared = sm.shared.map(g => h("p", { class: "mut xs", style: "margin-top:var(--sp-3)" },
     "Counted once: " + g.members.join(", ") + (g.confidence === "sure" ? " (identical counters)" : " (probably the same, nothing spent yet)")));
-  return h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Budgets"), rows, shared);
+  return h("section", { class: "card", "aria-label": "Budgets" }, h("div", { class: "card-h" }, h("h2", {}, "Budgets")),
+    items, shared,
+    h("div", { class: "keyline", "aria-hidden": "true" }, h("span", {}, h("i", { class: "sw" }), "used"), h("span", {}, h("i", { class: "sw mark" }), "fair share to date"), h("span", {}, h("i", { class: "sw res" }), "reserve (hard cap)")));
 }
 
 // ---------- accounts & Mistral keys ----------
 async function viewAccounts(main) {
-  main.append(h("h1", {}, "Accounts & keys"),
-    h("p", { class: "sub" }, "Vibe Code: key from the Vibe CLI login, charged to the subscription budget (e.g. €127.50 per month). Studio (API): key from console.mistral.ai, charged to a separate API budget."),
-    h("div", { id: "alist" }));
-  const load = act(async () => {
-    const d = await api("GET", "/accounts");
-    const nameIn = h("input", { placeholder: "account name or e-mail", style: "width:260px" });
-    const add = act(async () => { await api("POST", "/accounts", { name: nameIn.value }); nameIn.value = ""; toast("Account added"); load(); });
+  const list = h("div", { class: "stack" }, h("div", { class: "card" }, skel("30%", "1.25rem"), h("div", { style: "height:1rem" }), skel("100%", "4rem")));
+  main.append(pageHead("Accounts", "Vibe Code uses the key from the Vibe CLI sign-in and the subscription budget. Studio (API) uses a key from console.mistral.ai and a separate API budget."), list);
+  const load = async () => {
+    let d;
+    try { d = await api("GET", "/accounts"); } catch (e) { list.replaceChildren(errState(e.message, load)); return; }
+    const nameIn = h("input", { class: "input", id: "an", placeholder: "name or e-mail", autocomplete: "off", spellcheck: "false", "aria-label": "Account name" });
+    const add = act(async () => { await api("POST", "/accounts", { name: nameIn.value }); toast("Account added"); load(); });
     nameIn.addEventListener("keydown", e => { if (e.key === "Enter") add(); });
-    $("#alist").replaceChildren(
-      ...d.accounts.map(a => accountCard(a, d.vibe_cli_available, load)),
-      h("div", { class: "card" }, h("div", { class: "row" }, nameIn, h("button", { class: "pri", onclick: add }, "Add account"))));
-  });
+    const form = h("div", { class: "card" }, h("div", { class: "card-h" }, h("h2", {}, "Add an account")),
+      h("div", { class: "field-row" }, h("label", { class: "f", for: "an" }, "Name", nameIn), h("button", { class: "btn pri", onclick: add }, ic("plus"), "Add account")),
+      h("p", { class: "xs mut", style: "margin-top:var(--sp-2)" }, "1–80 characters: letters, digits and . _ + @ -"));
+    list.replaceChildren(...(d.accounts.length ? d.accounts.map(a => accountCard(a, d.vibe_cli_available, load)) : []), form);
+    if (!d.accounts.length) list.prepend(h("div", { class: "card" }, emptyState("accounts", "No accounts yet", "An account is one Mistral login. Add one below, then connect its Vibe Code and Studio keys.")));
+  };
   load();
 }
 function accountCard(a, vibeCli, reload) {
-  const prio = h("input", { type: "number", value: a.priority, style: "width:72px", title: "Lower number = goes first" });
-  prio.addEventListener("change", act(async () => { await api("PATCH", "/accounts/" + enc(a.name), { priority: +prio.value }); toast("Saved"); }));
+  const prio = h("input", { class: "input short", type: "number", inputmode: "numeric", value: a.priority, id: "pr-" + a.name, title: "Lower number is used first" });
+  prio.addEventListener("change", act(async () => { await api("PATCH", "/accounts/" + enc(a.name), { priority: +prio.value }); toast("Priority saved"); }));
+  const sw = h("button", { class: "switch", role: "switch", type: "button", "aria-checked": a.enabled, "aria-label": "Enabled",
+    onclick: act(async () => { await api("PATCH", "/accounts/" + enc(a.name), { enabled: !a.enabled }); reload(); }) });
+  const SRC = { "vibe-cli": "Vibe CLI sign-in (follows automatically)", keyring: "system keyring", env: "environment variable", inline: "database" };
   const keyRow = pool => {
     const k = a.keys[pool];
-    const label = h("div", { class: "t" }, h("b", {}, POOL[pool]),
-      k ? h("span", { class: "chip " + (k.ok ? "ok" : "bad") }, k.ok ? "set" : "cannot be read") : h("span", { class: "chip" }, "missing"));
-    const info = h("div", { class: "sp mut small" },
-      k ? [h("code", {}, k.hint || "—"), " · " + ({ "vibe-cli": "Vibe CLI sign-in (follows automatically)", keyring: "stored in the system keyring", env: "environment variable", inline: "stored in the database" }[k.source]), k.error ? " · " + k.error : ""] : "—");
+    const kl = h("div", { class: "kl" }, h("b", { class: "sm" }, POOL[pool]), k ? (k.ok ? badge("ok", "Connected") : badge("bad", "Cannot be read")) : badge("", "Missing"));
+    const ki = h("div", { class: "ki" }, k ? [h("code", { title: k.hint || "" }, k.hint || "—"), h("span", {}, "· " + (SRC[k.source] || k.source)), k.error ? h("span", { class: "tx-bad" }, "· " + k.error) : null] : "No key");
     const btns = [];
-    if (pool === "vibe")
-      btns.push(h("button", { class: "pri", onclick: () => signIn(a.name, reload) }, k ? "Sign in again" : "Sign in with Mistral"));
+    if (pool === "vibe") btns.push(h("button", { class: "btn", onclick: () => signIn(a.name, reload) }, k ? "Sign in again" : "Sign in with Mistral"));
     if (pool === "vibe" && vibeCli && !(k && k.source === "vibe-cli"))
-      btns.push(h("button", { onclick: act(async () => { const r = await api("PUT", `/accounts/${enc(a.name)}/keys/vibe`, { source: "vibe-cli" }); toast("Connected to Vibe CLI" + syncNote(r)); reload(); }) }, "Use Vibe CLI"));
-    btns.push(h("button", { onclick: () => pasteKey(a.name, pool, reload) }, k ? "Change key" : "Paste key"));
-    if (k) btns.push(h("button", { class: "ghost danger", onclick: act(async () => { if (confirm("Remove key?")) { await api("DELETE", `/accounts/${enc(a.name)}/keys/${pool}`); reload(); } }) }, "Remove"));
-    return h("div", { class: "keyrow" }, label, info, btns);
+      btns.push(h("button", { class: "btn", onclick: act(async () => { const r = await api("PUT", `/accounts/${enc(a.name)}/keys/vibe`, { source: "vibe-cli" }); toast("Connected to Vibe CLI" + syncNote(r)); reload(); }) }, "Use Vibe CLI"));
+    btns.push(h("button", { class: "btn", onclick: () => pasteKey(a.name, pool, reload) }, k ? "Change key" : "Paste key"));
+    if (k) btns.push(h("button", { class: "btn ghost danger", "aria-label": `Remove ${POOL[pool]} key`, onclick: act(async () => {
+      if (await confirmDlg({ title: "Remove this key?", body: `The ${POOL[pool]} key of ${a.name} will be forgotten. Budget tracking for it stops until you add a key again.`, ok: "Remove key", danger: true })) { await api("DELETE", `/accounts/${enc(a.name)}/keys/${pool}`); reload(); } }) }, "Remove"));
+    return h("div", { class: "keyrow" }, kl, ki, h("div", { class: "ka" }, btns));
   };
-  return h("div", { class: "card" },
-    h("div", { class: "row" }, h("h2", { style: "margin:0" }, a.name), a.enabled ? null : h("span", { class: "chip warn" }, "disabled"),
-      a.shared_with.length ? h("span", { class: "chip", title: "Same Mistral account, counted as one budget" }, "shares budget with " + a.shared_with.join(", ")) : null,
-      h("span", { class: "sp" }),
-      h("span", { class: "mut small" }, "priority"), prio,
-      h("button", { onclick: act(async () => { await api("PATCH", "/accounts/" + enc(a.name), { enabled: !a.enabled }); reload(); }) }, a.enabled ? "Disable" : "Enable"),
-      h("button", { class: "ghost danger", onclick: act(async () => { if (confirm(`Delete account ${a.name} including its keys? Usage history will be kept.`)) { await api("DELETE", "/accounts/" + enc(a.name)); reload(); } }) }, "Delete")),
-    h("div", { style: "margin-top:8px" }, keyRow("vibe"), keyRow("api")));
+  return h("section", { class: "card acct", "aria-label": "Account " + a.name },
+    h("div", { class: "acct-h" }, h("h2", { class: "trunc", title: a.name }, a.name), a.enabled ? null : badge("warn", "Disabled"),
+      a.shared_with.length ? h("span", { class: "badge info", title: "Same Mistral account, counted as one budget" }, "shares budget with " + a.shared_with.join(", ")) : null,
+      h("span", { class: "grow" }),
+      h("label", { class: "row nw sm mut", style: "gap:var(--sp-2)" }, "Priority", prio),
+      h("label", { class: "row nw sm mut", style: "gap:var(--sp-2)" }, "Enabled", sw),
+      h("button", { class: "btn ghost danger icon", "aria-label": "Delete account " + a.name, title: "Delete account", onclick: act(async () => {
+        if (await confirmDlg({ title: `Delete ${a.name}?`, body: "The account and its keys are removed. Usage history is kept.", ok: "Delete account", danger: true })) { await api("DELETE", "/accounts/" + enc(a.name)); reload(); } }) }, ic("trash"))),
+    keyRow("vibe"), keyRow("api"));
 }
 function syncNote(r) {
   const parts = Object.entries(r.synced || {}).map(([p, v]) => `${POOL[p]}: ${eur(v.used)} / ${eur(v.initial)}`);
@@ -528,74 +873,77 @@ async function signIn(name, reload) {
   try { att = await api("POST", `/accounts/${enc(name)}/signin`); }
   catch (e) { tab?.close(); toast(e.message, true); return; }
   if (tab) tab.location = att.sign_in_url;
-  const msg = h("div", { class: "mut" }, "Waiting for sign-in in the browser…");
-  const m = modal([h("h2", {}, "Sign in with Mistral"),
-    h("p", { class: "small mut" }, "In the new tab, sign in to Mistral and choose a workspace. This page will finish automatically."),
-    h("p", {}, h("a", { href: att.sign_in_url, target: "_blank", rel: "noopener" }, "Open sign-in again")),
-    msg,
-    h("div", { class: "row", style: "margin-top:12px;justify-content:flex-end" }, h("button", { onclick: () => { stop(); api("DELETE", "/signin/" + att.id).catch(() => {}); m.remove(); } }, "Cancel"))]);
+  const msg = h("p", { class: "mut sm", role: "status" }, "Waiting for sign-in in the browser…");
   let stopped = false;
-  const stop = () => { stopped = true; };
+  const m = modal([h("h2", {}, "Sign in with Mistral"),
+    h("p", { class: "mut sm" }, "In the new tab, sign in to Mistral and choose a workspace. This page finishes automatically."),
+    h("a", { href: att.sign_in_url, target: "_blank", rel: "noopener", class: "sm" }, "Open the sign-in page again"),
+    msg,
+    h("div", { class: "acts" }, h("button", { class: "btn", onclick: () => { stopped = true; api("DELETE", "/signin/" + att.id).catch(() => {}); m.remove(); } }, "Cancel"))]);
+  m.addEventListener("close", () => { stopped = true; });
   while (!stopped && document.body.contains(m)) {
     await new Promise(r => setTimeout(r, 2000));
+    if (stopped) return;
     let s;
     try { s = await api("GET", "/signin/" + att.id); } catch (e) { msg.textContent = e.message; msg.className = "err"; return; }
-    if (s.status === "done") { stop(); m.remove(); toast("Signed in" + syncNote(s)); reload(); return; }
-    if (!["pending", "exchanging"].includes(s.status)) { stop(); msg.textContent = s.message || "Sign-in failed."; msg.className = "err"; return; }
+    if (s.status === "done") { stopped = true; m.remove(); toast("Signed in" + syncNote(s)); reload(); return; }
+    if (!["pending", "exchanging"].includes(s.status)) { stopped = true; msg.textContent = s.message || "Sign-in failed."; msg.className = "err"; return; }
     if (s.status === "exchanging") msg.textContent = "Finishing…";
   }
 }
 function pasteKey(name, pool, reload) {
-  const inp = h("input", { type: "password", placeholder: pool === "vibe" ? "Vibe CLI key" : "API key from console.mistral.ai", autocomplete: "off", spellcheck: "false" });
-  const msg = h("div", { class: "err" });
-  const m = modal([h("h2", {}, `${POOL[pool]} key for account ${name}`),
-    h("p", { class: "mut small" }, "The key is checked with Mistral before saving. It is stored in the OS keyring and never shown in full."),
-    inp, msg,
-    h("div", { class: "row", style: "margin-top:12px;justify-content:flex-end" },
-      h("button", { onclick: () => m.remove() }, "Cancel"),
-      h("button", { class: "pri", onclick: async ev => {
-        ev.target.disabled = true; msg.textContent = "";
-        try { const r = await api("PUT", `/accounts/${enc(name)}/keys/${pool}`, { key: inp.value }); m.remove(); toast("Key saved" + syncNote(r)); reload(); }
-        catch (e) { msg.textContent = e.message; ev.target.disabled = false; }
-      } }, "Verify and save"))]);
+  const inp = h("input", { class: "input", id: "pk", type: "password", placeholder: pool === "vibe" ? "Vibe CLI key" : "API key from console.mistral.ai", autocomplete: "off", spellcheck: "false" });
+  const msg = h("div", { class: "err", role: "alert" });
+  const save = h("button", { class: "btn pri", onclick: async () => {
+    save.disabled = true; msg.textContent = "";
+    try { const r = await api("PUT", `/accounts/${enc(name)}/keys/${pool}`, { key: inp.value }); m.remove(); toast("Key saved" + syncNote(r)); reload(); }
+    catch (e) { msg.textContent = e.message; save.disabled = false; }
+  } }, "Verify and save");
+  const m = modal([h("h2", {}, `${POOL[pool]} key`), h("p", { class: "mut sm" }, `For account ${name}. The key is checked with Mistral before saving and stored in the system keyring. It is never shown in full.`),
+    h("label", { class: "f", for: "pk" }, "Key", inp), msg,
+    h("div", { class: "acts" }, h("button", { class: "btn", onclick: () => m.remove() }, "Cancel"), save)]);
+  inp.addEventListener("keydown", e => { if (e.key === "Enter") save.click(); });
   inp.focus();
 }
 
 // ---------- proxy API keys ----------
 async function viewKeys(main) {
-  main.append(h("h1", {}, "API keys"),
-    h("p", { class: "sub" }, "Keys for your tools (Vibe CLI, scripts, editors) to talk to the proxy. The full key is shown only once, when created."),
-    h("div", { id: "klist" }), h("div", { id: "howto" }));
-  const load = act(async () => {
-    const d = await api("GET", "/apikeys");
-    const nameIn = h("input", { placeholder: "name, e.g. vibe-cli", style: "width:220px" });
+  const list = h("div", { class: "stack" }, h("div", { class: "card" }, skel("30%", "1.25rem"), h("div", { style: "height:1rem" }), skel("100%", "4rem")));
+  main.append(pageHead("API keys", "Keys for your tools (Vibe CLI, Pi, OpenCode, scripts) to talk to the proxy. The full key is shown once, when it is created."), list);
+  const load = async () => {
+    let d;
+    try { d = await api("GET", "/apikeys"); } catch (e) { list.replaceChildren(errState(e.message, load)); return; }
+    const nameIn = h("input", { class: "input", id: "kn", placeholder: "e.g. vibe-cli", autocomplete: "off", spellcheck: "false" });
     const create = act(async () => { const r = await api("POST", "/apikeys", { name: nameIn.value }); showNewKey(r.key.name, r.secret); load(); });
     nameIn.addEventListener("keydown", e => { if (e.key === "Enter") create(); });
-    $("#klist").replaceChildren(h("div", { class: "card" },
-      d.keys.length ? h("div", { class: "scroll" }, h("table", {},
-        h("tr", {}, h("th", {}, "Name"), h("th", {}, "Key"), h("th", {}, "Created"), h("th", {}, "Last used"), h("th", {}, "")),
-        d.keys.map(k => h("tr", {}, h("td", {}, k.name), h("td", {}, h("code", {}, k.prefix + "…")), h("td", {}, when(k.created)), h("td", {}, ago(k.last_used)),
-          h("td", {}, h("button", { class: "ghost danger", onclick: act(async () => { if (confirm(`Revoke key ${k.name}? Tools using it will stop working.`)) { await api("DELETE", "/apikeys/" + k.id); load(); } }) }, "Revoke")))))) :
-        h("p", { class: "mut" }, "No keys yet – the proxy is open to every process on this computer. Create a key."),
-      h("div", { class: "row", style: "margin-top:12px" }, nameIn, h("button", { class: "pri", onclick: create }, "Generate key"))));
-    $("#howto").replaceChildren(h("div", { class: "card" }, h("h2", {}, "How to use it"),
-      h("div", { class: "small mut" }, "Base URL (OpenAI/Mistral compatible):"), h("pre", {}, d.base_url),
-      h("div", { class: "small mut" }, "Example:"),
-      h("pre", {}, `curl ${d.base_url}/chat/completions \\\n  -H "Authorization: Bearer mw-…" -H "Content-Type: application/json" \\\n  -d '{"model":"auto","messages":[{"role":"user","content":"Hello"}]}'`),
-      h("div", { class: "small mut" }, "Model ", h("code", {}, "auto"), " picks the model and effort based on query difficulty. ", h("code", {}, "auto-fast"), " stays with cheaper ones, ", h("code", {}, "auto-max"), " aims higher.")));
-  });
+    const form = h("div", { class: "field-row" }, h("label", { class: "f", for: "kn" }, "New key name", nameIn), h("button", { class: "btn pri", onclick: create }, ic("plus"), "Generate key"));
+    list.replaceChildren(
+      h("section", { class: "card", "aria-label": "Proxy keys" },
+        d.keys.length ? h("div", { class: "tw" }, h("table", { class: "tbl stack" },
+          h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Key"), h("th", { class: "n" }, "Created"), h("th", { class: "n" }, "Last used"), h("th", {}, ""))),
+          h("tbody", {}, d.keys.map(k => h("tr", {}, td("Name", "max trunc", h("b", {}, k.name)), td("Key", "", h("code", {}, k.prefix + "…")), td("Created", "n", when(k.created)), td("Last used", "n", ago(k.last_used)),
+            td("", "", h("button", { class: "btn ghost danger sm", "aria-label": "Revoke key " + k.name, onclick: act(async () => {
+              if (await confirmDlg({ title: `Revoke "${k.name}"?`, body: "Tools using this key stop working immediately.", ok: "Revoke key", danger: true })) { await api("DELETE", "/apikeys/" + k.id); load(); } }) }, "Revoke"))))))) :
+          h("div", { style: "margin-bottom:var(--sp-4)" }, emptyState("key", "No keys yet", "Without a key, every process on this computer can use the proxy. Generate one for each tool.")),
+        d.keys.length ? h("div", { style: "height:var(--sp-4)" }) : null, form),
+      h("section", { class: "card", "aria-label": "How to use" }, h("div", { class: "card-h" }, h("h2", {}, "How to use it")),
+        h("div", { class: "stack", style: "gap:var(--sp-3)" },
+          h("div", { class: "sm mut" }, "Base URL (OpenAI and Mistral compatible)"), codeBlock(d.base_url),
+          h("div", { class: "sm mut" }, "Example"),
+          codeBlock(`curl ${d.base_url}/chat/completions \\\n  -H "Authorization: Bearer mw-…" -H "Content-Type: application/json" \\\n  -d '{"model":"auto","messages":[{"role":"user","content":"Hello"}]}'`),
+          h("p", { class: "sm mut" }, "Model ", h("code", {}, "auto"), " picks model and effort from the difficulty of the request. ", h("code", {}, "auto-fast"), " stays with cheaper ones, ", h("code", {}, "auto-max"), " aims higher."))));
+  };
   load();
 }
 function showNewKey(name, secret, first) {
-  const m = modal([h("h2", {}, first ? "Account created. Here is your first API key" : `Key "${name}"`),
-    h("div", { class: "card secret", style: "margin:0 0 12px" }, h("code", { style: "word-break:break-all;font-size:13px" }, secret)),
-    h("p", { class: "small mut" }, "Copy it now. It cannot be shown again; only its hash is stored."),
-    h("div", { class: "row", style: "justify-content:flex-end" },
-      h("button", { onclick: () => copy(secret) }, "Copy"), h("button", { class: "pri", onclick: () => m.remove() }, "Done"))]);
+  const m = modal([h("h2", {}, first ? "Account created. Your first API key" : `Key "${name}"`),
+    h("div", { class: "keybox" }, h("code", {}, secret), copyBtn(secret, "Copy key")),
+    h("p", { class: "sm mut" }, "Copy it now. It cannot be shown again; only its hash is stored."),
+    h("div", { class: "acts" }, h("button", { class: "btn pri", onclick: () => m.remove() }, "Done"))]);
 }
 
 // ---------- model names ----------
-const NAME_SRC = { custom: ["custom", "ok"], "built-in": ["built-in", ""], mistral: ["from Mistral", ""], auto: ["auto", "warn"] };
+const NAME_SRC = { custom: ["custom", "info"], "built-in": ["built-in", ""], mistral: ["from Mistral", ""], auto: ["auto", ""] };
 async function modelNames(showAll = false) {
   const box = $("#mlist");
   if (!box) return;
@@ -603,44 +951,54 @@ async function modelNames(showAll = false) {
   try { rows = await api("GET", "/models" + (showAll ? "?all=true" : "")); } catch (e) { toast(e.message, true); return; }
   const all = h("input", { type: "checkbox", checked: showAll, onchange: e => modelNames(e.target.checked) });
   box.replaceChildren(
-    h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Model names"), h("span", { class: "sp" }),
-      h("label", { style: "margin:0;font-weight:400", class: "row" }, all, "show all Mistral models"),
-      h("button", { onclick: act(async () => { const r = await api("POST", "/models-refresh"); toast(`Loaded ${r.models} models from Mistral`); modelNames(showAll); }) }, "Refresh from Mistral")),
-    h("p", { class: "mut small", style: "margin:6px 0 10px" }, "How models are shown in charts and tables. Aliases of one model are merged. Type a new name and press Enter."),
-    h("div", { class: "scroll" }, h("table", {}, h("tr", {}, h("th", {}, "model id"), h("th", {}, "shown as"), h("th", {}, "source"), h("th", {}, "")),
-      rows.map(r => {
-        const inp = h("input", { value: r.display, style: "width:100%;min-width:180px" });
+    h("div", { class: "card-h" }, h("h2", {}, "Model names"), h("span", { class: "grow" }),
+      h("label", { class: "check" }, all, "All Mistral models"),
+      h("button", { class: "btn", onclick: act(async () => { const r = await api("POST", "/models-refresh"); toast(`Loaded ${r.models} models from Mistral`); modelNames(showAll); }) }, ic("refresh"), "Refresh")),
+    h("p", { class: "mut sm", style: "margin:calc(var(--sp-2)*-1) 0 var(--sp-4)" }, "How models are named in charts and tables. Aliases of one model are merged. Edit a name and press Enter."),
+    h("div", { class: "tw" }, h("table", { class: "tbl wide" }, h("thead", {}, h("tr", {}, h("th", {}, "Model id"), h("th", {}, "Shown as"), h("th", {}, "Source"), h("th", {}, ""))),
+      h("tbody", {}, rows.map(r => {
+        const inp = h("input", { class: "input", value: r.display, "aria-label": "Display name for " + r.ids[0] });
         const save = act(async () => { if (inp.value.trim() && inp.value.trim() !== r.display) { await api("PUT", "/models/" + enc(r.key), { display: inp.value }); toast("Saved"); modelNames(showAll); } });
         inp.addEventListener("keydown", e => { if (e.key === "Enter") save(); });
         inp.addEventListener("blur", save);
         const [label, tone] = NAME_SRC[r.source] || [r.source, ""];
-        return h("tr", {}, h("td", { class: "l", title: r.description || "" }, h("code", {}, r.ids[0]), r.ids.length > 1 ? h("span", { class: "mut small" }, " +" + (r.ids.length - 1) + " aliases") : null),
-          h("td", { class: "l" }, inp), h("td", { class: "l" }, h("span", { class: "chip " + tone }, label)),
-          h("td", {}, r.source === "custom" ? h("button", { class: "ghost", onclick: act(async () => { await api("DELETE", "/models/" + enc(r.key)); modelNames(showAll); }) }, "Reset") : ""));
-      }))));
+        return h("tr", {}, h("td", { title: r.description || "" }, h("code", {}, r.ids[0]), r.ids.length > 1 ? h("span", { class: "mut xs" }, " +" + (r.ids.length - 1) + " aliases") : null),
+          h("td", {}, inp), h("td", {}, h("span", { class: "badge " + tone }, label)),
+          h("td", {}, r.source === "custom" ? h("button", { class: "btn ghost sm", onclick: act(async () => { await api("DELETE", "/models/" + enc(r.key)); modelNames(showAll); }) }, "Reset") : ""));
+      })))));
 }
 
 // ---------- settings ----------
 async function viewSettings(main) {
-  const old = h("input", { type: "password", autocomplete: "current-password" });
-  const nw = h("input", { type: "password", autocomplete: "new-password", placeholder: "at least 10 characters" });
-  const change = act(async () => { await api("POST", "/password", { old: old.value, new: nw.value }); old.value = nw.value = ""; toast("Password changed; other sessions have been signed out"); });
-  main.append(h("h1", {}, "Settings"), h("p", { class: "sub" }, "Users who can sign in to this app."),
-    h("div", { class: "card" }, h("h2", {}, "Change password"),
-      h("div", { class: "grid2" }, h("div", {}, h("label", { style: "margin-top:0" }, "Current password"), old), h("div", {}, h("label", { style: "margin-top:0" }, "New password"), nw)),
-      h("div", { style: "margin-top:12px" }, h("button", { class: "pri", onclick: change }, "Change password"))),
-    h("div", { class: "card", id: "ulist" }),
-    h("div", { class: "card", id: "mlist" }));
+  const old = h("input", { class: "input", id: "pw0", type: "password", autocomplete: "current-password" });
+  const nw = h("input", { class: "input", id: "pw1", type: "password", autocomplete: "new-password" });
+  const change = act(async () => { await api("POST", "/password", { old: old.value, new: nw.value }); old.value = nw.value = ""; toast("Password changed. Other sessions were signed out."); });
+  const theme = h("div", { class: "tabs", role: "radiogroup", "aria-label": "Theme" });
+  const drawTheme = () => theme.replaceChildren(...THEMES.map(t => h("button", { class: "tab", role: "radio", "aria-checked": themeNow() === t, "aria-selected": themeNow() === t, onclick: () => { setTheme(t); drawTheme(); } }, t[0].toUpperCase() + t.slice(1))));
+  drawTheme();
+  main.append(pageHead("Settings", "Appearance, sign-in and how models are named."),
+    h("div", { class: "stack" },
+      h("section", { class: "card" }, h("div", { class: "card-h" }, h("h2", {}, "Appearance")), h("div", { class: "row" }, theme, h("span", { class: "mut sm" }, "System follows your device."))),
+      h("section", { class: "card" }, h("div", { class: "card-h" }, h("h2", {}, "Change password")),
+        h("div", { class: "field-row" }, h("label", { class: "f", for: "pw0" }, "Current password", old), h("label", { class: "f", for: "pw1" }, "New password (10+ characters)", nw),
+          h("button", { class: "btn pri", onclick: change }, "Change password"))),
+      h("section", { class: "card", id: "ulist" }, skel("30%", "1.25rem"), h("div", { style: "height:1rem" }), skel("100%", "3rem")),
+      h("section", { class: "card", id: "mlist" }, skel("30%", "1.25rem"), h("div", { style: "height:1rem" }), skel("100%", "6rem")),
+      h("section", { class: "card" }, h("div", { class: "card-h" }, h("h2", {}, "Session")),
+        h("div", { class: "row" }, h("span", { class: "sm mut" }, "Signed in as ", h("b", { class: "mono" }, me.username)), h("span", { class: "grow" }),
+          h("button", { class: "btn", onclick: act(signOut) }, ic("logout"), "Sign out")))));
   modelNames();
   const load = act(async () => {
     const us = await api("GET", "/users");
-    const un = h("input", { placeholder: "name", autocomplete: "off", style: "width:160px" });
-    const up = h("input", { type: "password", placeholder: "password", autocomplete: "new-password", style: "width:180px" });
-    $("#ulist").replaceChildren(h("h2", {}, "Users"),
-      h("table", {}, us.map(u => h("tr", {}, h("td", {}, u.username + (u.username === me.username ? " (you)" : "")), h("td", { class: "mut" }, "since " + when(u.created)),
-        h("td", {}, u.username === me.username ? "" : h("button", { class: "ghost danger", onclick: act(async () => { if (confirm("Delete user " + u.username + "?")) { await api("DELETE", "/users/" + u.id); load(); } }) }, "Delete"))))),
-      h("div", { class: "row", style: "margin-top:12px" }, un, up,
-        h("button", { onclick: act(async () => { await api("POST", "/users", { username: un.value, password: up.value }); toast("User added"); load(); }) }, "Add user")));
+    const un = h("input", { class: "input", id: "un", autocomplete: "off", spellcheck: "false" });
+    const up = h("input", { class: "input", id: "up", type: "password", autocomplete: "new-password" });
+    $("#ulist").replaceChildren(h("div", { class: "card-h" }, h("h2", {}, "Users")),
+      h("div", { class: "tw" }, h("table", { class: "tbl stack" }, h("thead", {}, h("tr", {}, h("th", {}, "User"), h("th", { class: "n" }, "Since"), h("th", {}, ""))),
+        h("tbody", {}, us.map(u => h("tr", {}, td("User", "", u.username, u.username === me.username ? h("span", { class: "badge", style: "margin-left:.5rem" }, "you") : null), td("Since", "n", when(u.created)),
+          td("", "", u.username === me.username ? "" : h("button", { class: "btn ghost danger sm", "aria-label": "Delete user " + u.username, onclick: act(async () => {
+            if (await confirmDlg({ title: `Delete user ${u.username}?`, body: "They will no longer be able to sign in.", ok: "Delete user", danger: true })) { await api("DELETE", "/users/" + u.id); load(); } }) }, "Delete"))))))),
+      h("div", { class: "field-row", style: "margin-top:var(--sp-4)" }, h("label", { class: "f", for: "un" }, "New user", un), h("label", { class: "f", for: "up" }, "Password", up),
+        h("button", { class: "btn", onclick: act(async () => { await api("POST", "/users", { username: un.value, password: up.value }); toast("User added"); load(); }) }, ic("plus"), "Add user")));
   });
   load();
 }
