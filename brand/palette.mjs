@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { Hct, SchemeVibrant, TonalPalette, argbFromHex, hexFromArgb } from "@material/material-color-utilities";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const SEED = process.argv[2] || "#ff8a1f";            // amber-orange
+const SEED = process.argv[2] || "#ff6a13";            // orange
 const seed = argbFromHex(SEED);
 const scheme = new SchemeVibrant(Hct.fromInt(seed), true, 0);  // dark, standard contrast
 const N = t => hexFromArgb(scheme.neutralPalette.tone(t));
