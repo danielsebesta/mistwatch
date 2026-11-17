@@ -166,3 +166,14 @@ def test_email_account_names(client):
     assert client.delete(f"/api/accounts/{q}", headers=H).status_code == 200
     assert client.post("/api/accounts", json={"name": "a b"}, headers=H).status_code == 400
     assert client.post("/api/accounts", json={"name": "x/y"}, headers=H).status_code == 400
+
+
+def test_brand_assets_and_disclaimer(tmp_path):
+    app = create_app(Config(db_path=tmp_path / "b.db"))
+    with TestClient(app) as c:
+        for path, kind in [("/favicon.svg", "image/svg+xml"), ("/favicon.ico", "image/x-icon"), ("/apple-touch-icon.png", "image/png"),
+                           ("/icon-192.png", "image/png"), ("/icon-512.png", "image/png"), ("/logo.svg", "image/svg+xml"),
+                           ("/logo-dark.svg", "image/svg+xml"), ("/site.webmanifest", "application/manifest+json")]:
+            r = c.get(path)
+            assert r.status_code == 200 and r.headers["content-type"].startswith(kind) and r.content, path
+        assert "not affiliated with" in c.get("/").text

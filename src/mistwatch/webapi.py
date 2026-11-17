@@ -5,7 +5,7 @@ import time
 from importlib import resources
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 
 from .groups import summarize
 from .usage import DIMENSIONS, RANGES, usage
@@ -343,6 +343,16 @@ def register(app: FastAPI) -> None:
     async def index():
         return page()
 
-    @app.get("/_dm/dashboard")
-    async def old_dashboard():
-        return RedirectResponse("/")
+    ASSETS = {"favicon.svg": "image/svg+xml", "favicon.ico": "image/x-icon", "apple-touch-icon.png": "image/png",
+              "icon-192.png": "image/png", "icon-512.png": "image/png", "logo.svg": "image/svg+xml",
+              "logo-dark.svg": "image/svg+xml", "mark.svg": "image/svg+xml",
+              "site.webmanifest": "application/manifest+json"}
+
+    def serve_asset(name: str):
+        async def handler():
+            data = resources.files("mistwatch").joinpath("web/" + name).read_bytes()
+            return Response(data, media_type=ASSETS[name], headers={"Cache-Control": "public, max-age=86400"})
+        return handler
+
+    for _name in ASSETS:
+        app.add_api_route("/" + _name, serve_asset(_name), methods=["GET"], include_in_schema=False)
