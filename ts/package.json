@@ -1,0 +1,41 @@
+{
+  "name": "mistwatch",
+  "version": "0.1.0",
+  "description": "Budget-aware proxy for Mistral Pro/Education: pools Vibe + API allowances and enforces pacing limits",
+  "type": "module",
+  "bin": {
+    "mistwatch": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsx scripts/build.ts",
+    "typecheck": "tsc -p . --noEmit && tsc -p web --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run lint && npm run test"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.9",
+    "@napi-rs/keyring": "^2.1.2",
+    "hono": "^4.13.19",
+    "smol-toml": "^1.9.1",
+    "valibot": "^1.5.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.8",
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}
