@@ -2,57 +2,57 @@
 
 # Mistwatch
 
-> **Neoficiální nástroj.** Mistwatch je nezávislý projekt. Není produktem Mistral AI, není s ní nijak spojený ani jí schválený či sponzorovaný. „Mistral“ je ochranná známka společnosti Mistral AI a je zde použita jen k popisu služby, se kterou nástroj komunikuje.
+> **Unofficial tool.** Mistwatch is an independent project. It is not a product of Mistral AI and is not affiliated with, endorsed by or sponsored by it. "Mistral" is a trademark of Mistral AI and is used here only to describe the service the tool talks to.
 
-Místní proxy pro Mistral (Vibe Code + Studio/API), která hlídá rozpočty, rozkládá je v čase a umí model `auto`.
+A local proxy for Mistral (Vibe Code + Studio/API) that watches your budgets, spreads spending over time and offers an `auto` model.
 
 ```
-mistwatch serve        # pak otevři http://127.0.0.1:8787/
+mistwatch serve        # then open http://127.0.0.1:8787/
 ```
 
 ## Web UI
 
-Adresa `/`, přihlášení účtem (první spuštění nabídne vytvoření). Stránky:
+Served at `/`. Sign in with an account (the first run offers to create one). Pages:
 
-- **Přehled** – rozpočty Vibe a Studio, limity za 5 h / den / týden / měsíc, graf výdajů a poslední požadavky.
-- **Účty a klíče** – Mistral účty, ke každému Vibe klíč (lze převzít z Vibe CLI jedním klikem) a Studio API klíč. Klíč se před uložením ověří a načte se rozpočet.
-- **API klíče** – klíče `mw-…` pro tvoje nástroje; celý klíč se ukáže jen při vytvoření.
-- **Napojení nástrojů** (na stránce API klíče) – hotové konfigurace pro OpenCode, Pi a Vibe CLI ke zkopírování nebo stažení, plus proměnné pro ostatní nástroje s OpenAI API.
-- **Nastavení** – změna hesla, odhlášení, další uživatelé a názvy modelů v grafech a tabulkách.
+- **Overview**: Vibe and Studio budgets, limits per 5 hours / day / week / month, a spending chart and recent requests.
+- **Accounts**: Mistral accounts, each with a Vibe key (can be taken over from the Vibe CLI in one click) and a Studio API key. A key is checked before it is saved and its budget is loaded.
+- **API keys**: `mw-…` keys for your tools. The full key is shown only once, when you create it.
+- **Connect your tools** (on the API keys page): ready-made configs for OpenCode, Pi and Vibe CLI to copy or download, plus environment variables for other tools that speak the OpenAI API.
+- **Settings**: change password, sign out, add users and rename models in charts and tables.
 
-## Napojení agentů
+## Connecting agents
 
-Kromě UI umí CLI zapsat konfiguraci přímo: `mistwatch agent-config opencode --write`, `mistwatch agent-config pi --write`, `mistwatch vibe-config`. Klíč se čte z proměnné `MISTWATCH_TOKEN`.
+Besides the UI, the CLI can write the config for you: `mistwatch agent-config opencode --write`, `mistwatch agent-config pi --write`, `mistwatch vibe-config`. The key is read from the `MISTWATCH_TOKEN` environment variable.
 
-Claude Code (formát Anthropic Messages) a aktuální Codex CLI (formát OpenAI Responses) napřímo nefungují, protože Mistral tyto formáty nenabízí. Je potřeba překládací proxy (např. LiteLLM) před Mistwatch.
+Claude Code (Anthropic Messages format) and current Codex CLI (OpenAI Responses format) do not work directly, because Mistral does not offer those formats. Put a translating proxy (for example LiteLLM) in front of Mistwatch.
 
-Popis pro agenty a integrátory je na `/llms.txt` (bez přihlášení): adresa, autentizace, modely `auto`, chyby 401 a 429 s `Retry-After` a doporučený postup integrace.
+A description for agents and integrators is served at `/llms.txt` (no sign-in needed): address, authentication, the `auto` models, `401` and `429` errors with `Retry-After`, and the recommended way to integrate.
 
-## Bezpečnost
+## Security
 
-- Hesla: scrypt se solí. Session a proxy klíče: v DB jen SHA-256.
-- Mistral klíče nejdou hashovat (posílají se dál), proto jsou v úložišti klíčů systému (Windows Credential Manager); DB drží jen odkaz.
-- Cookie `HttpOnly`, `SameSite=Strict`, změny vyžadují hlavičku `x-mw`; po 5 špatných pokusech zámek na 60 s.
-- Server poslouchá jen na `127.0.0.1`. Nevystavuj ho do sítě bez reverzní proxy s HTTPS.
-- Zapomenuté heslo: `mistwatch passwd <jmeno>`.
+- Passwords: salted scrypt. Sessions and proxy keys: only a SHA-256 hash is stored.
+- Mistral keys cannot be hashed (they are forwarded), so they live in the system keyring (Windows Credential Manager); the database only holds a reference.
+- Cookies are `HttpOnly` and `SameSite=Strict`, changes require the `x-mw` header, and 5 failed sign-ins lock the account for 60 seconds.
+- The server listens on `127.0.0.1` only. Do not expose it to a network without a reverse proxy with HTTPS.
+- Forgot your password: `mistwatch passwd <username>`.
 
-## Konfigurace
+## Configuration
 
-`~/.mistwatch/config.toml` obsahuje už jen server, limity, ceny a `[router]`. Účty a klienti ze starého configu se při prvním spuštění jednorázově přenesou do DB; poté je smaž z `config.toml` (zejména případné klíče v plaintextu).
+`~/.mistwatch/config.toml` now holds only the server, limits, prices and `[router]`. Accounts and clients from an old config are moved into the database once, on first start. After that, remove them from `config.toml` (especially any plaintext keys).
 
-Další příkazy: `status`, `sync`, `route "prompt" [--llm]`, `vibe-config`, `import-vibe`.
+Other commands: `status`, `sync`, `route "prompt" [--llm]`, `vibe-config`, `import-vibe`.
 
-## Logo a favicony
+## Logo and favicons
 
-Značku „MW“ a nápis tvoří pixely z fontu [Tiny5](https://github.com/Gissio/font_tiny5) (SIL OFL 1.1, viz `brand/OFL.txt`) v barevném přechodu od jantarové ke korálové. Je to záměrně jiné písmo, tvar i paleta než logo Mistral AI. Soubory se generují skriptem `brand/build.py` (výstup do `src/mistwatch/web/`) a optimalizují přes `svgo`:
+The "MW" mark and the wordmark are built from pixels of the [Tiny5](https://github.com/Gissio/font_tiny5) font (SIL OFL 1.1, see `brand/OFL.txt`) in a colour gradient from amber to coral. It is deliberately a different typeface, shape and palette than the Mistral AI logo. The files are generated by `brand/build.py` (output goes to `src/mistwatch/web/`) and optimised with `svgo`:
 
 ```
 uv run --no-project --with fonttools --with pillow python brand/build.py
 npx svgo@3 --config brand/svgo.config.mjs src/mistwatch/web/*.svg
 ```
 
-## Vzhled
+## Look and feel
 
-UI je jen tmavé. Paletu generuje `brand/palette.mjs` z jedné seed barvy (výchozí oranžová `#ff8204`) pomocí Material You (M3, schéma Vibrant) a zapisuje ji jako tokeny do `src/mistwatch/web/index.html` a do `brand/palette.json`. Jiná barva: `cd brand && npm install && node palette.mjs "#3fb8af"`, pak `uv run --no-project --with fonttools --with pillow python brand/build.py` (logo a favicony se přebarví podle pozadí). Povrchy, obrysy, text a akcentové barvy odpovídají rolím M3 pro tmavé schéma (surface, surfaceContainer*, outline, onSurface, primary, error). Kontrast tokenů ověří `python brand/contrast.py`.
+The UI is dark only. `brand/palette.mjs` generates the palette from one seed colour (default orange `#ff8204`) using Material You (M3, Vibrant scheme) and writes it as tokens into `src/mistwatch/web/index.html` and `brand/palette.json`. For another colour: `cd brand && npm install && node palette.mjs "#3fb8af"`, then `uv run --no-project --with fonttools --with pillow python brand/build.py` (the logo and favicons are recoloured to match the background). Surfaces, outlines, text and accent colours follow the M3 dark-scheme roles (surface, surfaceContainer*, outline, onSurface, primary, error). Check token contrast with `python brand/contrast.py`.
 
-Písmo Inter se načítá z Google Fonts. Je to jediný externí požadavek stránky; bez internetu se použije systémové písmo.
+The Inter font is loaded from Google Fonts. It is the only external request the page makes; without internet a system font is used.

@@ -67,13 +67,13 @@ async def check_key(client: httpx.AsyncClient, base: str, key: str) -> dict:
                 r = await client.get(f"{base}/v1/models", headers={"Authorization": f"Bearer {key}",
                                                                    "User-Agent": USER_AGENT}, timeout=15)
                 if r.status_code == 200:
-                    return {"valid": True, "budgets": {}, "note": "Klíč funguje, ale nemá přístup k přehledu rozpočtu."}
+                    return {"valid": True, "budgets": {}, "note": "The key works, but it cannot read the budget overview."}
             except httpx.HTTPError:
                 pass
-            return {"valid": False, "error": f"Mistral klíč odmítl ({e.response.status_code})."}
-        return {"valid": False, "error": f"Mistral vrátil chybu {e.response.status_code}."}
+            return {"valid": False, "error": f"Mistral rejected the key ({e.response.status_code})."}
+        return {"valid": False, "error": f"Mistral returned an error ({e.response.status_code})."}
     except httpx.HTTPError as e:
-        return {"valid": False, "error": f"Nelze se spojit s Mistralem: {type(e).__name__}"}
+        return {"valid": False, "error": f"Could not reach Mistral: {type(e).__name__}"}
 
 
 def record_snapshot(db: DB, account: str, pool: str, used: float, initial: float, reset_at: float,
