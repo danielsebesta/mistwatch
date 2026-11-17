@@ -1,0 +1,66 @@
+import { describe, expect, it } from "vitest";
+import { apply, decide, decisionHeader } from "../src/router.ts";
+import type { ChatBody } from "../src/types.ts";
+
+const d = (text: string, kw: Record<string, unknown> = {}) =>
+  decide({ messages: [{ role: "user", content: text }], ...kw });
+describe("router", () => {
+  it("trivial goes small", () => {
+    const r = d("ahoj");
+    expect(r.model).toBe("mistral-small-2603");
+    expect(r.effort).toBe("none");
+  });
+  it("hard debugging goes up the ladder", () => {
+    const r = d(
+      "Debug this race condition and refactor the architecture, think carefully:\n```py\nx=1\n```\nTraceback (most recent call last):\n  File x",
+    );
+    expect(r.level).toBeGreaterThanOrEqual(3);
+  });
+  it("tools and agent use large", () => {
+    const body: ChatBody = {
+      messages: [{ role: "user", content: "Implement the migration and fix the bug in the parser" }],
+      tools: [{}],
+    };
+    expect(["mistral-large-4-0", "zai-glm-5-3"]).toContain(decide(body).model);
+  });
+  it("images never go to GLM 5.3", () => {
+    const body: ChatBody = {
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "debug refactor optimize analyze this design ".repeat(40) },
+            { type: "image_url", image_url: "x" },
+          ],
+        },
+      ],
+    };
+    expect(decide(body).model).not.toBe("zai-glm-5-3");
+  });
+  it("budget pressure only downgrades", () => {
+    const body: ChatBody = {
+      messages: [{ role: "user", content: "Implement and optimize and debug this algorithm carefully ".repeat(20) }],
+    };
+    expect(decide(body, "auto", 0.05).level).toBeLessThan(decide(body, "auto", 1.0).level);
+  });
+  it("auto-fast caps the ladder and apply rewrites the body", () => {
+    const body: ChatBody = {
+      messages: [{ role: "user", content: "debug refactor optimize analyze architecture ".repeat(80) }],
+      reasoning_effort: "xx",
+    };
+    const r = decide(body, "auto-fast");
+    expect(r.level).toBeLessThanOrEqual(2);
+    const out = apply(body, r);
+    expect(out.model).toBe(r.model);
+    expect(out.reasoning_effort).toBe(r.effort);
+  });
+  it("llm score blends and can raise the level", () => {
+    const body: ChatBody = { messages: [{ role: "user", content: "Proč mi padá vlákno?" }] };
+    const base = decide(body);
+    const raised = decide(body, "auto", 1.0, 9);
+    expect(raised.llm_score).toBe(9);
+    expect(raised.level).toBeGreaterThan(base.level);
+    expect(decisionHeader(raised)).toContain(";llm=9");
+    expect(decide(body, "auto", 1.0, 0).level).toBeLessThanOrEqual(base.level);
+  });
+});

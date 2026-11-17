@@ -1,0 +1,349 @@
+import type { AccountsResponse, AccountView, Pool, SignInAttempt, SyncedPools } from "../../../shared/api.ts";
+import { api } from "../api.ts";
+import { confirmDlg, modal } from "../dialog.ts";
+import { entriesOf, h, ic } from "../dom.ts";
+import { errMsg, eur } from "../format.ts";
+import { POOL, poolLabel, SRC } from "../labels.ts";
+import { toast } from "../toast.ts";
+import { act, badge, emptyState, errState, pageHead, skel } from "../ui.ts";
+
+export async function viewAccounts(main: HTMLElement): Promise<void> {
+  const list = h(
+    "div",
+    { class: "stack" },
+    h("div", { class: "card" }, skel("30%", "1.25rem"), h("div", { style: "height:1rem" }), skel("100%", "4rem")),
+  );
+  main.append(
+    pageHead(
+      "Accounts",
+      "Vibe Code uses the key from the Vibe CLI sign-in and the subscription budget. Studio (API) uses a key from console.mistral.ai and a separate API budget.",
+    ),
+    list,
+  );
+  const load = async () => {
+    let d: AccountsResponse;
+    try {
+      d = await api.accounts();
+    } catch (e) {
+      list.replaceChildren(errState(errMsg(e), load));
+      return;
+    }
+    const nameIn = h("input", {
+      class: "input",
+      id: "an",
+      placeholder: "name or e-mail",
+      autocomplete: "off",
+      spellcheck: "false",
+      "aria-label": "Account name",
+    });
+    const add = act(async () => {
+      await api.addAccount(nameIn.value);
+      toast("Account added");
+      load();
+    });
+    nameIn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") add();
+    });
+    const form = h(
+      "div",
+      { class: "card" },
+      h("div", { class: "card-h" }, h("h2", {}, "Add an account")),
+      h(
+        "div",
+        { class: "field-row" },
+        h("label", { class: "f", for: "an" }, "Name", nameIn),
+        h("button", { class: "btn pri", onclick: add }, ic("plus"), "Add account"),
+      ),
+      h("p", { class: "xs mut", style: "margin-top:var(--sp-2)" }, "1–80 characters: letters, digits and . _ + @ -"),
+    );
+    list.replaceChildren(
+      ...(d.accounts.length ? d.accounts.map((a) => accountCard(a, d.vibe_cli_available, load)) : []),
+      form,
+    );
+    if (!d.accounts.length) {
+      list.prepend(
+        h(
+          "div",
+          { class: "card" },
+          emptyState(
+            "accounts",
+            "No accounts yet",
+            "An account is one Mistral login. Add one below, then connect its Vibe Code and Studio keys.",
+          ),
+        ),
+      );
+    }
+  };
+  load();
+}
+
+function accountCard(a: AccountView, vibeCli: boolean, reload: () => void): HTMLElement {
+  const prio = h("input", {
+    class: "input short",
+    type: "number",
+    inputmode: "numeric",
+    value: a.priority,
+    id: `pr-${a.name}`,
+    title: "Lower number is used first",
+  });
+  prio.addEventListener(
+    "change",
+    act(async () => {
+      await api.patchAccount(a.name, { priority: +prio.value });
+      toast("Priority saved");
+    }),
+  );
+  const sw = h("button", {
+    class: "switch",
+    role: "switch",
+    type: "button",
+    "aria-checked": String(!!a.enabled),
+    "aria-label": "Enabled",
+    onclick: act(async () => {
+      await api.patchAccount(a.name, { enabled: !a.enabled });
+      reload();
+    }),
+  });
+  const keyRow = (pool: Pool) => {
+    const k = a.keys[pool];
+    const kl = h(
+      "div",
+      { class: "kl" },
+      h("b", { class: "sm" }, POOL[pool]),
+      k ? (k.ok ? badge("ok", "Connected") : badge("bad", "Can't read key")) : badge("", "Missing"),
+    );
+    const ki = h(
+      "div",
+      { class: "ki" },
+      k
+        ? [
+            h("code", { title: k.hint ?? "" }, k.hint || "—"),
+            h("span", {}, `· ${SRC[k.source] ?? k.source}`),
+            k.error ? h("span", { class: "tx-bad" }, `· ${k.error}`) : null,
+          ]
+        : "No key",
+    );
+    const btns: HTMLButtonElement[] = [];
+    if (pool === "vibe")
+      btns.push(
+        h(
+          "button",
+          { class: "btn", onclick: () => signIn(a.name, reload) },
+          k ? "Sign in again" : "Sign in with Mistral",
+        ),
+      );
+    if (pool === "vibe" && vibeCli && !(k && k.source === "vibe-cli")) {
+      btns.push(
+        h(
+          "button",
+          {
+            class: "btn",
+            onclick: act(async () => {
+              const r = await api.putKey(a.name, "vibe", { source: "vibe-cli" });
+              toast(`Connected to Vibe CLI${syncNote(r)}`);
+              reload();
+            }),
+          },
+          "Use Vibe CLI",
+        ),
+      );
+    }
+    btns.push(
+      h("button", { class: "btn", onclick: () => pasteKey(a.name, pool, reload) }, k ? "Change key" : "Paste key"),
+    );
+    if (k) {
+      btns.push(
+        h(
+          "button",
+          {
+            class: "btn ghost danger",
+            "aria-label": `Remove ${POOL[pool]} key`,
+            onclick: act(async () => {
+              if (
+                await confirmDlg({
+                  title: "Remove this key?",
+                  body: `The ${POOL[pool]} key of ${a.name} will be forgotten. Budget tracking for it stops until you add a key again.`,
+                  ok: "Remove key",
+                  danger: true,
+                })
+              ) {
+                await api.delKey(a.name, pool);
+                reload();
+              }
+            }),
+          },
+          "Remove",
+        ),
+      );
+    }
+    return h("div", { class: "keyrow" }, kl, ki, h("div", { class: "ka" }, btns));
+  };
+  return h(
+    "section",
+    { class: "card acct", "aria-label": `Account ${a.name}` },
+    h(
+      "div",
+      { class: "acct-h" },
+      h("h2", { class: "trunc", title: a.name }, a.name),
+      a.enabled ? null : badge("warn", "Disabled"),
+      a.shared_with.length
+        ? h(
+            "span",
+            { class: "badge info", title: "Same Mistral account, counted as one budget" },
+            `shares budget with ${a.shared_with.join(", ")}`,
+          )
+        : null,
+      h("span", { class: "grow" }),
+      h("label", { class: "row nw sm mut", style: "gap:var(--sp-2)" }, "Priority", prio),
+      h("label", { class: "row nw sm mut", style: "gap:var(--sp-2)" }, "Enabled", sw),
+      h(
+        "button",
+        {
+          class: "btn ghost danger icon",
+          "aria-label": `Delete account ${a.name}`,
+          title: "Delete account",
+          onclick: act(async () => {
+            if (
+              await confirmDlg({
+                title: `Delete ${a.name}?`,
+                body: "The account and its keys are removed. Usage history is kept.",
+                ok: "Delete account",
+                danger: true,
+              })
+            ) {
+              await api.delAccount(a.name);
+              reload();
+            }
+          }),
+        },
+        ic("trash"),
+      ),
+    ),
+    keyRow("vibe"),
+    keyRow("api"),
+  );
+}
+
+function syncNote(r: { synced?: SyncedPools }): string {
+  const parts = entriesOf(r.synced ?? {}).map(([p, v]) => `${poolLabel(p)}: ${eur(v.used)} / ${eur(v.initial)}`);
+  return parts.length ? ` · ${parts.join(", ")}` : "";
+}
+
+// Browser sign-in: the user logs in at Mistral in a new tab, we poll until the server has exchanged it for a key.
+async function signIn(name: string, reload: () => void): Promise<void> {
+  // opened inside the click so popup blockers allow it
+  const tab = window.open("", "_blank");
+  let att: SignInAttempt;
+  try {
+    att = await api.startSignin(name);
+  } catch (e) {
+    tab?.close();
+    toast(errMsg(e), true);
+    return;
+  }
+  if (tab) tab.location.href = att.sign_in_url;
+  const msg = h("p", { class: "mut sm", role: "status" }, "Waiting for sign-in in the browser…");
+  let stopped = false;
+  const m = modal([
+    h("h2", {}, "Sign in with Mistral"),
+    h(
+      "p",
+      { class: "mut sm" },
+      "In the new tab, sign in to Mistral and choose a workspace. This page finishes automatically.",
+    ),
+    h("a", { href: att.sign_in_url, target: "_blank", rel: "noopener", class: "sm" }, "Open the sign-in page again"),
+    msg,
+    h(
+      "div",
+      { class: "acts" },
+      h(
+        "button",
+        {
+          class: "btn",
+          onclick: () => {
+            stopped = true;
+            api.signinCancel(att.id).catch(() => null);
+            m.remove();
+          },
+        },
+        "Cancel",
+      ),
+    ),
+  ]);
+  m.addEventListener("close", () => {
+    stopped = true;
+  });
+  while (!stopped && document.body.contains(m)) {
+    await new Promise((r) => setTimeout(r, 2000));
+    if (stopped) return;
+    let s: SignInAttempt;
+    try {
+      s = await api.signinStatus(att.id);
+    } catch (e) {
+      msg.textContent = errMsg(e);
+      msg.className = "err";
+      return;
+    }
+    if (s.status === "done") {
+      stopped = true;
+      m.remove();
+      toast(`Signed in${syncNote(s)}`);
+      reload();
+      return;
+    }
+    if (!["pending", "exchanging"].includes(s.status)) {
+      stopped = true;
+      msg.textContent = s.message || "Sign-in failed.";
+      msg.className = "err";
+      return;
+    }
+    if (s.status === "exchanging") msg.textContent = "Finishing…";
+  }
+}
+
+function pasteKey(name: string, pool: Pool, reload: () => void): void {
+  const inp = h("input", {
+    class: "input",
+    id: "pk",
+    type: "password",
+    placeholder: pool === "vibe" ? "Vibe CLI key" : "API key from console.mistral.ai",
+    autocomplete: "off",
+    spellcheck: "false",
+  });
+  const msg = h("div", { class: "err", role: "alert" });
+  const save = h(
+    "button",
+    {
+      class: "btn pri",
+      onclick: async () => {
+        save.disabled = true;
+        msg.textContent = "";
+        try {
+          const r = await api.putKey(name, pool, { key: inp.value });
+          m.remove();
+          toast(`Key saved${syncNote(r)}`);
+          reload();
+        } catch (e) {
+          msg.textContent = errMsg(e);
+          save.disabled = false;
+        }
+      },
+    },
+    "Verify and save",
+  );
+  const m = modal([
+    h("h2", {}, `${POOL[pool]} key`),
+    h(
+      "p",
+      { class: "mut sm" },
+      `For account ${name}. Mistwatch checks the key with Mistral, then stores it securely on this computer. It is never shown in full.`,
+    ),
+    h("label", { class: "f", for: "pk" }, "Key", inp),
+    msg,
+    h("div", { class: "acts" }, h("button", { class: "btn", onclick: () => m.remove() }, "Cancel"), save),
+  ]);
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") save.click();
+  });
+  inp.focus();
+}
