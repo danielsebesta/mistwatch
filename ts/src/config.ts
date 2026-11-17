@@ -16,7 +16,7 @@ export const defaultLimits = (): Limits => ({
   fallback_to_other_pool: true,
   vibe_user_agent_regex: "Mistral-Vibe",
 });
-export const defaultRouterCfg = (): RouterCfg => ({
+const defaultRouterCfg = (): RouterCfg => ({
   llm_classifier: true,
   classifier_model: "ministral-3b-latest",
   classifier_timeout_s: 2.0,
@@ -113,7 +113,7 @@ const parseOverrides = (v: unknown): Record<string, PriceOverride> => {
   }
   return out;
 };
-export function loadConfig(path?: string): Config {
+export const loadConfig = (path?: string): Config => {
   const p = path ?? configPath();
   if (!existsSync(p)) throw new Error(`${p} not found - run \`mistwatch init\` first`);
   const raw = parse(readFileSync(p, "utf8"));
@@ -159,7 +159,7 @@ export function loadConfig(path?: string): Config {
     cfg.clients.push({ name: pyStr(t.name), token: pyStr(t.token) } satisfies Client);
   }
   return cfg;
-}
+};
 export const resolveSecret = (ref: string): string => {
   if (ref.startsWith("env:")) {
     const v = process.env[ref.slice(4)];

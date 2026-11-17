@@ -76,11 +76,11 @@ export const fold = (title: Kid, hint: Kid, ...content: Kid[]): HTMLElement =>
   );
 export const td = (label: string, cls: string, ...kids: Kid[]): HTMLTableCellElement =>
   h("td", { "data-l": label, class: cls || "" }, kids);
-export function showNewKey(name: string, secret: string, first?: boolean): void {
+export const showNewKey = (name: string, secret: string, first?: boolean): void => {
   const m = modal([
     h("h2", {}, first ? "Account created. Your first API key" : `Key "${name}"`),
     h("div", { class: "keybox" }, h("code", {}, secret), copyBtn(secret, "Copy key")),
     h("p", { class: "sm mut" }, "Copy it now. You will not be able to see it again."),
     h("div", { class: "acts" }, h("button", { class: "btn pri", onclick: () => m.remove() }, "Done")),
   ]);
-}
+};

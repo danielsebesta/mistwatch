@@ -227,6 +227,7 @@ describe("proxy forwarding", () => {
                 sent = true;
                 c.enqueue(enc.encode('data: {"choices":[{"delta":{"content":"partial text"}}]}\n\n'));
                 c.enqueue(enc.encode("data: {never-finished"));
+                return undefined;
               },
             });
           })(),

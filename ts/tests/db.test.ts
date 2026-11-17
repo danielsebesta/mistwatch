@@ -90,4 +90,42 @@ describe("db", () => {
     db.setMeta("k", "2");
     expect(db.getMeta("k")).toBe("2");
   });
+  it("tx commits, nests and rolls back on error", () => {
+    const db = openDb(":memory:");
+    db.tx(() => db.setMeta("k", "1"));
+    expect(db.getMeta("k")).toBe("1");
+    db.tx(() => {
+      db.setMeta("a", "1");
+      db.tx(() => db.setMeta("b", "2"));
+    });
+    expect(db.getMeta("a")).toBe("1");
+    expect(db.getMeta("b")).toBe("2");
+    expect(() =>
+      db.tx(() => {
+        db.setMeta("k", "2");
+        throw new Error("boom");
+      }),
+    ).toThrow("boom");
+    expect(db.getMeta("k")).toBe("1");
+    expect(() =>
+      db.tx(() => {
+        db.setMeta("x", "outer");
+        db.tx(() => {
+          db.setMeta("y", "inner");
+          throw new Error("inner");
+        });
+      }),
+    ).toThrow("inner");
+    expect(db.getMeta("x")).toBeNull();
+    expect(db.getMeta("y")).toBeNull();
+  });
+  it("sumCost adds up a range without loading rows", () => {
+    const db = openDb(":memory:");
+    db.addLedger({ ts: 10, account: "a", pool: "vibe", cost_eur: 1, source: "proxy" });
+    db.addLedger({ ts: 20, account: "b", pool: "api", cost_eur: 2, source: "sync" });
+    db.addLedger({ ts: 30, account: "a", pool: "vibe", cost_eur: 4, source: "proxy" });
+    close(db.sumCost(0, 100), 7);
+    close(db.sumCost(10, 30), 3);
+    close(db.sumCost(40, 50), 0);
+  });
 });

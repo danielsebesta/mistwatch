@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS ledger(
   estimated INTEGER DEFAULT 0, status INTEGER, latency_ms INTEGER
 );
 CREATE INDEX IF NOT EXISTS ix_ledger ON ledger(account, pool, ts);
+CREATE INDEX IF NOT EXISTS ix_ledger_ts ON ledger(ts);
 CREATE TABLE IF NOT EXISTS snapshots(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts REAL NOT NULL, account TEXT NOT NULL, pool TEXT NOT NULL,
@@ -101,15 +102,19 @@ export type DB = {
   latestSnapshot(account: string, pool: string): Snapshot | null;
   costBetween(account: string | string[], pool: string, after: number, opts?: CostBetweenOpts): number;
   rowsSince(account: string | string[], pool: string, since: number): [number, number][];
+  sumCost(since: number, until: number): number;
   usageRows(since: number, until: number): UsageRow[];
   recent(limit?: number): LedgerRow[];
   byClientSince(since: number): ClientSpend[];
+  tx<T>(fn: () => T): T;
   close(): void;
 };
 export const openDb = (path: string): DB => {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const conn = new DatabaseSync(path);
   conn.exec("PRAGMA journal_mode=WAL");
+  conn.exec("PRAGMA busy_timeout=5000");
+  conn.exec("PRAGMA foreign_keys=ON");
   conn.exec(SCHEMA);
   const stmts = new Map<string, StatementSync>();
   const stmt = (sql: string): StatementSync => {
@@ -120,6 +125,7 @@ export const openDb = (path: string): DB => {
     return n;
   };
   const one = (sql: string, args: (string | number | null)[]): Row | undefined => stmt(sql).get(...args);
+  let inTx = false;
   const db: DB = {
     conn,
     links: new Map(),
@@ -194,6 +200,10 @@ export const openDb = (path: string): DB => {
         .all(...accs, pool, since)
         .map((r): [number, number] => [num(r.ts), num(r.cost_eur)]);
     },
+    sumCost: (since, until) => {
+      const r = one("SELECT COALESCE(SUM(cost_eur),0) s FROM ledger WHERE ts>=? AND ts<?", [since, until]);
+      return num(r?.s ?? 0);
+    },
     usageRows: (since, until) =>
       stmt("SELECT ts, cost_eur, model, client, account, pool, source FROM ledger WHERE ts>=? AND ts<? ORDER BY ts")
         .all(since, until)
@@ -219,6 +229,21 @@ export const openDb = (path: string): DB => {
           n: num(r.n),
           cost_eur: num(r.cost_eur),
         })),
+    tx: (fn) => {
+      if (inTx) return fn();
+      inTx = true;
+      conn.exec("BEGIN IMMEDIATE");
+      try {
+        const r = fn();
+        conn.exec("COMMIT");
+        return r;
+      } catch (e) {
+        conn.exec("ROLLBACK");
+        throw e;
+      } finally {
+        inTx = false;
+      }
+    },
     close: () => {
       conn.close();
     },

@@ -8,7 +8,7 @@ import { session } from "../state.ts";
 import { toast } from "../toast.ts";
 import { act, pageHead, skel, td } from "../ui.ts";
 
-export async function viewSettings(main: HTMLElement): Promise<void> {
+export const viewSettings = async (main: HTMLElement): Promise<void> => {
   const me = session.me;
   if (!me) return;
   const old = h("input", { class: "input", id: "pw0", type: "password", autocomplete: "current-password" });
@@ -144,9 +144,9 @@ export async function viewSettings(main: HTMLElement): Promise<void> {
     );
   });
   load();
-}
+};
 
-async function modelNames(showAll = false): Promise<void> {
+const modelNames = async (showAll = false): Promise<void> => {
   const box = qs("#mlist");
   if (!box) return;
   let rows: ModelRow[];
@@ -249,4 +249,4 @@ async function modelNames(showAll = false): Promise<void> {
       ),
     ),
   );
-}
+};

@@ -139,4 +139,22 @@ describe("store", () => {
     createStore(db).migrateConfig(cfg);
     expect(st.listAccounts()).toEqual([]);
   });
+  it("migrateConfig rolls back every write on failure", () => {
+    const cfg = defaultConfig();
+    cfg.accounts = [
+      { name: "good", keys: {}, priority: 100, enabled: true, manual: {} },
+      { name: "bad name!", keys: {}, priority: 100, enabled: true, manual: {} },
+    ];
+    cfg.clients = [{ name: "t", token: "tok-1" }];
+    const db = openDb(":memory:");
+    expect(() => createStore(db).migrateConfig(cfg)).toThrow(StoreError);
+    const st = createStore(db);
+    expect(st.listAccounts()).toEqual([]);
+    expect(st.listApiKeys()).toEqual([]);
+    expect(db.getMeta("config_migrated")).toBeNull();
+    cfg.accounts = [{ name: "good", keys: {}, priority: 100, enabled: true, manual: {} }];
+    st.migrateConfig(cfg);
+    expect(st.listAccounts().map((a) => a.name)).toEqual(["good"]);
+    expect(must(st.verifyApiKey("tok-1")).name).toBe("t");
+  });
 });

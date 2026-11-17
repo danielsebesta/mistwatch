@@ -182,7 +182,7 @@ const agg = (statuses: PoolStatus[]): PoolAgg => {
   };
 };
 export const summarize = (engine: BudgetEngine, accounts: Account[], now?: number): Summary => {
-  const t = now || Date.now() / 1000;
+  const t = now ?? Date.now() / 1000;
   const seen = new Set<string>();
   const byPool: Record<string, PoolStatus[]> = { vibe: [], api: [] };
   for (const a of accounts) {

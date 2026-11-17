@@ -7,7 +7,7 @@ import { POOL, poolLabel, SRC } from "../labels.ts";
 import { toast } from "../toast.ts";
 import { act, badge, emptyState, errState, pageHead, skel } from "../ui.ts";
 
-export async function viewAccounts(main: HTMLElement): Promise<void> {
+export const viewAccounts = async (main: HTMLElement): Promise<void> => {
   const list = h(
     "div",
     { class: "stack" },
@@ -75,9 +75,9 @@ export async function viewAccounts(main: HTMLElement): Promise<void> {
     }
   };
   load();
-}
+};
 
-function accountCard(a: AccountView, vibeCli: boolean, reload: () => void): HTMLElement {
+const accountCard = (a: AccountView, vibeCli: boolean, reload: () => void): HTMLElement => {
   const prio = h("input", {
     class: "input short",
     type: "number",
@@ -222,15 +222,15 @@ function accountCard(a: AccountView, vibeCli: boolean, reload: () => void): HTML
     keyRow("vibe"),
     keyRow("api"),
   );
-}
+};
 
-function syncNote(r: { synced?: SyncedPools }): string {
+const syncNote = (r: { synced?: SyncedPools }): string => {
   const parts = entriesOf(r.synced ?? {}).map(([p, v]) => `${poolLabel(p)}: ${eur(v.used)} / ${eur(v.initial)}`);
   return parts.length ? ` · ${parts.join(", ")}` : "";
-}
+};
 
-// Browser sign-in: the user logs in at Mistral in a new tab, we poll until the server has exchanged it for a key.
-async function signIn(name: string, reload: () => void): Promise<void> {
+// Sign-in runs in a new Mistral tab; we poll until the key lands.
+const signIn = async (name: string, reload: () => void): Promise<void> => {
   // opened inside the click so popup blockers allow it
   const tab = window.open("", "_blank");
   let att: SignInAttempt;
@@ -299,9 +299,9 @@ async function signIn(name: string, reload: () => void): Promise<void> {
     }
     if (s.status === "exchanging") msg.textContent = "Finishing…";
   }
-}
+};
 
-function pasteKey(name: string, pool: Pool, reload: () => void): void {
+const pasteKey = (name: string, pool: Pool, reload: () => void): void => {
   const inp = h("input", {
     class: "input",
     id: "pk",
@@ -346,4 +346,4 @@ function pasteKey(name: string, pool: Pool, reload: () => void): void {
     if (e.key === "Enter") save.click();
   });
   inp.focus();
-}
+};

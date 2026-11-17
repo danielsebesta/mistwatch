@@ -169,8 +169,10 @@ export const createStore = (db: DB) => {
     run("INSERT INTO accounts(name, priority, created) VALUES(?,?,?)", n, priority, now);
   };
   const updateAccount = (name: string, enabled?: boolean | null, priority?: number | null): void => {
-    if (enabled != null) run("UPDATE accounts SET enabled=? WHERE name=?", enabled ? 1 : 0, name);
-    if (priority != null) run("UPDATE accounts SET priority=? WHERE name=?", Math.trunc(priority), name);
+    db.tx(() => {
+      if (enabled != null) run("UPDATE accounts SET enabled=? WHERE name=?", enabled ? 1 : 0, name);
+      if (priority != null) run("UPDATE accounts SET priority=? WHERE name=?", Math.trunc(priority), name);
+    });
   };
   const setKey = (
     name: string,
@@ -258,8 +260,10 @@ export const createStore = (db: DB) => {
     },
     deleteUser: (userId: number): void => {
       if (countUsers() <= 1) throw new StoreError("The last user cannot be deleted.");
-      run("DELETE FROM sessions WHERE user_id=?", userId);
-      run("DELETE FROM users WHERE id=?", userId);
+      db.tx(() => {
+        run("DELETE FROM sessions WHERE user_id=?", userId);
+        run("DELETE FROM users WHERE id=?", userId);
+      });
     },
     findUser: (username: string): SessionUser | null => {
       const r = one("SELECT id, username FROM users WHERE username=?", [username]);
@@ -267,15 +271,17 @@ export const createStore = (db: DB) => {
     },
     createSession: (userId: number, now = Date.now() / 1000): string => {
       const tok = randomBytes(32).toString("base64url");
-      run("DELETE FROM sessions WHERE expires<? OR last_seen<?", now, now - SESSION_IDLE_S);
-      run(
-        "INSERT INTO sessions(token_hash, user_id, created, last_seen, expires) VALUES(?,?,?,?,?)",
-        sha(tok),
-        userId,
-        now,
-        now,
-        now + SESSION_TTL,
-      );
+      db.tx(() => {
+        run("DELETE FROM sessions WHERE expires<? OR last_seen<?", now, now - SESSION_IDLE_S);
+        run(
+          "INSERT INTO sessions(token_hash, user_id, created, last_seen, expires) VALUES(?,?,?,?,?)",
+          sha(tok),
+          userId,
+          now,
+          now,
+          now + SESSION_TTL,
+        );
+      });
       return tok;
     },
     getSession: (token: string | null | undefined, now = Date.now() / 1000): SessionUser | null => {
@@ -358,21 +364,23 @@ export const createStore = (db: DB) => {
     },
     migrateConfig: (cfg: Config): void => {
       if (one("SELECT 1 FROM meta WHERE k='config_migrated'")) return;
-      for (const a of cfg.accounts) {
-        if (getAccount(a.name)) continue;
-        createAccount(a.name, a.priority);
-        for (const [pool, ref] of Object.entries(a.keys)) {
-          const keep = /^(env|keyring):/.test(ref) ? ref : saveSecret(a.name, pool, ref);
-          setKey(a.name, pool, { ref: keep });
+      db.tx(() => {
+        for (const a of cfg.accounts) {
+          if (getAccount(a.name)) continue;
+          createAccount(a.name, a.priority);
+          for (const [pool, ref] of Object.entries(a.keys)) {
+            const keep = /^(env|keyring):/.test(ref) ? ref : saveSecret(a.name, pool, ref);
+            setKey(a.name, pool, { ref: keep });
+          }
+          updateAccount(a.name, a.enabled);
+          if (Object.keys(a.manual).length)
+            run("UPDATE accounts SET manual=? WHERE name=?", JSON.stringify(a.manual), a.name);
         }
-        updateAccount(a.name, a.enabled);
-        if (Object.keys(a.manual).length)
-          run("UPDATE accounts SET manual=? WHERE name=?", JSON.stringify(a.manual), a.name);
-      }
-      for (const c of cfg.clients) {
-        if (!one("SELECT 1 FROM api_keys WHERE name=?", [c.name])) insertKey(c.name, c.token, Date.now() / 1000);
-      }
-      run("INSERT INTO meta(k, v) VALUES('config_migrated','1')");
+        for (const c of cfg.clients) {
+          if (!one("SELECT 1 FROM api_keys WHERE name=?", [c.name])) insertKey(c.name, c.token, Date.now() / 1000);
+        }
+        run("INSERT INTO meta(k, v) VALUES('config_migrated','1')");
+      });
     },
   };
 };

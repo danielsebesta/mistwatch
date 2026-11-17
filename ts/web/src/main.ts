@@ -21,7 +21,7 @@ const ROUTES: { "": RouteDef; "#/accounts": RouteDef; "#/keys": RouteDef; "#/set
 type RouteKey = keyof typeof ROUTES;
 const isRoute = (x: string): x is RouteKey => x in ROUTES;
 
-async function loadSummary(): Promise<void> {
+const loadSummary = async (): Promise<void> => {
   const els = document.querySelectorAll<HTMLElement>(".sumv");
   if (!els.length) return;
   let d: SummaryResponse;
@@ -58,11 +58,12 @@ async function loadSummary(): Promise<void> {
       );
     }
   });
-}
+};
 
-function render(): void {
+const render = (): void => {
   clearInterval(session.timer);
   clearInterval(session.sumTimer);
+  handlers.resume = () => {};
   const me = session.me;
   const app = qs("#app");
   if (!me || !app) return;
@@ -115,11 +116,12 @@ function render(): void {
   );
   ROUTES[route][2](main);
   void loadSummary();
-  session.sumTimer = setInterval(loadSummary, 15000);
-}
+  if (!document.hidden) session.sumTimer = setInterval(loadSummary, 15000);
+};
 
-async function boot(): Promise<void> {
+const boot = async (): Promise<void> => {
   clearInterval(session.timer);
+  clearInterval(session.sumTimer);
   let s: SessionResponse;
   try {
     s = await api.session();
@@ -130,7 +132,7 @@ async function boot(): Promise<void> {
   if (s.setup_needed) return viewAuth("setup");
   if (!session.me) return viewAuth("login");
   render();
-}
+};
 handlers.boot = boot;
 
 window.addEventListener("hashchange", () => {
@@ -138,5 +140,16 @@ window.addEventListener("hashchange", () => {
     render();
     scrollTo(0, 0);
   }
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    clearInterval(session.timer);
+    clearInterval(session.sumTimer);
+    return;
+  }
+  if (!session.me) return;
+  void loadSummary();
+  session.sumTimer = setInterval(loadSummary, 15000);
+  handlers.resume();
 });
 void boot();

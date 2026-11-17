@@ -67,6 +67,7 @@ export type BudgetEngine = {
 };
 export const createBudgetEngine = (db: DB, limits: Limits): BudgetEngine => {
   const ledger = createReservationLedger();
+  const widest = Math.max(...Object.values(WINDOWS));
   const ikey = (canon: string, pool: string): string => `${canon}\u0000${pool}`;
   const burst = (name: string): number => {
     const v =
@@ -93,7 +94,7 @@ export const createBudgetEngine = (db: DB, limits: Limits): BudgetEngine => {
     return last ? last[0] + length * DAY + 1 : null;
   };
   const status = (account: string, pool: string, now?: number): PoolStatus | null => {
-    const t = now || Date.now() / 1000;
+    const t = now ?? Date.now() / 1000;
     let canon = db.canonical(account);
     let snap = db.latestSnapshot(canon, pool);
     if (snap === null && canon !== account) {
@@ -133,8 +134,9 @@ export const createBudgetEngine = (db: DB, limits: Limits): BudgetEngine => {
       group: canon,
       members,
     };
+    const wideRows = db.rowsSince(members, pool, t - widest * DAY);
     for (const [name, length] of Object.entries(WINDOWS)) {
-      const rows = db.rowsSince(members, pool, t - length * DAY);
+      const rows = wideRows.filter(([ts]) => ts >= t - length * DAY);
       let spent = 0;
       for (const [, c] of rows) spent += c;
       const b0 = Math.min(Math.max(remaining, 0) + spent, initial);

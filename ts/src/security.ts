@@ -73,6 +73,8 @@ export const HOP_HEADERS: ReadonlySet<string> = new Set([
   "content-encoding",
 ]);
 const REQUEST_SECRET = new Set(["authorization", "x-api-key", "cookie", "accept-encoding"]);
+const REQUEST_DROP: ReadonlySet<string> = new Set([...HOP_HEADERS, ...REQUEST_SECRET]);
+const RESPONSE_DROP: ReadonlySet<string> = new Set([...HOP_HEADERS, "set-cookie"]);
 const connTokens = (pairs: readonly (readonly [string, string])[]): Set<string> => {
   const out = new Set<string>();
   for (const [k, v] of pairs) {
@@ -84,8 +86,10 @@ export const filterRequestHeaders = (
   raw: Iterable<readonly [string, string]>,
   extraDrop: Iterable<string> = [],
 ): [string, string][] => {
-  const pairs = [...raw].map(([k, v]): [string, string] => [k, v]);
-  const drop = new Set([...HOP_HEADERS, ...REQUEST_SECRET, ...connTokens(pairs)]);
+  const pairs: [string, string][] = [];
+  for (const [k, v] of raw) pairs.push([k, v]);
+  const drop = new Set(REQUEST_DROP);
+  for (const t of connTokens(pairs)) drop.add(t);
   for (const h of extraDrop) drop.add(h.toLowerCase());
   return pairs.filter(([k]) => {
     const lk = k.toLowerCase();
@@ -96,8 +100,10 @@ export const filterResponseHeaders = (
   raw: Iterable<readonly [string, string]>,
   extraDrop: Iterable<string> = [],
 ): [string, string][] => {
-  const pairs = [...raw].map(([k, v]): [string, string] => [k, v]);
-  const drop = new Set([...HOP_HEADERS, ...connTokens(pairs), "set-cookie"]);
+  const pairs: [string, string][] = [];
+  for (const [k, v] of raw) pairs.push([k, v]);
+  const drop = new Set(RESPONSE_DROP);
+  for (const t of connTokens(pairs)) drop.add(t);
   for (const h of extraDrop) drop.add(h.toLowerCase());
   return pairs.filter(([k]) => !drop.has(k.toLowerCase()));
 };

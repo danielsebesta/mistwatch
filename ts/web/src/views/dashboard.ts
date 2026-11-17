@@ -14,13 +14,13 @@ import { api } from "../api.ts";
 import { entriesOf, h, ic, type Kid, keysOf, svg } from "../dom.ts";
 import { ago, errMsg, eur, eur4, niceMax, pct100, plural, short, when } from "../format.ts";
 import { asBy, asRange, BYS, colorOf, PERIOD_DAYS, poolLabel, RANGE_DAYS, RANGES, winLabel } from "../labels.ts";
-import { pref, session } from "../state.ts";
+import { handlers, pref, session } from "../state.ts";
 import { toast } from "../toast.ts";
 import { act, badge, emptyState, errState, fold, pageHead, skel, td } from "../ui.ts";
 
 type SetPref = (k: "range" | "by", v: string) => void;
 
-export async function viewDash(main: HTMLElement): Promise<void> {
+export const viewDash = async (main: HTMLElement): Promise<void> => {
   let range = asRange(pref.get("range", "7d"));
   let by = asBy(pref.get("by", "model"));
   const syncMeta = h("p", {}, "Loading…");
@@ -59,10 +59,17 @@ export async function viewDash(main: HTMLElement): Promise<void> {
   );
   main.append(pageHead("Overview", syncMeta, syncBtn), body);
   await load();
-  session.timer = setInterval(load, 10000);
-}
+  const poll = (): void => {
+    if (!document.hidden) session.timer = setInterval(load, 10000);
+  };
+  poll();
+  handlers.resume = () => {
+    poll();
+    void load();
+  };
+};
 
-function dashSkeleton(): HTMLElement {
+const dashSkeleton = (): HTMLElement => {
   return h(
     "div",
     { class: "stack", "aria-busy": "true", "aria-label": "Loading" },
@@ -81,9 +88,9 @@ function dashSkeleton(): HTMLElement {
       h("div", { class: "card" }, skel("50%"), h("div", { style: "height:.75rem" }), skel("100%", "5rem")),
     ),
   );
-}
+};
 
-function windowTable(rows: [string, WindowTotal | PoolWindow][]): HTMLElement {
+const windowTable = (rows: [string, WindowTotal | PoolWindow][]): HTMLElement => {
   return h(
     "div",
     { class: "tw" },
@@ -120,16 +127,16 @@ function windowTable(rows: [string, WindowTotal | PoolWindow][]): HTMLElement {
       ),
     ),
   );
-}
+};
 
-function dashBody(
+const dashBody = (
   d: StatusResponse,
   u: UsageResponse,
   led: LedgerRow[],
   set: SetPref,
   range: UsageRange,
   by: UsageBy,
-): HTMLElement[] {
+): HTMLElement[] => {
   const sm = d.summary;
   const a = sm.all;
   if (!a) {
@@ -281,9 +288,9 @@ function dashBody(
         : null,
     ),
   ];
-}
+};
 
-function summaryStrip(a: AggStatus): HTMLElement {
+const summaryStrip = (a: AggStatus): HTMLElement => {
   const pct = a.initial_eur ? pct100((a.used_eur / a.initial_eur) * 100) : 0;
   const wins: [string, WindowTotal][] = [
     ["5 hours", a.windows["5h"]],
@@ -344,9 +351,9 @@ function summaryStrip(a: AggStatus): HTMLElement {
         )
       : null,
   );
-}
+};
 
-function chartCard(u: UsageResponse, a: AggStatus, set: SetPref, range: UsageRange, by: UsageBy): HTMLElement {
+const chartCard = (u: UsageResponse, a: AggStatus, set: SetPref, range: UsageRange, by: UsageBy): HTMLElement => {
   const tabs = h(
     "div",
     { class: "tabs", role: "tablist", "aria-label": "Time range" },
@@ -429,9 +436,9 @@ function chartCard(u: UsageResponse, a: AggStatus, set: SetPref, range: UsageRan
     box,
     u.series.length ? legend : null,
   );
-}
+};
 
-function drawChart(box: HTMLElement, u: UsageResponse, a: AggStatus, label: (n: string) => string): void {
+const drawChart = (box: HTMLElement, u: UsageResponse, a: AggStatus, label: (n: string) => string): void => {
   const W = Math.max(box.clientWidth || 640, 200);
   const narrow = W < 460;
   const H = Math.round(Math.min(Math.max(W * 0.38, 170), 280));
@@ -565,9 +572,9 @@ function drawChart(box: HTMLElement, u: UsageResponse, a: AggStatus, label: (n: 
   );
   box.replaceChildren(root, tip, sr);
   if (!u.total) box.append(h("div", { class: "empty-chart" }, "No spending in this period."));
-}
+};
 
-function limitsCard(a: AggStatus): HTMLElement {
+const limitsCard = (a: AggStatus): HTMLElement => {
   const rows: [string, WindowTotal][] = [
     ["5 hours", a.windows["5h"]],
     ["Day", a.windows.day],
@@ -604,9 +611,9 @@ function limitsCard(a: AggStatus): HTMLElement {
       );
     }),
   );
-}
+};
 
-function poolsCard(sm: Summary, rows: PoolStatus[]): HTMLElement {
+const poolsCard = (sm: Summary, rows: PoolStatus[]): HTMLElement => {
   const items = rows.map((p) => {
     const init = p.initial_eur || 0;
     const usedF = init ? Math.min(1, p.used_eur / init) : 0;
@@ -688,4 +695,4 @@ function poolsCard(sm: Summary, rows: PoolStatus[]): HTMLElement {
       h("span", {}, h("i", { class: "sw res" }), "kept in reserve"),
     ),
   );
-}
+};

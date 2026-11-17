@@ -4,12 +4,12 @@ export type Mutex = {
   acquire(signal?: AbortSignal): Promise<Release>;
   tryAcquire(): Release | null;
   readonly locked: boolean;
+  readonly pending: number;
 };
 const abortReason = (signal: AbortSignal | undefined): unknown =>
   signal === undefined ? new DOMException("aborted", "AbortError") : signal.reason;
 export const createMutex = (): Mutex => {
-  type Waiter = { dead: boolean; ok: (r: Release) => void };
-  const q: Waiter[] = [];
+  const q: ((r: Release) => void)[] = [];
   let held = false;
   const releaseOnce = (): Release => {
     let done = false;
@@ -20,17 +20,12 @@ export const createMutex = (): Mutex => {
     };
   };
   const pump = (): void => {
-    for (;;) {
-      const w = q.shift();
-      if (w === undefined) {
-        held = false;
-        return;
-      }
-      if (!w.dead) {
-        w.ok(releaseOnce());
-        return;
-      }
+    const next = q.shift();
+    if (next === undefined) {
+      held = false;
+      return;
     }
+    next(releaseOnce());
   };
   const acquire = (signal?: AbortSignal): Promise<Release> => {
     if (signal?.aborted) return Promise.reject(abortReason(signal));
@@ -39,16 +34,17 @@ export const createMutex = (): Mutex => {
       return Promise.resolve(releaseOnce());
     }
     return new Promise<Release>((ok, fail) => {
-      const w: Waiter = { dead: false, ok };
-      q.push(w);
-      signal?.addEventListener(
-        "abort",
-        () => {
-          w.dead = true;
-          fail(abortReason(signal));
-        },
-        { once: true },
-      );
+      const grant = (r: Release): void => {
+        signal?.removeEventListener("abort", onAbort);
+        ok(r);
+      };
+      const onAbort = (): void => {
+        const i = q.indexOf(grant);
+        if (i >= 0) q.splice(i, 1);
+        fail(abortReason(signal));
+      };
+      q.push(grant);
+      signal?.addEventListener("abort", onAbort, { once: true });
     });
   };
   return {
@@ -60,6 +56,9 @@ export const createMutex = (): Mutex => {
     },
     get locked() {
       return held;
+    },
+    get pending() {
+      return q.length;
     },
   };
 };
@@ -118,13 +117,22 @@ export const createQueue = (opts: QueueOpts): Queue => {
     deadline: number | undefined;
     running: boolean;
     done: boolean;
+    onAbort: (() => void) | undefined;
+    cleanup: () => void;
   };
   const items: Item[] = [];
   let active = 0;
+  const drop = (it: Item, e: unknown): void => {
+    it.done = true;
+    it.cleanup();
+    const i = items.indexOf(it);
+    if (i >= 0) items.splice(i, 1);
+    it.fail(e);
+  };
   const settle = (it: Item, succeeded: boolean, val: unknown): void => {
     if (it.done) return;
     it.done = true;
-    if (it.timer !== undefined) clearTimeout(it.timer);
+    it.cleanup();
     active--;
     if (succeeded) it.ok(val);
     else it.fail(val);
@@ -135,23 +143,20 @@ export const createQueue = (opts: QueueOpts): Queue => {
       const it = items.shift();
       if (it === undefined) return;
       if (it.ctrl.signal.aborted) {
-        it.done = true;
-        if (it.timer !== undefined) clearTimeout(it.timer);
-        it.fail(it.ctrl.signal.reason);
+        drop(it, it.ctrl.signal.reason);
         continue;
       }
       // the timeout covers queueing too: never start work past its deadline
       if (it.deadline !== undefined && Date.now() >= it.deadline) {
-        it.done = true;
-        if (it.timer !== undefined) clearTimeout(it.timer);
-        it.fail(asException(errors.queueTimeout()));
+        drop(it, asException(errors.queueTimeout()));
         continue;
       }
       it.running = true;
       active++;
       const sig = it.ctrl.signal;
       const aborted = new Promise<never>((_, rej) => {
-        sig.addEventListener("abort", () => rej(sig.reason), { once: true });
+        it.onAbort = () => rej(sig.reason);
+        sig.addEventListener("abort", it.onAbort, { once: true });
       });
       Promise.race([Promise.resolve().then(() => it.fn(sig)), aborted]).then(
         (v) => settle(it, true, v),
@@ -163,6 +168,8 @@ export const createQueue = (opts: QueueOpts): Queue => {
     if (o.signal?.aborted) return Promise.reject(o.signal.reason);
     if (items.length >= maxP) return Promise.reject(asException(errors.queueFull()));
     return new Promise<T>((ok, fail) => {
+      const caller = o.signal;
+      const onCallerAbort = (): void => it.ctrl.abort(caller?.reason);
       const it: Item = {
         fn,
         ok: (v) => ok(v as T),
@@ -172,26 +179,25 @@ export const createQueue = (opts: QueueOpts): Queue => {
         deadline: undefined,
         running: false,
         done: false,
-      };
-      it.ctrl.signal.addEventListener(
-        "abort",
-        () => {
-          if (it.done || it.running) return;
-          it.done = true;
+        onAbort: undefined,
+        cleanup: () => {
           if (it.timer !== undefined) clearTimeout(it.timer);
-          const i = items.indexOf(it);
-          if (i >= 0) items.splice(i, 1);
-          it.fail(it.ctrl.signal.reason);
+          if (caller !== undefined) caller.removeEventListener("abort", onCallerAbort);
+          it.ctrl.signal.removeEventListener("abort", onCtrlAbort);
+          if (it.onAbort !== undefined) it.ctrl.signal.removeEventListener("abort", it.onAbort);
         },
-        { once: true },
-      );
+      };
+      const onCtrlAbort = (): void => {
+        if (it.done || it.running) return;
+        drop(it, it.ctrl.signal.reason);
+      };
+      it.ctrl.signal.addEventListener("abort", onCtrlAbort, { once: true });
       const tmo = o.timeoutMs ?? opts.timeoutMs;
       if (tmo !== undefined) {
         it.deadline = Date.now() + tmo;
         it.timer = setTimeout(() => it.ctrl.abort(asException(errors.queueTimeout())), tmo);
       }
-      const caller = o.signal;
-      if (caller !== undefined) caller.addEventListener("abort", () => it.ctrl.abort(caller.reason), { once: true });
+      if (caller !== undefined) caller.addEventListener("abort", onCallerAbort, { once: true });
       items.push(it);
       pump();
     });

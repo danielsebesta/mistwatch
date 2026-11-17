@@ -43,7 +43,7 @@ const strProp = (o: object, k: string): string | undefined => {
   return typeof v === "string" ? v : undefined;
 };
 
-async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
+const req = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
   const r = await fetch(`/api${path}`, {
     method,
     credentials: "same-origin",
@@ -67,7 +67,7 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
     throw new ApiError(msg ?? `Error ${r.status}`, r.status);
   }
   return data as T;
-}
+};
 
 export const api = {
   session: () => req<SessionResponse>("GET", "/session"),
@@ -103,8 +103,8 @@ export const api = {
   delApikey: (id: number) => req<OkResponse>("DELETE", `/apikeys/${id}`),
 };
 
-export async function signOut(): Promise<void> {
+export const signOut = async (): Promise<void> => {
   await api.logout();
   session.me = null;
   handlers.boot();
-}
+};

@@ -39,11 +39,11 @@ export type Props = {
   [key: `data-${string}`]: string | number | boolean | null | undefined;
 };
 
-export function h<K extends keyof HTMLElementTagNameMap>(
+export const h = <K extends keyof HTMLElementTagNameMap>(
   tag: K,
   props?: Props | null,
   ...kids: Kid[]
-): HTMLElementTagNameMap[K] {
+): HTMLElementTagNameMap[K] => {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(props ?? {})) {
     if (v === null || v === undefined || v === false) continue;
@@ -63,18 +63,18 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   };
   for (const k of kids) add(k);
   return el;
-}
+};
 
-export function svg<K extends keyof SVGElementTagNameMap>(
+export const svg = <K extends keyof SVGElementTagNameMap>(
   tag: K,
   attrs?: Record<string, string | number>,
   ...kids: (Node | string | null | undefined)[]
-): SVGElementTagNameMap[K] {
+): SVGElementTagNameMap[K] => {
   const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
   for (const [k, v] of Object.entries(attrs ?? {})) el.setAttribute(k, String(v));
   for (const k of kids) if (k !== null && k !== undefined) el.append(k instanceof Node ? k : String(k));
   return el;
-}
+};
 
 const ICONS = {
   overview:
@@ -98,11 +98,11 @@ const ICONS = {
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
 } satisfies Record<string, string>;
 export type IconName = keyof typeof ICONS;
-export function ic(name: IconName): SVGSVGElement {
+export const ic = (name: IconName): SVGSVGElement => {
   const s = svg("svg", { class: "ic", viewBox: "0 0 24 24", "aria-hidden": "true", focusable: "false" });
   s.innerHTML = ICONS[name];
   return s;
-}
+};
 export const logoMark = (): HTMLImageElement =>
   h("img", { src: "/favicon.svg", alt: "", width: 24, height: 24, "aria-hidden": "true" });
 export const qs = <T extends Element = HTMLElement>(sel: string, el: ParentNode = document): T | null =>

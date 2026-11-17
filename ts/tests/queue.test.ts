@@ -1,3 +1,4 @@
+import { getEventListeners } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isAppError } from "../src/errors.ts";
 import { createKeyedMutex, createMutex, createQueue, createReservationLedger } from "../src/queue.ts";
@@ -75,6 +76,35 @@ describe("mutex", () => {
     expect(m.locked).toBe(false);
     const r = await m.acquire();
     r();
+  });
+  it("removes the abort listener when a waiter is granted or dropped", async () => {
+    const m = createMutex();
+    const r1 = await m.acquire();
+    const c1 = new AbortController();
+    const p = m.acquire(c1.signal);
+    expect(getEventListeners(c1.signal, "abort").length).toBe(1);
+    r1();
+    const r2 = await p;
+    expect(getEventListeners(c1.signal, "abort").length).toBe(0);
+    const c2 = new AbortController();
+    const dropped = m.acquire(c2.signal);
+    c2.abort();
+    await expect(dropped).rejects.toMatchObject({ name: "AbortError" });
+    expect(getEventListeners(c2.signal, "abort").length).toBe(0);
+    r2();
+  });
+  it("drops aborted waiters instead of accumulating them", async () => {
+    const m = createMutex();
+    const r = await m.acquire();
+    const cs = Array.from({ length: 4 }, () => new AbortController());
+    const ps = cs.map((c) => m.acquire(c.signal));
+    expect(m.pending).toBe(4);
+    for (const c of cs) c.abort();
+    expect(m.pending).toBe(0);
+    for (const p of ps) await expect(p).rejects.toMatchObject({ name: "AbortError" });
+    r();
+    const r2 = await m.acquire();
+    r2();
   });
 });
 describe("keyed mutex", () => {
@@ -206,6 +236,34 @@ describe("bounded queue", () => {
   it("propagates fn errors", async () => {
     const q = createQueue({ concurrency: 1, maxPending: 1 });
     await expect(q.run(() => Promise.reject(new Error("boom")))).rejects.toThrow("boom");
+  });
+  it("detaches the caller abort listener once an item settles", async () => {
+    const q = createQueue({ concurrency: 1, maxPending: 5 });
+    const c = new AbortController();
+    await q.run(() => 1, { signal: c.signal });
+    expect(getEventListeners(c.signal, "abort").length).toBe(0);
+    const c2 = new AbortController();
+    const gate = deferred<void>();
+    const p = q.run(() => gate.p, { signal: c2.signal });
+    expect(getEventListeners(c2.signal, "abort").length).toBe(1);
+    gate.ok();
+    await p;
+    expect(getEventListeners(c2.signal, "abort").length).toBe(0);
+  });
+  it("drops aborted pending items synchronously and frees their listeners", async () => {
+    const q = createQueue({ concurrency: 1, maxPending: 10 });
+    const gate = deferred<void>();
+    const p1 = q.run(() => gate.p);
+    const cs = Array.from({ length: 4 }, () => new AbortController());
+    const ps = cs.map((c) => q.run(() => 0, { signal: c.signal }));
+    expect(q.pending).toBe(4);
+    for (const c of cs) c.abort();
+    expect(q.pending).toBe(0);
+    for (const p of ps) await expect(p).rejects.toMatchObject({ name: "AbortError" });
+    for (const c of cs) expect(getEventListeners(c.signal, "abort").length).toBe(0);
+    gate.ok();
+    await p1;
+    expect(q.active).toBe(0);
   });
 });
 describe("reservation ledger", () => {

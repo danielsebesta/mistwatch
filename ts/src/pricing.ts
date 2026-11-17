@@ -2,7 +2,7 @@ import type { Price, PriceOverride } from "./types.ts";
 export const PRICES_USD: Record<string, Price> = {
   "mistral-large-4-0": { input: 0.7, output: 2.1, cached: 0.07 },
   "mistral-small-4": { input: 0.15, output: 0.6, cached: 0.015 },
-  // Medium 3.5 has no price on the official page (deprecated 2026-10-31); third-party figure, unverified.
+  // Medium 3.5: deprecated, no official price; unverified third-party figure.
   "mistral-medium-3-5": { input: 1.5, output: 7.5, cached: null },
   "zai-glm-5-3": { input: 1.4, output: 4.4, cached: 0.14 },
   "zai-glm-5-3-flash": { input: 0.15, output: 0.5, cached: 0.03 },

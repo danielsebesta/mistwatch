@@ -56,7 +56,7 @@ export const usage = (db: DB, range: string, by: string, now: number, names?: Mo
   const since = starts[0] ?? now;
   const span = (starts[starts.length - 1] ?? now) - since + (unit === "hour" ? 3600 : 86400);
   const rows = db.usageRows(since, now + 1);
-  const prev = db.usageRows(since - span, since);
+  const prevTotal = db.sumCost(since - span, since);
   const totals = new Map<string, number>();
   const per = new Map<string, number[]>();
   for (const r of rows) {
@@ -91,7 +91,7 @@ export const usage = (db: DB, range: string, by: string, now: number, names?: Mo
     step: unit === "hour" ? 3600 : 86400,
     series,
     total: rows.reduce((a, r) => a + r.cost_eur, 0),
-    prev_total: prev.reduce((a, r) => a + r.cost_eur, 0),
+    prev_total: prevTotal,
     requests: rows.filter((r) => r.source === "proxy" && r.client !== "(router)").length,
   };
 };

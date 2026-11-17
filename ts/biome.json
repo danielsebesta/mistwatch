@@ -9,8 +9,11 @@
       "preset": "recommended",
       "style": {
         "useConsistentTypeDefinitions": { "level": "error", "options": { "style": "type" } },
-        "noNonNullAssertion": "error"
+        "noNonNullAssertion": "error",
+        "noEnum": "error",
+        "noDefaultExport": "error"
       },
+      "correctness": { "noUnusedImports": "error" },
       "suspicious": { "noExplicitAny": "error" }
     }
   },

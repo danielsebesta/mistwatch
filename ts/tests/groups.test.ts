@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createBudgetEngine, poolRoom } from "../src/budget.ts";
+import { type BudgetEngine, createBudgetEngine, poolRoom } from "../src/budget.ts";
 import { defaultLimits } from "../src/config.ts";
 import { type DB, openDb } from "../src/db.ts";
 import { loadLinks, refreshLinks, summarize } from "../src/groups.ts";
@@ -88,6 +88,21 @@ describe("shared-budget detection", () => {
     seed(db, "c", 1.0, 0, 127.5, 12.75, later);
     refreshLinks(db, accs);
     expect(linksObj(db)).toEqual({ b: "a" });
+  });
+  it("passes an explicit now of 0 through to status", () => {
+    const db = openDb(":memory:");
+    seed(db, "a");
+    const real = eng(db);
+    const seen: (number | undefined)[] = [];
+    const spy: BudgetEngine = {
+      ...real,
+      status: (a, p, n) => {
+        seen.push(n);
+        return real.status(a, p, n);
+      },
+    };
+    summarize(spy, accounts("a"), 0);
+    expect(seen).toEqual([0, 0]);
   });
   it("disabled accounts are ignored", () => {
     const db = openDb(":memory:");

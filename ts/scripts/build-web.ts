@@ -17,7 +17,7 @@ const ASSETS = [
   "site.webmanifest",
 ];
 
-export async function buildWeb(): Promise<WebBuildResult> {
+export const buildWeb = async (): Promise<WebBuildResult> => {
   const here = dirname(fileURLToPath(import.meta.url));
   const webDir = join(here, "..", "web");
   const outDir = join(here, "..", "dist", "web");
@@ -42,13 +42,13 @@ export async function buildWeb(): Promise<WebBuildResult> {
   if (!js) throw new Error("esbuild produced no output");
   const css = readFileSync(join(webDir, "styles.css"), "utf8");
   const html = readFileSync(join(webDir, "index.html"), "utf8");
-  // function replacers so $ sequences in the bundle stay literal; </script> would break the inline block
+  // replacer callbacks keep $ literal; </script> must be escaped
   const out = html
     .replace("/*INLINE-STYLE*/", () => css.replace(/<\/style/gi, "<\\/style"))
     .replace("/*INLINE-SCRIPT*/", () => `\n"use strict";\n${js.replace(/<\/script/gi, "<\\/script")}`);
   writeFileSync(join(outDir, "index.html"), out);
   return { outDir, htmlBytes: out.length, jsBytes: js.length, cssBytes: css.length, assets: [...ASSETS] };
-}
+};
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const r = await buildWeb();

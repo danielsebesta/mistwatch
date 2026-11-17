@@ -5,7 +5,7 @@ import { h, ic } from "../dom.ts";
 import { ago, errMsg, when } from "../format.ts";
 import { act, codeBlock, emptyState, errState, pageHead, showNewKey, skel, td } from "../ui.ts";
 
-export async function viewKeys(main: HTMLElement): Promise<void> {
+export const viewKeys = async (main: HTMLElement): Promise<void> => {
   const list = h(
     "div",
     { class: "stack" },
@@ -134,9 +134,9 @@ export async function viewKeys(main: HTMLElement): Promise<void> {
     );
   };
   load();
-}
+};
 
-function toolsCard(cfgs: AgentConfig[], baseUrl: string): HTMLElement {
+const toolsCard = (cfgs: AgentConfig[], baseUrl: string): HTMLElement => {
   let cur = 0;
   const panel = h("div", { class: "stack", style: "gap:var(--sp-3)" });
   const tabs = h("div", { class: "tabs", role: "tablist", "aria-label": "Tool" });
@@ -214,4 +214,4 @@ function toolsCard(cfgs: AgentConfig[], baseUrl: string): HTMLElement {
       ".",
     ),
   );
-}
+};

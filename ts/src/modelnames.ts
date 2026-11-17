@@ -156,16 +156,11 @@ export const createModelNames = (db: DB) => {
       ]);
     }
     if (!rows.length) return 0;
-    db.conn.exec("BEGIN");
-    try {
+    db.tx(() => {
       db.stmt("DELETE FROM model_catalog").run();
       const ins = db.stmt("INSERT INTO model_catalog(model_id, name, aliases, description) VALUES(?,?,?,?)");
       for (const r of rows) ins.run(r[0], r[1], r[2], r[3]);
-      db.conn.exec("COMMIT");
-    } catch (e) {
-      db.conn.exec("ROLLBACK");
-      throw e;
-    }
+    });
     db.setMeta("catalog_ts", String(now));
     reload();
     return rows.length;

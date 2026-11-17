@@ -64,6 +64,12 @@ describe("budget pacing", () => {
     eng.tryReserve("a", "vibe", 1.0, 10);
     close(before - poolRoom(must(eng.status("a", "vibe", now))), 1.0);
   });
+  it("honours an explicit now of 0", () => {
+    const [, eng, now] = mk();
+    const s = must(eng.status("a", "vibe", 0));
+    close(s.snapshot_age_s, -now);
+    expect(must(s.windows.week).spent).toBe(0);
+  });
 });
 describe("pricing", () => {
   it("costs, aliases and fallback", () => {

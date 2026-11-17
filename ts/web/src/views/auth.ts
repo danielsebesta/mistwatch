@@ -5,7 +5,7 @@ import { DISCLAIMER } from "../labels.ts";
 import { handlers } from "../state.ts";
 import { showNewKey } from "../ui.ts";
 
-export function viewAuth(mode: "setup" | "login"): void {
+export const viewAuth = (mode: "setup" | "login"): void => {
   const setup = mode === "setup";
   const u = h("input", {
     class: "input",
@@ -33,6 +33,10 @@ export function viewAuth(mode: "setup" | "login"): void {
     let left = secs;
     btn.disabled = true;
     const tick = () => {
+      if (!btn.isConnected) {
+        clearInterval(lock);
+        return;
+      }
       if (left <= 0) {
         clearInterval(lock);
         btn.disabled = false;
@@ -96,4 +100,4 @@ export function viewAuth(mode: "setup" | "login"): void {
     ),
   );
   u.focus();
-}
+};

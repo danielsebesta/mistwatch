@@ -1,4 +1,4 @@
-// JSON contract between the web UI and the server (/api/*). Type-only: no DOM, no Node.
+// Web UI /api/* JSON contract. Type-only: no DOM, no Node.
 export type Pool = "vibe" | "api";
 export type WindowName = "5h" | "day" | "week";
 export type OkResponse = { ok: true };
