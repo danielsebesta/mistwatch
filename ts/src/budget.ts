@@ -69,6 +69,11 @@ export const createBudgetEngine = (db: DB, limits: Limits): BudgetEngine => {
   const ledger = createReservationLedger();
   const widest = Math.max(...Object.values(WINDOWS));
   const ikey = (canon: string, pool: string): string => `${canon}\u0000${pool}`;
+  const heldBy = (accounts: string[], pool: string): number => {
+    let s = 0;
+    for (const m of accounts) s += ledger.outstanding(ikey(m, pool));
+    return s;
+  };
   const burst = (name: string): number => {
     const v =
       name === "5h"
@@ -130,7 +135,7 @@ export const createBudgetEngine = (db: DB, limits: Limits): BudgetEngine => {
       windows: {},
       month_room: monthRoom,
       month_retry_at: monthRoom <= 0 ? snap.reset_at : null,
-      inflight: ledger.outstanding(ikey(canon, pool)),
+      inflight: heldBy(members.includes(account) ? members : [...members, account], pool),
       group: canon,
       members,
     };
@@ -158,7 +163,10 @@ export const createBudgetEngine = (db: DB, limits: Limits): BudgetEngine => {
     db,
     burst,
     status,
-    tryReserve: (account, pool, est, room) => ledger.tryReserve(ikey(db.canonical(account), pool), est, room),
+    tryReserve: (account, pool, est, room) => {
+      const group = db.members(db.canonical(account)).filter((m) => m !== account);
+      return ledger.tryReserve(ikey(account, pool), est, room - heldBy(group, pool));
+    },
   };
   return engine;
 };

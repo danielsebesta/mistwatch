@@ -48,6 +48,16 @@ describe("shared-budget detection", () => {
     e.tryReserve("b", "vibe", 0.5, 10);
     close(stat(e, "a", NOW + 1).inflight, 0.5);
   });
+  it("holds made before linking stay visible and bound the group", () => {
+    const db = openDb(":memory:");
+    for (const n of ["a", "b"]) seed(db, n, 1.0);
+    const e = eng(db);
+    expect(e.tryReserve("b", "vibe", 2.2, 2.93)).not.toBeNull();
+    refreshLinks(db, accounts("a", "b"));
+    close(stat(e, "a", NOW + 1).inflight, 2.2);
+    expect(e.tryReserve("a", "vibe", 2.2, 2.93)).toBeNull();
+    expect(e.tryReserve("a", "vibe", 0.5, 2.93)).not.toBeNull();
+  });
   it("zero usage merges conservatively then splits on divergence", () => {
     const db = openDb(":memory:");
     for (const n of ["a", "b"]) seed(db, n);

@@ -135,7 +135,6 @@ const recordSnapshot = (
   db.addSnapshot({ ts: now, account, pool, used_eur: used, initial_eur: initial, reset_at: resetAt, currency });
 };
 const syncAccount = async (fetchFn: FetchLike, cfg: Config, db: DB, acct: Account): Promise<SyncedPools> => {
-  const now = Date.now() / 1000;
   const out: Record<string, SyncPoolResult> = {};
   let data: Record<string, unknown> | null = null;
   try {
@@ -143,6 +142,8 @@ const syncAccount = async (fetchFn: FetchLike, cfg: Config, db: DB, acct: Accoun
   } catch (e) {
     console.warn(`budget sync failed for ${acct.name}:`, e);
   }
+  // stamp on arrival so bookings made during the fetch are not counted twice
+  const now = Date.now() / 1000;
   if (data !== null && Object.keys(data).length > 0) {
     for (const [fname, pool] of Object.entries(BUDGET_POOLS)) {
       const b = data[fname];

@@ -55,6 +55,19 @@ describe("sync", () => {
     expect(snap.used_eur).toBe(5);
     expect(snap.initial_eur).toBe(10);
   });
+  it("stamps the snapshot on arrival so bookings made during the fetch are not double counted", async () => {
+    const db = openDb(":memory:");
+    const cfg = defaultConfig();
+    cfg.accounts.push(acct("a", { vibe: "vibe-key" }));
+    const f = fakeFetch(async (url) => {
+      await new Promise((r) => setTimeout(r, 30));
+      db.addLedger({ ts: Date.now() / 1000, account: "a", pool: "vibe", cost_eur: 1, source: "proxy" });
+      return url.endsWith("/v1/billing/budget") ? json(BUDGET) : json({}, 404);
+    });
+    await syncAll(f, cfg, db);
+    const snap = must(db.latestSnapshot("a", "vibe"));
+    expect(db.costBetween(["a"], "vibe", snap.ts)).toBe(0);
+  });
   it("tries account keys vibe-first and falls through on errors", async () => {
     const db = openDb(":memory:");
     const cfg = defaultConfig();
