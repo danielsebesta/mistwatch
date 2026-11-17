@@ -44,6 +44,6 @@ npx svgo@3 --config brand/svgo.config.mjs src/mistwatch/web/*.svg
 
 ## Vzhled
 
-UI je jen tmavé. Paletu generuje `brand/palette.mjs` z jedné seed barvy (výchozí oranžová `#ff6a13`) pomocí Material You (M3, schéma Vibrant) a zapisuje ji jako tokeny do `src/mistwatch/web/index.html` a do `brand/palette.json`. Jiná barva: `cd brand && npm install && node palette.mjs "#3fb8af"`, pak `uv run --no-project --with fonttools --with pillow python brand/build.py` (logo a favicony se přebarví podle pozadí). Povrchy, obrysy, text a akcentové barvy odpovídají rolím M3 pro tmavé schéma (surface, surfaceContainer*, outline, onSurface, primary, error). Kontrast tokenů ověří `python brand/contrast.py`.
+UI je jen tmavé. Paletu generuje `brand/palette.mjs` z jedné seed barvy (výchozí oranžová `#ff8204`) pomocí Material You (M3, schéma Vibrant) a zapisuje ji jako tokeny do `src/mistwatch/web/index.html` a do `brand/palette.json`. Jiná barva: `cd brand && npm install && node palette.mjs "#3fb8af"`, pak `uv run --no-project --with fonttools --with pillow python brand/build.py` (logo a favicony se přebarví podle pozadí). Povrchy, obrysy, text a akcentové barvy odpovídají rolím M3 pro tmavé schéma (surface, surfaceContainer*, outline, onSurface, primary, error). Kontrast tokenů ověří `python brand/contrast.py`.
 
 Písmo Inter se načítá z Google Fonts. Je to jediný externí požadavek stránky; bez internetu se použije systémové písmo.
