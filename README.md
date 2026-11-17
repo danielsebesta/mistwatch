@@ -17,7 +17,16 @@ Adresa `/`, přihlášení účtem (první spuštění nabídne vytvoření). St
 - **Přehled** – rozpočty Vibe a Studio, limity za 5 h / den / týden / měsíc, graf výdajů a poslední požadavky.
 - **Účty a klíče** – Mistral účty, ke každému Vibe klíč (lze převzít z Vibe CLI jedním klikem) a Studio API klíč. Klíč se před uložením ověří a načte se rozpočet.
 - **API klíče** – klíče `mw-…` pro tvoje nástroje; celý klíč se ukáže jen při vytvoření.
+- **Napojení nástrojů** (na stránce API klíče) – hotové konfigurace pro OpenCode, Pi a Vibe CLI ke zkopírování nebo stažení, plus proměnné pro ostatní nástroje s OpenAI API.
 - **Nastavení** – změna hesla, odhlášení, další uživatelé a názvy modelů v grafech a tabulkách.
+
+## Napojení agentů
+
+Kromě UI umí CLI zapsat konfiguraci přímo: `mistwatch agent-config opencode --write`, `mistwatch agent-config pi --write`, `mistwatch vibe-config`. Klíč se čte z proměnné `MISTWATCH_TOKEN`.
+
+Claude Code (formát Anthropic Messages) a aktuální Codex CLI (formát OpenAI Responses) napřímo nefungují, protože Mistral tyto formáty nenabízí. Je potřeba překládací proxy (např. LiteLLM) před Mistwatch.
+
+Popis pro agenty a integrátory je na `/llms.txt` (bez přihlášení): adresa, autentizace, modely `auto`, chyby 401 a 429 s `Retry-After` a doporučený postup integrace.
 
 ## Bezpečnost
 

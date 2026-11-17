@@ -372,6 +372,7 @@ const ICONS = {
   x: '<path d="m6 6 12 12M18 6 6 18"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.1"/>',
   copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>',
+  download: '<path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/>',
   refresh: '<path d="M20 11a8 8 0 0 0-14.5-4M4 4v4h4M4 13a8 8 0 0 0 14.5 4M20 20v-4h-4"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
@@ -906,7 +907,9 @@ async function viewKeys(main) {
   main.append(pageHead("API keys", "Keys that let your tools (Vibe CLI, Pi, OpenCode, scripts) use Mistwatch. The full key is shown only once, when you create it."), list);
   const load = async () => {
     let d;
+    let cfgs = [];
     try { d = await api("GET", "/apikeys"); } catch (e) { list.replaceChildren(errState(e.message, load)); return; }
+    try { cfgs = await api("GET", "/agent-config"); } catch (e) { cfgs = []; }
     const nameIn = h("input", { class: "input", id: "kn", placeholder: "e.g. vibe-cli", autocomplete: "off", spellcheck: "false" });
     const create = act(async () => { const r = await api("POST", "/apikeys", { name: nameIn.value }); showNewKey(r.key.name, r.secret); load(); });
     nameIn.addEventListener("keydown", e => { if (e.key === "Enter") create(); });
@@ -920,14 +923,42 @@ async function viewKeys(main) {
               if (await confirmDlg({ title: `Revoke "${k.name}"?`, body: "Tools using this key stop working immediately.", ok: "Revoke key", danger: true })) { await api("DELETE", "/apikeys/" + k.id); load(); } }) }, "Revoke"))))))) :
           h("div", { style: "margin-bottom:var(--sp-4)" }, emptyState("key", "No keys yet", "Without a key, any app on this computer can use Mistwatch. Create one key for each tool.")),
         d.keys.length ? h("div", { style: "height:var(--sp-4)" }) : null, form),
-      h("section", { class: "card", "aria-label": "How to use" }, h("div", { class: "card-h" }, h("h2", {}, "How to use it")),
-        h("div", { class: "stack", style: "gap:var(--sp-3)" },
-          h("div", { class: "sm mut" }, "Base URL (OpenAI and Mistral compatible)"), codeBlock(d.base_url),
-          h("div", { class: "sm mut" }, "Example"),
-          codeBlock(`curl ${d.base_url}/chat/completions \\\n  -H "Authorization: Bearer mw-…" -H "Content-Type: application/json" \\\n  -d '{"model":"auto","messages":[{"role":"user","content":"Hello"}]}'`),
-          h("p", { class: "sm mut" }, "Model ", h("code", {}, "auto"), " picks a model for each request based on how hard it is. ", h("code", {}, "auto-fast"), " prefers cheaper models, ", h("code", {}, "auto-max"), " aims for quality."))));
+      toolsCard(cfgs, d.base_url));
   };
   load();
+}
+function toolsCard(cfgs, baseUrl) {
+  let cur = 0;
+  const panel = h("div", { class: "stack", style: "gap:var(--sp-3)" });
+  const tabs = h("div", { class: "tabs", role: "tablist", "aria-label": "Tool" });
+  const show = i => {
+    cur = i;
+    const c = cfgs[i];
+    tabs.querySelectorAll(".tab").forEach((t, j) => { t.setAttribute("aria-selected", j === i); t.tabIndex = j === i ? 0 : -1; });
+    const dl = () => {
+      const a = h("a", { href: URL.createObjectURL(new Blob([c.content], { type: "text/plain" })), download: c.filename });
+      document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    };
+    panel.replaceChildren(
+      h("div", { class: "sm mut" }, c.tool === "env" ? "Set these variables" : ["Goes in ", h("code", {}, c.path)]),
+      codeBlock(c.content),
+      h("p", { class: "sm mut" }, c.note),
+      ...(c.tool === "env" ? [h("div", { class: "sm mut" }, "Quick test"),
+        codeBlock(`curl ${baseUrl}/chat/completions \\\n  -H "Authorization: Bearer mw-…" -H "Content-Type: application/json" \\\n  -d '{"model":"auto","messages":[{"role":"user","content":"Hello"}]}'`)] : []),
+      h("div", { class: "row" }, c.tool === "env" ? null : h("button", { class: "btn", onclick: dl }, ic("download"), "Download " + c.filename)));
+  };
+  cfgs.forEach((c, i) => tabs.append(h("button", { class: "tab", role: "tab", onclick: () => show(i) }, c.label)));
+  tabs.addEventListener("keydown", e => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    show((cur + (e.key === "ArrowRight" ? 1 : cfgs.length - 1)) % cfgs.length);
+    tabs.querySelectorAll(".tab")[cur].focus();
+  });
+  if (cfgs.length) show(0);
+  else panel.append(h("p", { class: "sm mut" }, "Base URL: ", h("code", {}, baseUrl)));
+  return h("section", { class: "card", "aria-label": "Connect your tools" },
+    h("div", { class: "card-h" }, h("h2", {}, "Connect your tools"), h("span", { class: "grow" }), cfgs.length ? tabs : null),
+    panel,
+    h("p", { class: "sm mut", style: "margin-top:var(--sp-4)" }, "Model ", h("code", {}, "auto"), " picks a model for each request based on how hard it is. ", h("code", {}, "auto-fast"), " prefers cheaper models, ", h("code", {}, "auto-max"), " aims for quality. Claude Code and recent Codex need a translating proxy; see ", h("a", { href: "/llms.txt", target: "_blank", rel: "noopener" }, "llms.txt"), "."));
 }
 function showNewKey(name, secret, first) {
   const m = modal([h("h2", {}, first ? "Account created. Your first API key" : `Key "${name}"`),
