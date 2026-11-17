@@ -11,6 +11,7 @@ from datetime import datetime
 
 import httpx
 
+from . import agents
 from . import config as C
 
 TEMPLATE = """\
@@ -228,43 +229,6 @@ Other tools: base URL {_server_url(cfg)}/v1, API key = that same key.""")
     return 0
 
 
-def _agent_models():
-    """(id, display name, context, vision) for `auto` plus every model the router can pick."""
-    from .modelnames import autoname, builtin
-    from .router import LADDER
-
-    out = [("auto", "Auto (budget-aware router)", 262_144, True)]
-    seen = set()
-    for st in LADDER:
-        if st.model not in seen:
-            seen.add(st.model)
-            out.append((st.model, builtin(st.model) or autoname(st.model), st.ctx, st.vision))
-    return out
-
-
-def _pi_config(cfg, env):
-    return {"providers": {"mistwatch": {
-        "baseUrl": f"{_server_url(cfg)}/v1", "api": "openai-completions", "apiKey": env,
-        "models": [{"id": i, "name": n, "reasoning": i != "mistral-small-2603", "input": ["text", "image"] if v else ["text"],
-                    "contextWindow": c, "maxTokens": 32_768} for i, n, c, v in _agent_models()]}}}
-
-
-def _opencode_config(cfg, env):
-    return {"$schema": "https://opencode.ai/config.json", "provider": {"mistwatch": {
-        "npm": "@ai-sdk/openai-compatible", "name": "mistwatch",
-        "options": {"baseURL": f"{_server_url(cfg)}/v1", "apiKey": "{env:%s}" % env},
-        "models": {i: {"name": n, "limit": {"context": c, "output": 32_768}} for i, n, c, v in _agent_models()}}}}
-
-
-def _merge(dst: dict, src: dict) -> dict:
-    for k, v in src.items():
-        if isinstance(v, dict) and isinstance(dst.get(k), dict):
-            _merge(dst[k], v)
-        else:
-            dst[k] = v
-    return dst
-
-
 def cmd_agent_config(a):
     """Print (or --write, merged into the existing file) a provider block for Pi or OpenCode."""
     from pathlib import Path
@@ -272,9 +236,9 @@ def cmd_agent_config(a):
     cfg = C.load()
     env = a.env
     if a.tool == "pi":
-        data, path = _pi_config(cfg, env), Path.home() / ".pi" / "agent" / "models.json"
+        data, path = agents.pi(_server_url(cfg), env), Path.home() / ".pi" / "agent" / "models.json"
     else:
-        data, path = _opencode_config(cfg, env), Path.home() / ".config" / "opencode" / "opencode.json"
+        data, path = agents.opencode(_server_url(cfg), env), Path.home() / ".config" / "opencode" / "opencode.json"
     if not a.write:
         print(f"# {path}\n{json.dumps(data, indent=2)}")
         print(f"\n# set {env}=<a key from the API keys page>; add --write to merge this into the file", file=sys.stderr)
@@ -288,7 +252,7 @@ def cmd_agent_config(a):
             return 1
         path.with_suffix(".json.bak").write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_merge(cur, data), indent=2) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(agents.merge(cur, data), indent=2) + "\n", encoding="utf-8")
     print(f"wrote {path} (backup: .json.bak). Set {env}=<key from the API keys page>.")
     return 0
 

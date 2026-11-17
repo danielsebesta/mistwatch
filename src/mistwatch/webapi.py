@@ -7,6 +7,7 @@ from importlib import resources
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 
+from . import agents
 from .groups import summarize
 from .usage import DIMENSIONS, RANGES, usage
 from .signin import SignInError
@@ -313,6 +314,14 @@ def register(app: FastAPI) -> None:
             raise HTTPException(404, "Sign-in attempt does not exist.")
         return {"ok": True}
 
+    # ---------- tool configs ----------
+    def base_of(request: Request) -> str:
+        return str(request.base_url).rstrip("/")
+
+    @api.get("/agent-config")
+    async def agent_configs(request: Request, u: dict = Depends(user)):
+        return [agents.render(t, base_of(request)) for t in agents.TOOLS]
+
     # ---------- proxy API keys ----------
     @api.get("/apikeys")
     async def apikeys(request: Request, u: dict = Depends(user)):
@@ -338,6 +347,11 @@ def register(app: FastAPI) -> None:
         html = resources.files("mistwatch").joinpath("web/index.html").read_text(encoding="utf-8")
         return HTMLResponse(html, headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY",
                                            "Referrer-Policy": "no-referrer"})
+
+    @app.get("/llms.txt", include_in_schema=False)
+    async def llms(request: Request):
+        return Response(agents.llms_txt(base_of(request)), media_type="text/plain; charset=utf-8",
+                        headers={"Cache-Control": "no-cache"})
 
     @app.get("/", response_class=HTMLResponse)
     async def index():
