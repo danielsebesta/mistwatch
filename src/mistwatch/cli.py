@@ -223,7 +223,7 @@ api_key_env_var = "MISTWATCH_TOKEN"
 backend = "mistral"
 
 # then re-point your models' provider = "mistwatch" and set
-#   MISTWATCH_TOKEN=<a key generated on the "API klíče" page of the web UI>
+#   MISTWATCH_TOKEN=<a key generated on the "API keys" page of the web UI>
 Other tools: base URL {_server_url(cfg)}/v1, API key = that same key.""")
     return 0
 

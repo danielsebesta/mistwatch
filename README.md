@@ -14,10 +14,10 @@ mistwatch serve        # pak otevři http://127.0.0.1:8787/
 
 Adresa `/`, přihlášení účtem (první spuštění nabídne vytvoření). Stránky:
 
-- **Přehled** – rozpočty Vibe a Studio, okna 5 h / den / týden / měsíc, poslední požadavky.
+- **Přehled** – rozpočty Vibe a Studio, limity za 5 h / den / týden / měsíc, graf výdajů a poslední požadavky.
 - **Účty a klíče** – Mistral účty, ke každému Vibe klíč (lze převzít z Vibe CLI jedním klikem) a Studio API klíč. Klíč se před uložením ověří a načte se rozpočet.
 - **API klíče** – klíče `mw-…` pro tvoje nástroje; celý klíč se ukáže jen při vytvoření.
-- **Nastavení** – změna hesla, další uživatelé.
+- **Nastavení** – změna hesla, odhlášení, další uživatelé a názvy modelů v grafech a tabulkách.
 
 ## Bezpečnost
 
@@ -44,4 +44,6 @@ npx svgo@3 --config brand/svgo.config.mjs src/mistwatch/web/*.svg
 
 ## Vzhled
 
-UI je jen tmavé. Paletu generuje `brand/palette.mjs` z jedné seed barvy (výchozí amber-oranžová `#ff8a1f`) pomocí Material You (M3, schéma Vibrant) a zapisuje ji jako tokeny do `src/mistwatch/web/index.html` a do `brand/palette.json`. Jiná barva: `cd brand && npm install && node palette.mjs "#3fb8af"`, pak `uv run --no-project --with fonttools --with pillow python brand/build.py` (logo a favicony se přebarví podle pozadí). Kontrast tokenů ověří `python brand/contrast.py`.
+UI je jen tmavé. Paletu generuje `brand/palette.mjs` z jedné seed barvy (výchozí amber-oranžová `#ff8a1f`) pomocí Material You (M3, schéma Vibrant) a zapisuje ji jako tokeny do `src/mistwatch/web/index.html` a do `brand/palette.json`. Jiná barva: `cd brand && npm install && node palette.mjs "#3fb8af"`, pak `uv run --no-project --with fonttools --with pillow python brand/build.py` (logo a favicony se přebarví podle pozadí). Povrchy, obrysy, text a akcentové barvy odpovídají rolím M3 pro tmavé schéma (surface, surfaceContainer*, outline, onSurface, primary, error). Kontrast tokenů ověří `python brand/contrast.py`.
+
+Písmo Inter se načítá z Google Fonts. Je to jediný externí požadavek stránky; bez internetu se použije systémové písmo.
