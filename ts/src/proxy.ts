@@ -99,6 +99,11 @@ const pipe = (
   };
   return new ReadableStream<Uint8Array>({
     start(c) {
+      if (signal.aborted) {
+        c.error(signal.reason);
+        fin();
+        return;
+      }
       signal.addEventListener(
         "abort",
         () => {
