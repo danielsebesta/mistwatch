@@ -4,13 +4,13 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { dumpJson, merge, opencode, pi } from "./agents.ts";
+import { dumpJson, merge, opencode, opencodeConfigPath, pi } from "./agents.ts";
 import type { PoolStatusDict } from "./types.ts";
 
 const USAGE = `usage: mistwatch <command> [options]
 
 commands:
-  setup          one-step setup for your tools (--yes --harness --start --json)
+  setup          one-step setup for your tools (--yes --harness --port --start --json)
   init           write the config template (--force, --import-vibe)
   import-vibe    add the Vibe CLI keyring login as an account (--name)
   status         budget status of every account/pool (--json)
@@ -330,8 +330,7 @@ const cmdAgentConfig = async (args: string[]): Promise<number> => {
   const base = serverUrl(loadConfig());
   const home = homedir();
   const data = tool === "pi" ? pi(base, env) : opencode(base, env);
-  const path =
-    tool === "pi" ? join(home, ".pi", "agent", "models.json") : join(home, ".config", "opencode", "opencode.json");
+  const path = tool === "pi" ? join(home, ".pi", "agent", "models.json") : opencodeConfigPath(home, process.platform);
   if (!values.write) {
     console.log(`# ${path}\n${dumpJson(data)}`);
     console.error(`\n# set ${env}=<a key from the API keys page>; add --write to merge this into the file`);

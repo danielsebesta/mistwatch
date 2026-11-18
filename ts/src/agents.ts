@@ -1,3 +1,4 @@
+import { isAbsolute, join } from "node:path";
 import type { AgentConfig, AgentTool } from "../shared/api.ts";
 import { autoname, builtin } from "./modelnames.ts";
 import { LADDER } from "./router.ts";
@@ -67,6 +68,15 @@ export const merge = (dst: Record<string, unknown>, src: Record<string, unknown>
   }
   return dst;
 };
+export const opencodeConfigPath = (
+  home: string,
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv = process.env,
+): string => {
+  const xdg = env.XDG_CONFIG_HOME;
+  const base = platform !== "win32" && xdg && isAbsolute(xdg) ? xdg : join(home, ".config");
+  return join(base, "opencode", "opencode.json");
+};
 export const TOOLS: Record<AgentTool, { label: string; path: string; language: string }> = {
   opencode: { label: "OpenCode", path: "~/.config/opencode/opencode.json", language: "json" },
   pi: { label: "Pi", path: "~/.pi/agent/models.json", language: "json" },
@@ -127,7 +137,7 @@ export const llmsTxt = (base: string): string => `# Mistwatch
 
 ## Set up a tool
 
-- Run one command: \`npx mistwatch setup --yes --harness vibe\` (or \`opencode\`, \`pi\`, or a list such as \`vibe,opencode\`). It creates the config, links the Vibe CLI login, creates a client token (shown once) and writes the tool's provider config. Any file it changes is copied to \`<file>.<timestamp>.bak\` first and merged, never replaced. Safe to run again. Needs Node 24+.
+- Run one command: \`npx mistwatch setup --yes --harness vibe\` (or \`opencode\`, \`pi\`, or a list such as \`vibe,opencode\`). It creates the config, links the Vibe CLI login, creates a client token (shown once) and writes the tool's provider config. Any file it changes is copied to \`<file>.<timestamp>.bak\` first and merged, never replaced. Safe to run again. Needs Node 24+. If the default port 8787 is taken, add \`--port N\`: it writes the port into config.toml and into the tool configs (\`serve --port N\` alone changes neither).
 - Give the token to tools through the environment variable \`${ENV}\`. Never ask the user to paste keys into chat and never print the token again.
 - Verify with \`mistwatch status\` and, while the proxy runs, \`curl -H "Authorization: Bearer $${ENV}" ${base}/v1/models\`.
 - If the Vibe login is missing, the user runs \`vibe --setup\` and then \`mistwatch import-vibe\`.

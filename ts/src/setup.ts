@@ -1,11 +1,25 @@
-import { constants, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  constants,
+  copyFileSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { Interface } from "node:readline/promises";
 import { WriteStream } from "node:tty";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import { parse } from "smol-toml";
-import { ENV, merge, opencode, pi, TOOLS, vibe } from "./agents.ts";
+import { ENV, merge, opencode, opencodeConfigPath, pi, TOOLS, vibe } from "./agents.ts";
 import { createBudgetEngine } from "./budget.ts";
 import { CONFIG_TEMPLATE, configPath } from "./config.ts";
 import { type App, linkVibeLogin, openApp } from "./open.ts";
@@ -19,6 +33,7 @@ export const HARNESSES: readonly Harness[] = ["vibe", "opencode", "pi"];
 export type SetupOptions = {
   yes: boolean;
   harness: Harness[] | null;
+  port: number | null;
   noBanner: boolean;
   start: boolean;
   json: boolean;
@@ -49,6 +64,7 @@ class SetupError extends Error {}
 const FLAGS = {
   yes: { type: "boolean", short: "y", default: false },
   harness: { type: "string" },
+  port: { type: "string" },
   "no-banner": { type: "boolean", default: false },
   start: { type: "boolean", default: false },
   json: { type: "boolean", default: false },
@@ -65,10 +81,11 @@ without a timestamped .bak copy, and unchanged files are left alone.
 options:
   -y, --yes            never ask, use defaults (also when stdin is not a terminal)
       --harness LIST   comma-separated: vibe, opencode, pi or all (default: vibe)
+      --port N         write this port into config.toml and the tool configs (default: keep the configured one, 8787 for a new config)
       --start          run the proxy when setup is done
       --no-banner      skip the logo
-      --json           print what was done as JSON (the new token is masked)
-      --show-token     with --json: include the new token in the output
+      --json           print what was done as JSON; no client token is created unless --show-token is also given
+      --show-token     with --json: create the client token (if none exists) and include it in the output
       --force          replace an existing config.toml (a backup is kept)
   -h, --help           show this help`;
 const isHarness = (s: string): s is Harness => (HARNESSES as readonly string[]).includes(s);
@@ -85,6 +102,12 @@ export const parseHarnesses = (raw: string): Harness[] => {
     throw new SetupArgError(`--harness expects ${HARNESSES.join(", ")} or all (got '${bad.join(",") || raw}')`);
   return HARNESSES.filter((h) => names.includes(h));
 };
+const parsePort = (raw: string | undefined): number | null => {
+  if (raw === undefined) return null;
+  const port = /^\d+$/.test(raw.trim()) ? Number(raw.trim()) : 0;
+  if (port < 1 || port > 65535) throw new SetupArgError(`--port expects an integer from 1 to 65535 (got '${raw}')`);
+  return port;
+};
 const parseFlags = (args: string[]) => {
   try {
     return parseArgs({ args, options: FLAGS, strict: true }).values;
@@ -99,6 +122,7 @@ export const parseSetupArgs = (args: string[]): SetupOptions => {
   return {
     yes: v.yes,
     harness: v.harness === undefined ? null : parseHarnesses(v.harness),
+    port: parsePort(v.port),
     noBanner: v["no-banner"],
     start: v.start,
     json: v.json,
@@ -226,11 +250,19 @@ export const backupFile = (path: string, now: Date): string => {
   copyFileSync(path, dest, constants.COPYFILE_EXCL);
   return dest;
 };
-const writeAtomic = (path: string, text: string): void => {
-  mkdirSync(dirname(path), { recursive: true });
-  const tmp = `${path}.mistwatch-tmp`;
-  writeFileSync(tmp, text, "utf8");
-  renameSync(tmp, path);
+const danglingTarget = (path: string): string => {
+  try {
+    return lstatSync(path).isSymbolicLink() ? resolve(dirname(path), readlinkSync(path)) : path;
+  } catch {
+    return path;
+  }
+};
+const resolveTarget = (path: string): string => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return danglingTarget(path);
+  }
 };
 type FileAction = "created" | "updated" | "unchanged";
 export const applyFile = (
@@ -238,11 +270,25 @@ export const applyFile = (
   plan: (raw: string | null) => string | null,
   now: Date,
 ): { action: FileAction; backup: string | null } => {
-  const raw = existsSync(path) ? readFileSync(path, "utf8") : null;
+  const target = resolveTarget(path);
+  const raw = existsSync(target) ? readFileSync(target, "utf8") : null;
   const next = plan(raw);
   if (next === null) return { action: "unchanged", backup: null };
-  const backup = raw === null ? null : backupFile(path, now);
-  writeAtomic(path, next);
+  mkdirSync(dirname(target), { recursive: true });
+  const tmp = `${target}.mistwatch-tmp`;
+  let backup: string | null = null;
+  try {
+    writeFileSync(tmp, next, "utf8");
+    if (raw !== null) {
+      chmodSync(tmp, statSync(target).mode & 0o7777);
+      backup = backupFile(path, now);
+    }
+    renameSync(tmp, target);
+  } catch (e) {
+    rmSync(tmp, { force: true });
+    if (backup) rmSync(backup, { force: true });
+    throw e;
+  }
   return { action: raw === null ? "created" : "updated", backup };
 };
 export const planJson = (raw: string | null, data: Record<string, unknown>): string | null => {
@@ -303,15 +349,48 @@ export const planToml = (raw: string | null, base: string): string | null => {
     throw new SetupError("could not edit the existing mistwatch provider; edit it by hand");
   return next;
 };
+const SERVER_HEAD = /^\s*\[\s*server\s*\]\s*(#.*)?$/;
+const PORT_LINE = /^(\s*port\s*=\s*)\d+(\s*(?:#.*)?)$/;
+const serverPort = (text: string): unknown => {
+  const server = parse(text).server;
+  return isRec(server) ? server.port : undefined;
+};
+export const planPort = (raw: string, port: number): string | null => {
+  try {
+    if (serverPort(raw) === port) return null;
+  } catch {
+    throw new SetupError("not valid TOML, left untouched; set [server] port by hand");
+  }
+  const eol = raw.includes("\r\n") ? "\r\n" : "\n";
+  const lines = raw.split(/\r?\n/);
+  const head = lines.findIndex((l) => SERVER_HEAD.test(l));
+  let next: string;
+  if (head === -1) {
+    next = `${raw.trimEnd()}${raw.trim() === "" ? "" : eol + eol}[server]${eol}port = ${port}${eol}`;
+  } else {
+    let end = head + 1;
+    while (end < lines.length && !/^\s*\[/.test(lines[end] ?? "")) end++;
+    const at = lines.findIndex((l, i) => i > head && i < end && PORT_LINE.test(l));
+    if (at === -1) lines.splice(head + 1, 0, `port = ${port}`);
+    else lines[at] = (lines[at] ?? "").replace(PORT_LINE, `$1${port}$2`);
+    next = lines.join(eol);
+  }
+  try {
+    if (serverPort(next) === port) return next;
+  } catch {
+    // reported below
+  }
+  throw new SetupError("could not set [server] port in config.toml; edit it by hand");
+};
 type Status = "ok" | "warn" | "fail" | "skip";
 type Step = { step: string; status: Status; message: string };
 type HarnessResult = { harness: Harness; path: string; action: FileAction | "failed"; backup: string | null };
 type Report = {
   ok: boolean;
   steps: Step[];
-  config: { path: string; action: "created" | "kept" | "replaced" | "failed"; backup: string | null };
+  config: { path: string; action: "created" | "kept" | "replaced" | "updated" | "failed"; backup: string | null };
   vibe_login: "imported" | "linked" | "missing" | "failed";
-  client_token: { created: boolean; existing_keys: number; masked: string | null; token?: string };
+  client_token: { created: boolean; existing_keys: number; masked: string | null; token?: string; hint?: string };
   harnesses: HarnessResult[];
   status: { ok: boolean; accounts: number; pools_with_budget: number } | null;
   started: boolean;
@@ -356,17 +435,27 @@ const stepConfig = (ctx: Ctx): void => {
   const path = configPath();
   const shown = pretty(path, ctx.deps.home);
   const exists = existsSync(path);
+  const { port } = ctx.opts;
   const cfg = ctx.report.config;
   cfg.path = path;
-  if (exists && !ctx.opts.force) {
-    cfg.action = "kept";
-    note(ctx, "ok", "Config", `${shown} already exists, keeping it`);
-    return;
-  }
-  const done = applyFile(path, () => CONFIG_TEMPLATE, ctx.deps.now());
-  cfg.action = exists ? "replaced" : "created";
+  const fresh = !exists || ctx.opts.force;
+  const plan = (raw: string | null): string | null => {
+    const base = fresh ? CONFIG_TEMPLATE : (raw ?? "");
+    const next = port === null ? base : (planPort(base, port) ?? base);
+    return fresh || next !== raw ? next : null;
+  };
+  const done = applyFile(path, plan, ctx.deps.now());
   cfg.backup = done.backup;
-  note(ctx, "ok", "Config", exists ? `replaced ${shown} (backup kept)` : `created ${shown}`);
+  if (done.action === "unchanged") {
+    cfg.action = "kept";
+    note(ctx, "ok", "Config", `${shown} already exists${port === null ? "" : ` and uses port ${port}`}, keeping it`);
+  } else if (!fresh) {
+    cfg.action = "updated";
+    note(ctx, "ok", "Config", `set port ${port} in ${shown} (backup kept)`);
+  } else {
+    cfg.action = exists ? "replaced" : "created";
+    note(ctx, "ok", "Config", exists ? `replaced ${shown} (backup kept)` : `created ${shown}`);
+  }
 };
 const stepVibe = async (ctx: Ctx, store: Store): Promise<void> => {
   const linked = store.listAccounts().find((a) => a.keys.vibe === VIBE_REF);
@@ -409,6 +498,13 @@ const stepToken = (ctx: Ctx, store: Store): void => {
     );
     return;
   }
+  if (ctx.opts.json && !ctx.opts.showToken) {
+    tok.token = "skipped";
+    tok.hint =
+      "no client token created: --json without --show-token would lose it; add --show-token or run without --json";
+    note(ctx, "skip", "Client token", "not created (--json without --show-token would lose it)");
+    return;
+  }
   const [, secret] = store.createApiKey("setup");
   ctx.newToken = secret;
   tok.created = true;
@@ -447,7 +543,7 @@ const pickHarnesses = async (ctx: Ctx): Promise<Harness[]> => {
 };
 const HARNESS_PATHS = (deps: SetupDeps): Record<Harness, string> => ({
   vibe: join(deps.vibeHome, "config.toml"),
-  opencode: join(deps.home, ".config", "opencode", "opencode.json"),
+  opencode: opencodeConfigPath(deps.home, deps.platform),
   pi: join(deps.home, ".pi", "agent", "models.json"),
 });
 const stepHarness = (ctx: Ctx, h: Harness, cfg: Config): void => {
@@ -532,7 +628,7 @@ export const runSetup = async (args: string[], deps: SetupDeps): Promise<number>
   } catch (e) {
     if (!(e instanceof SetupArgError)) throw e;
     io.err(`mistwatch: ${e.message}`);
-    io.err("usage: mistwatch setup [--yes] [--harness vibe,opencode,pi] [--no-banner] [--start] [--json]");
+    io.err("usage: mistwatch setup [--yes] [--harness vibe,opencode,pi] [--port N] [--no-banner] [--start] [--json]");
     return 2;
   }
   if (opts.help) {
@@ -568,8 +664,9 @@ export const runSetup = async (args: string[], deps: SetupDeps): Promise<number>
     app = openApp();
     cfg = app.cfg;
     await stepVibe(ctx, app.store);
+    const picked = await pickHarnesses(ctx);
     stepToken(ctx, app.store);
-    for (const h of await pickHarnesses(ctx)) stepHarness(ctx, h, app.cfg);
+    for (const h of picked) stepHarness(ctx, h, app.cfg);
     stepVerify(ctx, app);
   } catch (e) {
     note(ctx, "fail", "Setup", errText(e));
@@ -590,25 +687,37 @@ export const runSetup = async (args: string[], deps: SetupDeps): Promise<number>
   if (failed) io.err(`mistwatch: setup failed: ${failed.step}: ${failed.message}`);
   return ctx.report.ok ? 0 : 1;
 };
-const createAsk = (): Pick<SetupIo, "ask" | "close"> => {
+export const createAsk = (
+  input: NodeJS.ReadableStream = process.stdin,
+  output: NodeJS.WritableStream = process.stdout,
+): Pick<SetupIo, "ask" | "close"> => {
   let rl: Interface | null = null;
+  let eof = false;
   return {
     ask: async (question) => {
+      if (eof) return null;
       if (!rl) {
         const { createInterface } = await import("node:readline/promises");
-        rl = createInterface({ input: process.stdin, output: process.stdout });
-        rl.on("SIGINT", () => {
-          process.stdout.write("\n");
+        const created = createInterface({ input, output });
+        rl = created;
+        created.on("SIGINT", () => {
+          output.write("\n");
           process.exit(130);
+        });
+        created.once("close", () => {
+          if (rl !== created) return;
+          rl = null;
+          eof = true;
         });
       }
       const r = rl;
       const closed = new Promise<null>((res) => r.once("close", () => res(null)));
-      return Promise.race([r.question(question), closed]);
+      return Promise.race([r.question(question).catch(() => null), closed]);
     },
     close: () => {
-      rl?.close();
+      const r = rl;
       rl = null;
+      r?.close();
     },
   };
 };

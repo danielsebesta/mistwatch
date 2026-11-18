@@ -19,7 +19,7 @@ Without questions (scripts and AI agents; see `../AGENTS.md`):
 npx mistwatch setup --yes --harness vibe          # or opencode, pi, vibe,opencode,pi, all
 ```
 
-Options: `--start` runs the proxy afterwards, `--json` prints what was done (token masked, `--show-token` includes it), `--no-banner`, `--force` replaces `config.toml`. Set the printed token as `MISTWATCH_TOKEN` so the tools can use it.
+Options: `--start` runs the proxy afterwards, `--port N` writes the port into `config.toml` and the tool configs, `--json` prints what was done (no client token is created unless `--show-token` is also given, which includes it), `--no-banner`, `--force` replaces `config.toml`. Set the printed token as `MISTWATCH_TOKEN` so the tools can use it.
 
 From a checkout:
 

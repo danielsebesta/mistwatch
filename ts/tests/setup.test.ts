@@ -1,24 +1,45 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { PassThrough } from "node:stream";
 import { parse } from "smol-toml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { vibe } from "../src/agents.ts";
 import {
   banner,
   type ColorDepth,
+  createAsk,
   createStyle,
   detectDepth,
   parseChoice,
   parseHarnesses,
   parseSetupArgs,
   planJson,
+  planPort,
   planToml,
   runSetup,
   SetupArgError,
   type SetupDeps,
 } from "../src/setup.ts";
 import type { Config } from "../src/types.ts";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("node:fs")>();
+  return { ...orig, renameSync: vi.fn(orig.renameSync) };
+});
 
 process.env.MISTWATCH_NO_KEYRING = "1";
 
@@ -29,7 +50,7 @@ const TOKEN_RE = /mw-[A-Za-z0-9_-]{20,}/g;
 let root: string;
 let home: string;
 const saved: Record<string, string | undefined> = {};
-const ENV_KEYS = ["MISTWATCH_HOME", "MISTWATCH_CONFIG", "HOME", "USERPROFILE"] as const;
+const ENV_KEYS = ["MISTWATCH_HOME", "MISTWATCH_CONFIG", "HOME", "USERPROFILE", "XDG_CONFIG_HOME"] as const;
 const setEnv = (k: string, v: string | undefined): void => {
   if (v === undefined) delete process.env[k];
   else process.env[k] = v;
@@ -101,6 +122,7 @@ beforeEach(() => {
   setEnv("MISTWATCH_CONFIG", undefined);
   setEnv("HOME", home);
   setEnv("USERPROFILE", home);
+  setEnv("XDG_CONFIG_HOME", undefined);
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -113,6 +135,7 @@ describe("setup flag parsing", () => {
     expect(parseSetupArgs([])).toEqual({
       yes: false,
       harness: null,
+      port: null,
       noBanner: false,
       start: false,
       json: false,
@@ -140,6 +163,9 @@ describe("setup flag parsing", () => {
     expect(() => parseSetupArgs(["--bogus"])).toThrow(SetupArgError);
     expect(() => parseSetupArgs(["--harness"])).toThrow(SetupArgError);
     expect(() => parseSetupArgs(["--json", "--start"])).toThrow("cannot be combined");
+    for (const bad of ["0", "65536", "80x", "", "-1", "1.5"])
+      expect(() => parseSetupArgs([`--port=${bad}`])).toThrow("--port expects");
+    expect(parseSetupArgs(["--port", "9100"]).port).toBe(9100);
   });
   it("understands numbers, names and all in the prompt", () => {
     expect(parseChoice("1")).toEqual(["vibe"]);
@@ -294,7 +320,7 @@ describe("setup non-interactive flow", () => {
 });
 
 describe("setup json output", () => {
-  it("masks the new token by default", async () => {
+  it("creates no key without --show-token, so no token is lost", async () => {
     const h = make();
     expect(await runSetup(["--yes", "--json"], h.deps)).toBe(0);
     const raw = text(h);
@@ -302,21 +328,28 @@ describe("setup json output", () => {
     const d: unknown = JSON.parse(raw);
     expect(isRec(d) ? d.ok : null).toBe(true);
     const tok = isRec(d) && isRec(d.client_token) ? d.client_token : {};
-    expect(tok.created).toBe(true);
-    expect(String(tok.masked)).toMatch(/^mw-/);
-    expect("token" in tok).toBe(false);
+    expect(tok.created).toBe(false);
+    expect(tok.token).toBe("skipped");
+    expect(String(tok.hint)).toContain("--show-token");
     const harnesses = isRec(d) && Array.isArray(d.harnesses) ? d.harnesses : [];
     expect(harnesses).toHaveLength(1);
+    const next = make();
+    await runSetup(["--yes", "--no-banner"], next.deps);
+    expect(text(next).match(TOKEN_RE) ?? []).toHaveLength(1);
+    expect(text(next)).not.toContain("key already exist");
   });
   it("includes the token with --show-token and reports failures as ok: false", async () => {
     const h = make();
     await runSetup(["--yes", "--json", "--show-token"], h.deps);
-    expect(text(h)).toMatch(TOKEN_RE);
+    const d: unknown = JSON.parse(text(h));
+    const tok = isRec(d) && isRec(d.client_token) ? d.client_token : {};
+    expect(tok.created).toBe(true);
+    expect(String(tok.token)).toMatch(TOKEN_RE);
     put(paths().pi, "nope");
     const f = make();
     expect(await runSetup(["--yes", "--json", "--harness", "pi"], f.deps)).toBe(1);
-    const d: unknown = JSON.parse(text(f));
-    expect(isRec(d) ? d.ok : null).toBe(false);
+    const e: unknown = JSON.parse(text(f));
+    expect(isRec(e) ? e.ok : null).toBe(false);
   });
 });
 
@@ -457,5 +490,153 @@ describe("setup prompts", () => {
     expect(text(h)).toContain("not imported");
     expect(existsSync(paths().vibe)).toBe(true);
     expect(h.started).toEqual([]);
+  });
+});
+
+describe("setup --port", () => {
+  it("writes the port into a new config.toml and the harness URLs", async () => {
+    const h = make();
+    expect(await runSetup(["--yes", "--harness", "vibe,opencode,pi", "--port", "9200", "--start"], h.deps)).toBe(0);
+    const p = paths();
+    expect(readFileSync(p.cfg, "utf8")).toContain("port = 9200");
+    expect(backups(p.cfg)).toEqual([]);
+    for (const f of [p.vibe, p.opencode, p.pi]) expect(readFileSync(f, "utf8")).toContain("http://127.0.0.1:9200/v1");
+    expect(h.started[0]?.port).toBe(9200);
+  });
+  it("changes the port of an existing config with a backup and is idempotent", async () => {
+    const p = paths();
+    put(p.cfg, '# mine\n[server]\nhost = "127.0.0.1"\nport = 8787 # default\n\n[limits]\nreserve_pct = 5\n');
+    const h = make();
+    expect(await runSetup(["--yes", "--port", "9300"], h.deps)).toBe(0);
+    const next = readFileSync(p.cfg, "utf8");
+    expect(next).toContain("port = 9300 # default");
+    expect(next).toContain("reserve_pct = 5");
+    expect(backups(p.cfg)).toHaveLength(1);
+    expect(readFileSync(p.vibe, "utf8")).toContain("http://127.0.0.1:9300/v1");
+    const again = make();
+    expect(await runSetup(["--yes", "--port", "9300"], again.deps)).toBe(0);
+    expect(backups(p.cfg)).toHaveLength(1);
+    expect(text(again)).toContain("uses port 9300");
+  });
+  it("edits toml without a port line or server table", () => {
+    expect(parse(planPort('[server]\nhost = "x"\n', 9000) ?? "")).toMatchObject({ server: { host: "x", port: 9000 } });
+    expect(parse(planPort("[limits]\na = 1\n", 9000) ?? "")).toMatchObject({
+      server: { port: 9000 },
+      limits: { a: 1 },
+    });
+    expect(parse(planPort("", 9000) ?? "")).toEqual({ server: { port: 9000 } });
+    expect(planPort("[server]\nport = 9000\n", 9000)).toBeNull();
+    expect(planPort("[server]\r\nport = 1\r\n", 9000)).toBe("[server]\r\nport = 9000\r\n");
+    expect(() => planPort("a = [", 9000)).toThrow("not valid TOML");
+    expect(() => planPort('server = { host = "x" }\n', 9000)).toThrow("edit it by hand");
+    expect(() => planPort('[server]\nport = "8787"\n', 9000)).toThrow("edit it by hand");
+  });
+});
+
+describe("setup token and prompt robustness", () => {
+  it("asks which tools to use before it creates the key", async () => {
+    const h = make({ interactive: true, answers: ["n", "1", "n"] });
+    const ask = h.deps.io.ask;
+    let keysWhenAsked = -1;
+    h.deps.io.ask = async (q) => {
+      if (q.includes("Numbers or names")) keysWhenAsked = (text(h).match(/created key/g) ?? []).length;
+      return ask(q);
+    };
+    await runSetup(["--no-banner"], h.deps);
+    expect(keysWhenAsked).toBe(0);
+    expect(text(h)).toMatch(TOKEN_RE);
+  });
+  it("keeps the flow going when input ends at every prompt", async () => {
+    const h = make({ interactive: true });
+    expect(await runSetup(["--no-banner"], h.deps)).toBe(0);
+    expect(text(h)).toMatch(TOKEN_RE);
+    expect(h.err).toEqual([]);
+  });
+  it("createAsk returns null after end of input instead of throwing", async () => {
+    const input = new PassThrough();
+    const a = createAsk(input, new PassThrough());
+    const first = a.ask("one? ");
+    input.write("hello\n");
+    expect(await first).toBe("hello");
+    const second = a.ask("two? ");
+    input.end();
+    expect(await second).toBeNull();
+    expect(await a.ask("three? ")).toBeNull();
+    expect(await a.ask("four? ")).toBeNull();
+    a.close();
+  });
+});
+
+describe("setup file writes", () => {
+  const tmpLeft = (path: string): string[] => readdirSync(dirname(path)).filter((f) => f.includes("mistwatch-tmp"));
+  it("removes the temp file and the new backup when the rename fails", async () => {
+    const p = paths();
+    put(p.pi, '{"x":1}');
+    vi.mocked(renameSync).mockImplementationOnce(() => {
+      throw Object.assign(new Error("EPERM: operation not permitted, rename"), { code: "EPERM" });
+    });
+    const h = make();
+    expect(await runSetup(["--yes", "--harness", "pi"], h.deps)).toBe(1);
+    expect(text(h)).toContain("EPERM");
+    expect(readFileSync(p.pi, "utf8")).toBe('{"x":1}');
+    expect(tmpLeft(p.pi)).toEqual([]);
+    expect(backups(p.pi)).toEqual([]);
+    expect(await runSetup(["--yes", "--harness", "pi"], make().deps)).toBe(0);
+    expect(backups(p.pi)).toHaveLength(1);
+  });
+  it.skipIf(process.platform === "win32")("keeps the file mode of an existing config", async () => {
+    const p = paths();
+    put(p.pi, "{}");
+    chmodSync(p.pi, 0o600);
+    await runSetup(["--yes", "--harness", "pi"], make().deps);
+    expect(statSync(p.pi).mode & 0o777).toBe(0o600);
+  });
+  it("writes through a symlink and leaves the link in place", async () => {
+    const p = paths();
+    const real = join(root, "dotfiles", "models.json");
+    put(real, "{}");
+    mkdirSync(dirname(p.pi), { recursive: true });
+    try {
+      symlinkSync(real, p.pi);
+    } catch {
+      return;
+    }
+    expect(await runSetup(["--yes", "--harness", "pi"], make().deps)).toBe(0);
+    expect(realpathSync(p.pi)).toBe(realpathSync(real));
+    expect(readFileSync(real, "utf8")).toContain("mistwatch");
+    expect(tmpLeft(real)).toEqual([]);
+  });
+  it("creates the target of a dangling symlink", async () => {
+    const p = paths();
+    const real = join(root, "dotfiles", "models.json");
+    mkdirSync(dirname(p.pi), { recursive: true });
+    mkdirSync(dirname(real), { recursive: true });
+    try {
+      symlinkSync(real, p.pi);
+    } catch {
+      return;
+    }
+    expect(await runSetup(["--yes", "--harness", "pi"], make().deps)).toBe(0);
+    expect(readFileSync(real, "utf8")).toContain("mistwatch");
+  });
+});
+
+describe("opencode config location", () => {
+  it("honours XDG_CONFIG_HOME on non-Windows and falls back to ~/.config", async () => {
+    const xdg = join(root, "xdg");
+    setEnv("XDG_CONFIG_HOME", xdg);
+    expect(await runSetup(["--yes", "--harness", "opencode"], make().deps)).toBe(0);
+    expect(existsSync(join(xdg, "opencode", "opencode.json"))).toBe(true);
+    expect(existsSync(paths().opencode)).toBe(false);
+  });
+  it("ignores a relative XDG_CONFIG_HOME and the variable on win32", async () => {
+    setEnv("XDG_CONFIG_HOME", "relative/dir");
+    await runSetup(["--yes", "--harness", "opencode"], make().deps);
+    expect(existsSync(paths().opencode)).toBe(true);
+    rmSync(paths().opencode);
+    setEnv("XDG_CONFIG_HOME", join(root, "xdg"));
+    await runSetup(["--yes", "--harness", "opencode"], make({ platform: "win32" }).deps);
+    expect(existsSync(paths().opencode)).toBe(true);
+    expect(existsSync(join(root, "xdg"))).toBe(false);
   });
 });
