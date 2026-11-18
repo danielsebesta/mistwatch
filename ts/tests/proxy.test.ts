@@ -672,6 +672,29 @@ describe("proxy accounting hardening", () => {
     expect(row.completion_tokens).toBe(100);
     expect(must(st.engine.status("a", "api")).inflight).toBe(0);
   });
+  it("lets a non-streaming upstream take longer than the connect limit to answer", async () => {
+    const st = baseState(async () => {
+      await new Promise((r) => setTimeout(r, 300));
+      return okJson();
+    });
+    const r = await createProxy(st, { connectTimeoutS: 0.05 }).handle(
+      jreq("/v1/chat/completions", { model: "mistral-large-4-0" }, AUTH),
+    );
+    expect(r.status).toBe(200);
+  });
+  it("survives a negative max_tokens", async () => {
+    const st = baseState(() => okJson());
+    const r = await createProxy(st).handle(
+      jreq("/v1/chat/completions", { model: "mistral-large-4-0", max_tokens: -1e9 }, AUTH),
+    );
+    expect(r.status).toBe(200);
+  });
+  it("adds Retry-After to a passed-through upstream 429", async () => {
+    const st = baseState(() => json({ error: "slow down" }, 429));
+    const r = await createProxy(st).handle(jreq("/v1/chat/completions", { model: "mistral-large-4-0" }, AUTH));
+    expect(r.status).toBe(429);
+    expect(Number(r.headers.get("retry-after"))).toBeGreaterThan(0);
+  });
   it("counts tool call chunks and code points in the stream fallback", async () => {
     const e = "😀".repeat(8);
     const chunk = (delta: unknown): string => `data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`;

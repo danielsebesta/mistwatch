@@ -222,8 +222,8 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
   const bodyLimit = opts.bodyLimit ?? BODY_LIMIT;
   const connectMs = (opts.connectTimeoutS ?? CONNECT_S) * 1000;
   const totalMs = (opts.totalTimeoutS ?? TOTAL_S) * 1000;
-  const [gLim, gWin] = opts.globalRate ?? [60, 60];
-  const [kLim, kWin] = opts.keyRate ?? [30, 60];
+  const [gLim, gWin] = opts.globalRate ?? [600, 60];
+  const [kLim, kWin] = opts.keyRate ?? [300, 60];
   const globalRl = createRateLimiter({ limit: gLim, windowS: gWin });
   const keyRl = createRateLimiter({ limit: kLim, windowS: kWin });
   const queue = createQueue({ concurrency: opts.concurrency ?? 8, maxPending: opts.maxPending ?? 64 });
@@ -362,12 +362,13 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
     }
     const [price] = st.prices.lookup(model);
     const estIn = estimateTokens(sendBody.length);
-    const estOut = pyInt(pickTruthy([parsed.max_tokens, 1024]));
+    const wantedOut = pyInt(pickTruthy([parsed.max_tokens, 1024]));
+    const estOut = Number.isFinite(wantedOut) && wantedOut > 0 ? wantedOut : 1024;
     const est = ((estIn * price.input + estOut * price.output) / 1e6) * cfg.usd_to_eur;
     const fwdPairs = filterRequestHeaders(req.headers);
     const t0 = Date.now() / 1000;
     const drainSig = AbortSignal.any([req.signal, drainCtrl.signal]);
-    let lastResp: { status: number; body: Uint8Array; ct: string } | null = null;
+    let lastResp: { status: number; body: Uint8Array; ct: string; retryAfter: string | null } | null = null;
     let roomSkips = 0;
     const book = (
       ctx: Ctx,
@@ -477,7 +478,10 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
       const job = queue.run(
         async (sig) => {
           onAbort(sig);
-          connectTimer = setTimeout(() => ac.abort(asException(errors.upstreamTimeout())), connectMs);
+          connectTimer = setTimeout(
+            () => ac.abort(asException(errors.upstreamTimeout())),
+            wantStream ? connectMs : totalMs,
+          );
           connectTimer.unref();
           try {
             const resp = await st.fetch(`${cfg.upstream}${urlPath}${url.search}`, {
@@ -527,7 +531,12 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
             blockKey(cand.account.name, cand.pool),
             Date.now() / 1000 + (resp.status === 429 ? BLOCK_429_S : BLOCK_S),
           );
-          lastResp = { status: resp.status, body: raw, ct: resp.headers.get("content-type") ?? "application/json" };
+          lastResp = {
+            status: resp.status,
+            body: raw,
+            ct: resp.headers.get("content-type") ?? "application/json",
+            retryAfter: resp.headers.get("retry-after"),
+          };
           res?.release();
           heldResolve();
           continue;
@@ -598,7 +607,11 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
         throw upstreamErr(e);
       }
     }
-    if (lastResp !== null) return respond(lastResp.body, lastResp.status, new Headers({ "content-type": lastResp.ct }));
+    if (lastResp !== null) {
+      const h = new Headers({ "content-type": lastResp.ct });
+      if (lastResp.status === 429) h.set("retry-after", lastResp.retryAfter ?? String(BLOCK_429_S));
+      return respond(lastResp.body, lastResp.status, h);
+    }
     if (roomSkips === cands.length) {
       const info = exhaustedInfo(st, Date.now() / 1000);
       throw asException(errors.budget(info.retry_after, info.pools));
