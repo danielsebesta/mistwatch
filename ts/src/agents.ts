@@ -127,11 +127,14 @@ export const llmsTxt = (base: string): string => `# Mistwatch
 
 ## Set up a tool
 
-- OpenCode: \`mistwatch agent-config opencode --write\`
-- Pi: \`mistwatch agent-config pi --write\`
-- Vibe CLI: \`mistwatch vibe-config\`
-- Any other OpenAI-compatible tool: base URL \`${base}/v1\`, key from the API keys page, model \`auto\`.
+- Run one command: \`npx mistwatch setup --yes --harness vibe\` (or \`opencode\`, \`pi\`, or a list such as \`vibe,opencode\`). It creates the config, links the Vibe CLI login, creates a client token (shown once) and writes the tool's provider config. Any file it changes is copied to \`<file>.<timestamp>.bak\` first and merged, never replaced. Safe to run again. Needs Node 24+.
+- Give the token to tools through the environment variable \`${ENV}\`. Never ask the user to paste keys into chat and never print the token again.
+- Verify with \`mistwatch status\` and, while the proxy runs, \`curl -H "Authorization: Bearer $${ENV}" ${base}/v1/models\`.
+- If the Vibe login is missing, the user runs \`vibe --setup\` and then \`mistwatch import-vibe\`.
+- Ask the user before starting \`mistwatch serve\`: it keeps running.
+- By hand: \`mistwatch agent-config opencode --write\`, \`mistwatch agent-config pi --write\`, \`mistwatch vibe-config\`. Any other OpenAI-compatible tool: base URL \`${base}/v1\`, key from the API keys page, model \`auto\`.
 - The same snippets can be copied or downloaded from the web UI: ${base}/#/keys
+- Full agent instructions: AGENTS.md in the repository.
 
 ## Building an integration
 

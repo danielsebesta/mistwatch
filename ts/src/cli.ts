@@ -7,34 +7,10 @@ import { parseArgs } from "node:util";
 import { dumpJson, merge, opencode, pi } from "./agents.ts";
 import type { PoolStatusDict } from "./types.ts";
 
-const TEMPLATE = `# mistwatch config (server, limits, pricing). Accounts, keys and logins are managed in the web UI.
-[server]
-host = "127.0.0.1"
-port = 8787
-
-[upstream]
-base_url = "https://api.mistral.ai"
-
-[pricing]
-usd_to_eur = 0.86          # docs prices are USD, budgets are EUR
-
-[limits]
-reserve_pct = 3.0          # untouchable slice of every pool's monthly budget
-burst_5h = 2.0             # x fair pace allowed within any 5h window
-burst_day = 1.5
-burst_week = 1.25
-sync_interval_s = 300
-strategy = "most_headroom" # or "priority"
-fallback_to_other_pool = true
-vibe_user_agent_regex = "Mistral-Vibe"
-
-[router]
-llm_classifier = true      # ask a tiny model to rate prompt difficulty for \`auto\`
-classifier_model = "ministral-3b-latest"
-`;
 const USAGE = `usage: mistwatch <command> [options]
 
 commands:
+  setup          one-step setup for your tools (--yes --harness --start --json)
   init           write the config template (--force, --import-vibe)
   import-vibe    add the Vibe CLI keyring login as an account (--name)
   status         budget status of every account/pool (--json)
@@ -44,17 +20,7 @@ commands:
   passwd         create a user / reset a password
   vibe-config    print the Vibe CLI provider block
   agent-config   provider config for pi|opencode (--write, --env)`;
-const openApp = async () => {
-  const { loadConfig } = await import("./config.ts");
-  const { openDb } = await import("./db.ts");
-  const { createStore } = await import("./store.ts");
-  const cfg = loadConfig();
-  const db = openDb(cfg.db_path);
-  const store = createStore(db);
-  store.migrateConfig(cfg);
-  cfg.accounts.splice(0, cfg.accounts.length, ...store.listAccounts());
-  return { cfg, db, store };
-};
+const openApp = async () => (await import("./open.ts")).openApp();
 const serverUrl = (cfg: { host: string; port: number }): string => `http://${cfg.host}:${cfg.port}`;
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 let stdinQueue: string[] | null = null;
@@ -166,14 +132,14 @@ const cmdInit = async (args: string[]): Promise<number> => {
     options: { force: { type: "boolean", default: false }, "import-vibe": { type: "boolean", default: false } },
     strict: true,
   });
-  const { configPath } = await import("./config.ts");
+  const { configPath, CONFIG_TEMPLATE } = await import("./config.ts");
   const p = configPath();
   if (existsSync(p) && !values.force) {
     console.log(`${p} already exists (use --force)`);
     return 1;
   }
   mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, TEMPLATE, "utf8");
+  writeFileSync(p, CONFIG_TEMPLATE, "utf8");
   console.log(`wrote ${p}`);
   if (values["import-vibe"]) return cmdImportVibe(["--name", "vibe-login"]);
   console.log("Next: `mistwatch serve`, then open the web UI to create your login and add keys.");
@@ -185,7 +151,8 @@ const cmdImportVibe = async (args: string[]): Promise<number> => {
     options: { name: { type: "string", default: "vibe-login" } },
     strict: true,
   });
-  const { VIBE_REF, StoreError, vibeCliKeyPresent } = await import("./store.ts");
+  const { StoreError, vibeCliKeyPresent } = await import("./store.ts");
+  const { linkVibeLogin } = await import("./open.ts");
   if (!vibeCliKeyPresent()) {
     console.log("No Vibe CLI key found in the OS keyring (run `vibe --setup` first).");
     return 1;
@@ -193,8 +160,7 @@ const cmdImportVibe = async (args: string[]): Promise<number> => {
   const { store } = await openApp();
   const name = values.name;
   try {
-    if (!store.getAccount(name)) store.createAccount(name);
-    store.setKey(name, "vibe", { ref: VIBE_REF });
+    linkVibeLogin(store, name);
   } catch (e) {
     if (e instanceof StoreError) {
       console.log(e.message);
@@ -204,6 +170,10 @@ const cmdImportVibe = async (args: string[]): Promise<number> => {
   }
   console.log(`account '${name}' now follows the Vibe CLI login`);
   return 0;
+};
+const cmdSetup = async (args: string[]): Promise<number> => {
+  const { runSetup, defaultSetupDeps } = await import("./setup.ts");
+  return runSetup(args, defaultSetupDeps());
 };
 const cmdPasswd = async (args: string[]): Promise<number> => {
   const { positionals } = opts({ args, allowPositionals: true, strict: true });
@@ -402,6 +372,7 @@ export const main = async (argv: string[]): Promise<number> => {
       console.log(USAGE);
       return 0;
     }
+    if (cmd === "setup") return await cmdSetup(rest);
     if (cmd === "init") return await cmdInit(rest);
     if (cmd === "import-vibe") return await cmdImportVibe(rest);
     if (cmd === "passwd") return await cmdPasswd(rest);

@@ -46,6 +46,13 @@ describe("cli argument parsing", () => {
     expect(await main(["--help"])).toBe(0);
     expect(logs.join("\n")).toContain("usage: mistwatch");
   });
+  it("lists setup and routes it", async () => {
+    expect(await main(["--help"])).toBe(0);
+    expect(logs.join("\n")).toContain("setup ");
+    const write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    expect(await main(["setup", "--bogus"])).toBe(2);
+    expect(write.mock.calls.join("")).toContain("mistwatch:");
+  });
   it("rejects bad flags and missing arguments with exit 2", async () => {
     expect(await main(["agent-config"])).toBe(2);
     expect(errs.join("\n")).toContain("requires tool 'pi' or 'opencode'");

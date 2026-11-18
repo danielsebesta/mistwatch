@@ -4,9 +4,29 @@ TypeScript port of the Mistwatch proxy. Same HTTP API, config file and SQLite da
 
 Requires Node 24 or newer.
 
+## Quick start
+
+```
+npx mistwatch setup           # asks a few questions
+npx mistwatch serve           # then open http://127.0.0.1:8787/
+```
+
+`setup` creates the config, links your Vibe CLI login, creates a client token (shown once) and writes the provider config for Vibe CLI, OpenCode or Pi. Existing files are backed up (`<file>.<timestamp>.bak`) and merged, and it is safe to run again.
+
+Without questions (scripts and AI agents; see `../AGENTS.md`):
+
+```
+npx mistwatch setup --yes --harness vibe          # or opencode, pi, vibe,opencode,pi, all
+```
+
+Options: `--start` runs the proxy afterwards, `--json` prints what was done (token masked, `--show-token` includes it), `--no-banner`, `--force` replaces `config.toml`. Set the printed token as `MISTWATCH_TOKEN` so the tools can use it.
+
+From a checkout:
+
 ```
 npm install
 npm run build
+node dist/cli.js setup
 node dist/cli.js serve        # then open http://127.0.0.1:8787/
 ```
 

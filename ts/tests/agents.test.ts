@@ -124,6 +124,9 @@ describe("agents.llmsTxt", () => {
     expect(t).toContain("mistwatch_auth");
     expect(t).toContain("Mistral-Vibe");
     expect(t).toContain("MISTWATCH_TOKEN");
+    expect(t).toContain("npx mistwatch setup --yes --harness vibe");
+    expect(t).toContain("AGENTS.md");
+    expect(t).toContain('Bearer $MISTWATCH_TOKEN" http://127.0.0.1:8787/v1/models');
     expect(t).toContain("not affiliated with Mistral AI");
   });
 });

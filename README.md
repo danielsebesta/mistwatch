@@ -10,6 +10,15 @@ A local proxy for Mistral (Vibe Code + Studio/API) that watches your budgets, sp
 mistwatch serve        # then open http://127.0.0.1:8787/
 ```
 
+## Quick start (TypeScript version, `ts/`)
+
+```
+npx mistwatch setup            # config, Vibe login, client token, tool configs
+npx mistwatch serve
+```
+
+For scripts and AI agents: `npx mistwatch setup --yes --harness vibe` (or `opencode`, `pi`). See [AGENTS.md](AGENTS.md) and [ts/README.md](ts/README.md).
+
 ## Web UI
 
 Served at `/`. Sign in with an account (the first run offers to create one). Pages:
@@ -22,7 +31,7 @@ Served at `/`. Sign in with an account (the first run offers to create one). Pag
 
 ## Connecting agents
 
-Besides the UI, the CLI can write the config for you: `mistwatch agent-config opencode --write`, `mistwatch agent-config pi --write`, `mistwatch vibe-config`. The key is read from the `MISTWATCH_TOKEN` environment variable.
+Besides the UI, the CLI can write the config for you: `mistwatch setup` (TypeScript version) does everything in one go, or per tool `mistwatch agent-config opencode --write`, `mistwatch agent-config pi --write`, `mistwatch vibe-config`. The key is read from the `MISTWATCH_TOKEN` environment variable.
 
 Claude Code (Anthropic Messages format) and current Codex CLI (OpenAI Responses format) do not work directly, because Mistral does not offer those formats. Put a translating proxy (for example LiteLLM) in front of Mistwatch.
 
