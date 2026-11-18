@@ -117,3 +117,12 @@ describe("auto routing", () => {
     expect(decide(five, 0.05, 5, price).reason).not.toContain("stronger and cheaper");
   });
 });
+describe("ladder", () => {
+  it("uses GLM 5.3 only at max and keeps DeepSeek below it", () => {
+    const glm = LADDER.filter((s) => s.model === "zai-glm-5-3");
+    expect(glm.map((s) => s.effort)).toEqual(["max"]);
+    expect(LADDER.findIndex((s) => s.model === "deepseek-v4-1-flash-1017")).toBeLessThan(
+      LADDER.findIndex((s) => s.model === "zai-glm-5-3"),
+    );
+  });
+});

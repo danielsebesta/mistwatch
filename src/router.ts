@@ -5,7 +5,6 @@ export const LADDER: Step[] = [
   { model: "mistral-large-4-0", effort: "medium", vision: true, ctx: 1_048_576, label: "large-4/medium" },
   { model: "mistral-large-4-0", effort: "high", vision: true, ctx: 1_048_576, label: "large-4/high" },
   { model: "deepseek-v4-1-flash-1017", effort: "high", vision: true, ctx: 1_048_576, label: "deepseek/high" },
-  { model: "zai-glm-5-3", effort: "high", vision: false, ctx: 1_048_576, label: "glm-5.3/high" },
   { model: "zai-glm-5-3", effort: "max", vision: false, ctx: 1_048_576, label: "glm-5.3/max" },
 ];
 export const TOP = LADDER.length - 1;
@@ -16,9 +15,8 @@ export const SCORE_TO_LEVEL: [number, number][] = [
   [3, 1],
   [4, 2],
   [5, 3],
-  [6, 4],
-  [8, 5],
-  [10, 6],
+  [8, 4],
+  [10, 5],
 ];
 export const VALID_EFFORT: Record<string, ReadonlySet<string>> = {
   "mistral-small-2603": new Set(["none", "high"]),

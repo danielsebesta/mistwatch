@@ -272,7 +272,7 @@ const cmdRoute = async (args: string[]): Promise<number> => {
     console.error("mistwatch: --pressure must be a number");
     return 2;
   }
-  const { decide } = await import("./router.ts");
+  const { decide, TOP } = await import("./router.ts");
   const prompt = positionals.length ? positionals.join(" ") : await readStdinAll();
   const body: Record<string, unknown> = { messages: [{ role: "user", content: prompt }] };
   if (values.tools) body.tools = [{ type: "function" }];
@@ -299,7 +299,7 @@ const cmdRoute = async (args: string[]): Promise<number> => {
     console.log(`tiny LLM (${cfg.router.classifier_model}): ${llm ?? "None"}`);
   }
   const d = decide(body, pressure, llm);
-  console.log(`${d.model}  effort=${d.effort ?? "None"}  level=${d.level}/6  score=${d.score}/10`);
+  console.log(`${d.model}  effort=${d.effort ?? "None"}  level=${d.level}/${TOP}  score=${d.score}/10`);
   console.log(`  ${d.reason}`);
   return 0;
 };
