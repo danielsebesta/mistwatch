@@ -404,7 +404,18 @@ export const planToml = (raw: string | null, base: string): string | null => {
     const again = parse(next).allowed_models;
     return Array.isArray(again) && again.includes("auto") ? next : text;
   };
-  const finish = (text: string): string => allowAuto(withAuto(text));
+  // models that talk to Mistral directly would bypass the proxy and its budgets
+  const repoint = (text: string): string => {
+    let inModels = false;
+    const lines = text.split(/\r?\n/).map((l) => {
+      const head = /^\s*(\[\[?)\s*([A-Za-z0-9_.-]+)\s*\]\]?/.exec(l);
+      if (head) inModels = head[1] === "[[" && head[2] === "models";
+      return inModels ? l.replace(/^(\s*provider\s*=\s*)(["'])mistral\2/, '$1"mistwatch"') : l;
+    });
+    const next = lines.join(eol);
+    return parse(next) ? next : text;
+  };
+  const finish = (text: string): string => repoint(allowAuto(withAuto(text)));
   if (providerMatches(raw, base)) {
     const done = finish(raw);
     return done === raw ? null : done;

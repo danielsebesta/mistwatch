@@ -724,3 +724,14 @@ describe("planToml allowed_models", () => {
     expect(list(planToml("x = 1\n", "http://h:1") ?? "")).toBeUndefined();
   });
 });
+describe("planToml repoints models", () => {
+  it("sends every mistral model through mistwatch and leaves others alone", () => {
+    const raw =
+      '[[models]]\nname = "a"\nprovider = "mistral"\n\n[[models]]\nname = "b"\nprovider = "ollama"\n\n[[providers]]\nname = "mistral"\nprovider = "mistral"\n';
+    const out = parse(planToml(raw, "http://h:1") ?? "");
+    const models = out.models as Record<string, unknown>[];
+    expect(models.find((m) => m.name === "a")?.provider).toBe("mistwatch");
+    expect(models.find((m) => m.name === "b")?.provider).toBe("ollama");
+    expect((out.providers as Record<string, unknown>[]).find((p) => p.name === "mistral")?.provider).toBe("mistral");
+  });
+});
