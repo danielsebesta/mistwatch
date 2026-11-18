@@ -711,3 +711,16 @@ describe("planToml auto model", () => {
     expect(find(planToml(noModel, "http://h:1") ?? "")).toHaveLength(1);
   });
 });
+describe("planToml allowed_models", () => {
+  const list = (t: string) => parse(t).allowed_models;
+  it("adds auto to a multi-line allowlist, once", () => {
+    const raw = 'allowed_models = [\n    "a",\n    "b",\n]\n';
+    const out = planToml(raw, "http://h:1") ?? "";
+    expect(list(out)).toEqual(["auto", "a", "b"]);
+    expect(planToml(out, "http://h:1")).toBeNull();
+  });
+  it("adds auto to a one-line allowlist and leaves a missing one alone", () => {
+    expect(list(planToml('allowed_models = ["a"]\n', "http://h:1") ?? "")).toEqual(["auto", "a"]);
+    expect(list(planToml("x = 1\n", "http://h:1") ?? "")).toBeUndefined();
+  });
+});

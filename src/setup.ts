@@ -393,10 +393,25 @@ export const planToml = (raw: string | null, base: string): string | null => {
   };
   const withAuto = (text: string): string =>
     hasAuto(text) ? text : `${text.trimEnd()}${eol}${eol}${AUTO_MODEL.replace(/\n/g, eol)}`;
-  if (providerMatches(raw, base)) return hasAuto(raw) ? null : withAuto(raw);
+  // Vibe hides every model that is not in a non-empty allowed_models list
+  const allowAuto = (text: string): string => {
+    const list = parse(text).allowed_models;
+    if (!Array.isArray(list) || list.length === 0 || list.includes("auto")) return text;
+    const next = text.replace(
+      /^(allowed_models\s*=\s*\[)([ \t]*\r?\n[ \t]*|[ \t]*)/m,
+      (_m, head: string, gap: string) => (gap.includes("\n") ? `${head}${gap}"auto",${gap}` : `${head}"auto", `),
+    );
+    const again = parse(next).allowed_models;
+    return Array.isArray(again) && again.includes("auto") ? next : text;
+  };
+  const finish = (text: string): string => allowAuto(withAuto(text));
+  if (providerMatches(raw, base)) {
+    const done = finish(raw);
+    return done === raw ? null : done;
+  }
   const want = { api_base: `${base}/v1`, api_key_env_var: ENV, backend: "mistral" };
   const replaced = providersOf(parse(raw)).length > 0 ? replaceProviders(raw.split(/\r?\n/), want) : null;
-  const next = withAuto(replaced ? replaced.join(eol) : `${raw.trimEnd()}${eol}${eol}${block.replace(/\n/g, eol)}`);
+  const next = finish(replaced ? replaced.join(eol) : `${raw.trimEnd()}${eol}${eol}${block.replace(/\n/g, eol)}`);
   if (!providerMatches(next, base))
     throw new SetupError("could not edit the existing mistwatch provider; edit it by hand");
   return next;
