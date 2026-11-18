@@ -35,6 +35,7 @@ export type SetupOptions = {
   yes: boolean;
   harness: Harness[] | null;
   port: number | null;
+  url: string | null;
   noBanner: boolean;
   start: boolean;
   json: boolean;
@@ -66,6 +67,7 @@ const FLAGS = {
   yes: { type: "boolean", short: "y", default: false },
   harness: { type: "string" },
   port: { type: "string" },
+  url: { type: "string" },
   "no-banner": { type: "boolean", default: false },
   start: { type: "boolean", default: false },
   json: { type: "boolean", default: false },
@@ -83,6 +85,7 @@ options:
   -y, --yes            never ask, use defaults (also when stdin is not a terminal)
       --harness LIST   comma-separated: vibe, opencode, pi or all (default: vibe)
       --port N         write this port into config.toml and the tool configs (default: keep the configured one, 8787 for a new config)
+      --url URL        base URL the tools use to reach a Mistwatch running elsewhere, e.g. http://100.64.0.1:8787 (default: this machine)
       --start          run the proxy when setup is done
       --no-banner      skip the logo
       --json           print what was done as JSON; no client token is created unless --show-token is also given
@@ -109,6 +112,20 @@ export const parsePort = (raw: string | undefined): number | null => {
   if (port < 1 || port > 65535) throw new SetupArgError(`--port expects an integer from 1 to 65535 (got '${raw}')`);
   return port;
 };
+export const parseUrl = (raw: string | undefined): string | null => {
+  if (raw === undefined) return null;
+  let u: URL;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    throw new SetupArgError(`--url expects a URL like http://100.64.0.1:8787 (got '${raw}')`);
+  }
+  if ((u.protocol !== "http:" && u.protocol !== "https:") || u.username !== "" || u.password !== "")
+    throw new SetupArgError("--url must be an http(s) URL without credentials");
+  if (u.search !== "" || u.hash !== "" || !/^\/(v1)?\/?$/.test(u.pathname))
+    throw new SetupArgError("--url is the server address only, without a path (the /v1 part is added for you)");
+  return u.origin;
+};
 const parseFlags = (args: string[]) => {
   try {
     return parseArgs({ args, options: FLAGS, strict: true }).values;
@@ -124,6 +141,7 @@ export const parseSetupArgs = (args: string[]): SetupOptions => {
     yes: v.yes,
     harness: v.harness === undefined ? null : parseHarnesses(v.harness),
     port: parsePort(v.port),
+    url: parseUrl(v.url),
     noBanner: v["no-banner"],
     start: v.start,
     json: v.json,
@@ -577,7 +595,7 @@ const HARNESS_PATHS = (deps: SetupDeps): Record<Harness, string> => ({
 });
 const stepHarness = (ctx: Ctx, h: Harness, cfg: Config): void => {
   const path = HARNESS_PATHS(ctx.deps)[h];
-  const base = clientBaseUrl(cfg);
+  const base = ctx.opts.url ?? clientBaseUrl(cfg);
   const label = TOOLS[h].label;
   const shown = pretty(path, ctx.deps.home);
   const result: HarnessResult = { harness: h, path, action: "failed", backup: null };

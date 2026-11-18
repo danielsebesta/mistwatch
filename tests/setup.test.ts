@@ -28,6 +28,7 @@ import {
   parseChoice,
   parseHarnesses,
   parseSetupArgs,
+  parseUrl,
   planJson,
   planPort,
   planToml,
@@ -138,6 +139,7 @@ describe("setup flag parsing", () => {
       yes: false,
       harness: null,
       port: null,
+      url: null,
       noBanner: false,
       start: false,
       json: false,
@@ -681,5 +683,16 @@ describe("opencode config location", () => {
     await runSetup(["--yes", "--harness", "opencode"], make({ platform: "win32" }).deps);
     expect(existsSync(paths().opencode)).toBe(true);
     expect(existsSync(join(root, "xdg"))).toBe(false);
+  });
+});
+describe("parseUrl", () => {
+  it("accepts a server address and drops /v1 and slashes", () => {
+    expect(parseUrl(undefined)).toBeNull();
+    expect(parseUrl("http://100.96.35.29:8787/")).toBe("http://100.96.35.29:8787");
+    expect(parseUrl("https://mw.example.com/v1")).toBe("https://mw.example.com");
+  });
+  it("rejects other schemes, credentials and paths", () => {
+    for (const bad of ["ftp://x", "http://u:p@x", "http://x/foo", "http://x/?a=1", "nope"])
+      expect(() => parseUrl(bad)).toThrow(SetupArgError);
   });
 });
