@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { promptView, rate } from "../src/classifier.ts";
+import { promptView, pyDigits, rate } from "../src/classifier.ts";
 import type { ChatBody } from "../src/types.ts";
 
 const body = (text: string, extra: Record<string, unknown> = {}): ChatBody => ({
@@ -115,5 +115,31 @@ describe("rate hardening", () => {
     };
     expect(await rate(redirecting, "https://x", "k", body("unique redirect prompt"), "m", 1)).toBeNull();
     expect(init?.redirect).toBe("manual");
+  });
+});
+describe("pyDigits", () => {
+  it("decodes every Nd block as 0-9, including adjacent blocks", () => {
+    const nd = /^\p{Nd}$/u;
+    let run = 0;
+    for (let c = 0; c <= 0x10ffff; c++) {
+      if (c >= 0xd800 && c <= 0xdfff) continue;
+      if (!nd.test(String.fromCodePoint(c))) {
+        expect(run % 10).toBe(0);
+        run = 0;
+        continue;
+      }
+      expect(pyDigits(String.fromCodePoint(c))).toBe(run % 10);
+      run++;
+    }
+    expect(pyDigits("\u{116DA}")).toBe(0);
+    expect(pyDigits("\u{116DB}")).toBe(1);
+  });
+  it("agrees with Intl numbering systems", () => {
+    for (const sys of Intl.supportedValuesOf("numberingSystem")) {
+      const f = new Intl.NumberFormat(`en-u-nu-${sys}`, { useGrouping: false });
+      const digits = Array.from({ length: 10 }, (_, i) => f.format(i));
+      if (!digits.every((d) => /^\p{Nd}$/u.test(d))) continue;
+      expect(digits.map((d) => pyDigits(d))).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    }
   });
 });

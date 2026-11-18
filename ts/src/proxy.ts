@@ -298,33 +298,22 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
           const cres =
             fresh0 === null ? null : st.engine.tryReserve(c0.account.name, c0.pool, cEst, poolGrossRoom(fresh0));
           if (fresh0 === null || cres !== null) {
-            let res: [number, number, number] | null = null;
-            try {
-              res = await queue.run(
-                () =>
-                  rateRequest(
-                    st.fetch,
-                    cfg.upstream,
-                    key0,
-                    parsed,
-                    cfg.router.classifier_model,
-                    cfg.router.classifier_timeout_s,
-                  ),
-                {
-                  signal: AbortSignal.any([req.signal, drainCtrl.signal]),
-                  timeoutMs: cfg.router.classifier_timeout_s * 1000,
-                },
-              );
-            } catch (e) {
-              if (req.signal.aborted) {
-                cres?.release();
-                throw e;
-              }
-            }
-            try {
-              if (res !== null) {
+            let started = false;
+            // the task owns the reservation once it runs: usage is booked and the hold settled only when it ends
+            const task = async (sig: AbortSignal): Promise<number | null> => {
+              started = true;
+              try {
+                const res = await rateRequest(
+                  st.fetch,
+                  cfg.upstream,
+                  key0,
+                  parsed,
+                  cfg.router.classifier_model,
+                  cfg.router.classifier_timeout_s,
+                  sig,
+                );
+                if (res === null) return null;
                 const [s, pt, ct] = res;
-                llm = s;
                 if (pt || ct) {
                   const [c] = st.prices.costEur(cfg.router.classifier_model, pt, ct);
                   st.db.addLedger({
@@ -341,9 +330,19 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
                     status: 200,
                   });
                 }
+                return s;
+              } finally {
+                cres?.settle();
               }
-            } finally {
-              cres?.settle();
+            };
+            try {
+              llm = await queue.run(task, {
+                signal: AbortSignal.any([req.signal, drainCtrl.signal]),
+                timeoutMs: cfg.router.classifier_timeout_s * 1000,
+              });
+            } catch (e) {
+              if (!started) cres?.release();
+              if (req.signal.aborted) throw e;
             }
           }
         }

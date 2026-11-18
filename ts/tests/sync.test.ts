@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createBudgetEngine } from "../src/budget.ts";
 import { defaultConfig } from "../src/config.ts";
 import { openDb } from "../src/db.ts";
 import { createState } from "../src/state.ts";
@@ -85,6 +86,22 @@ describe("sync", () => {
     const snap = must(db.latestSnapshot("a", "vibe"));
     expect(snap.initial_eur).toBe(50);
     expect(snap.used_eur).toBe(0);
+  });
+  it("manual fallback does not double count spending booked during the fetch", async () => {
+    const db = openDb(":memory:");
+    const cfg = defaultConfig();
+    cfg.accounts.push(acct("a", { vibe: "k" }, { vibe: { initial_eur: 50, reset_day: 15 } }));
+    await syncAll(
+      fakeFetch(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+        db.addLedger({ ts: Date.now() / 1000, account: "a", pool: "vibe", cost_eur: 1, source: "proxy" });
+        return json({}, 404);
+      }),
+      cfg,
+      db,
+    );
+    const s = must(createBudgetEngine(db, cfg.limits).status("a", "vibe", Date.now() / 1000 + 1));
+    expect(s.used).toBeCloseTo(1, 6);
   });
   it("books the external gap only for the canonical account", async () => {
     const db = openDb(":memory:");

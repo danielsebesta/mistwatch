@@ -84,6 +84,20 @@ const accClause = (account: string | string[]): [string, string[]] =>
     ? ["account=?", [account]]
     : [`account IN (${account.map(() => "?").join(",")})`, [...account]];
 export const cmpCp = (a: string, b: string): number => Buffer.compare(Buffer.from(a), Buffer.from(b));
+export const resolveRoot = (links: Map<string, string>, account: string): string => {
+  const path: string[] = [];
+  const seen = new Set<string>();
+  let cur = account;
+  while (!seen.has(cur)) {
+    seen.add(cur);
+    path.push(cur);
+    const next = links.get(cur);
+    if (next === undefined) return cur;
+    cur = next;
+  }
+  // A cycle has no root: every member agrees on its smallest code point.
+  return path.slice(path.indexOf(cur)).reduce((a, b) => (cmpCp(b, a) < 0 ? b : a));
+};
 export type CostBetweenOpts = {
   upto?: number | undefined;
   inclusive?: boolean | undefined;
@@ -139,15 +153,7 @@ export const openDb = (path: string): DB => {
     setMeta: (key, value) => {
       stmt("INSERT INTO meta(k, v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").run(key, value);
     },
-    canonical: (account) => {
-      let cur = account;
-      for (let i = 0; i <= db.links.size; i++) {
-        const next = db.links.get(cur);
-        if (next === undefined || next === account) break;
-        cur = next;
-      }
-      return cur;
-    },
+    canonical: (account) => resolveRoot(db.links, account),
     members: (account) => {
       const c = db.canonical(account);
       const rest = [...db.links.keys()].filter((k) => k !== c && db.canonical(k) === c).sort(cmpCp);

@@ -167,7 +167,7 @@ const syncAccount = async (fetchFn: FetchLike, cfg: Config, db: DB, acct: Accoun
     for (const [pool, m] of Object.entries(acct.manual)) {
       const initial = asFloat(m.initial_eur);
       const resetAt = nextReset(Math.trunc(asFloat(m.reset_day ?? 1)), now);
-      const used = db.costBetween(acct.name, pool, prevMonth(resetAt), { inclusive: true });
+      const used = db.costBetween(acct.name, pool, prevMonth(resetAt), { inclusive: true, upto: now });
       db.addSnapshot({
         ts: now,
         account: acct.name,

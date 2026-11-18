@@ -226,7 +226,8 @@ export const createSignIn = (deps: SignInDeps): SignInApi => {
         cancel(a.id);
     }
     for (const s of starting) if (s.account === account && s.pool === pool) s.ctrl.abort();
-    let active = starting.size;
+    let active = 0;
+    for (const s of starting) if (!s.ctrl.signal.aborted) active += 1;
     for (const a of attempts.values()) if (a.status === "pending" || a.status === "exchanging") active += 1;
     if (active >= MAX_ACTIVE) throw new SignInError("Too many sign-ins in progress.");
     const slot: Starting = { account, pool, ctrl: new AbortController() };

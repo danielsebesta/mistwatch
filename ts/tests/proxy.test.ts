@@ -581,6 +581,49 @@ describe("proxy accounting hardening", () => {
     expect(st.db.recent().some((r) => r.endpoint === "router")).toBe(true);
     expect(must(st.engine.status("a", "api")).inflight).toBe(0);
   });
+  it("aborts the classifier fetch on client abort and holds the reservation until it ends", async () => {
+    calls.length = 0;
+    const cfg = mkCfg([acct()]);
+    cfg.router.llm_classifier = true;
+    const [gate, release] = gated();
+    let sig: AbortSignal | null | undefined;
+    const st = createState(
+      cfg,
+      fakeFetch(async (_u, init) => {
+        sig = init?.signal;
+        await gate;
+        return json({
+          choices: [{ message: { content: '{"difficulty": 5}' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 3 },
+        });
+      }),
+    );
+    seedPool(st, "a", "api", 0, 12.75);
+    seedPool(st, "a", "vibe", 127.5, 127.5);
+    const ctrl = new AbortController();
+    const body = {
+      model: "auto",
+      messages: [{ role: "user", content: "describe the abort handling of queued classifier work" }],
+    };
+    const r = createProxy(st).handle(
+      req("/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...AUTH },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      }),
+    );
+    r.catch(() => undefined);
+    await waitFor(() => calls.length === 1);
+    expect(must(st.engine.status("a", "api")).inflight).toBeGreaterThan(0);
+    ctrl.abort();
+    await waitFor(() => sig?.aborted === true);
+    await new Promise((ok) => setTimeout(ok, 20));
+    expect(must(st.engine.status("a", "api")).inflight).toBeGreaterThan(0);
+    release();
+    await waitFor(() => must(st.engine.status("a", "api")).inflight === 0);
+    expect(st.db.recent().some((x) => x.endpoint === "router")).toBe(true);
+  });
   it("books an estimate when a 2xx body breaks mid-read", async () => {
     const st = baseState(
       () =>

@@ -236,6 +236,16 @@ describe("sign-in flow", () => {
     ]);
     expect(res.map((r) => r.status)).toEqual(["rejected", "fulfilled"]);
   });
+  it("replaces an in-flight start at capacity without counting the aborted one", async () => {
+    const { signin } = mk({ final: { status: "pending" } });
+    for (const acc of ["a1", "a2", "a3", "a4"]) await signin.start(acc, "vibe");
+    const res = await Promise.allSettled([
+      signin.start("me@example.cz", "vibe"),
+      signin.start("me@example.cz", "vibe"),
+    ]);
+    expect(res.map((r) => r.status)).toEqual(["rejected", "fulfilled"]);
+    expect(String((res[0] as PromiseRejectedResult).reason)).toContain("Replaced");
+  });
   it("does not finish as done when cancelled during the post-exchange sync", async () => {
     const db = openDb(":memory:");
     const store = createStore(db);

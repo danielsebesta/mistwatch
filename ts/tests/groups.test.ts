@@ -159,6 +159,39 @@ describe("prototype-named accounts", () => {
     expect(e.tryReserve("a", "vibe", 6, 10)).not.toBeNull();
     expect(e.tryReserve("b", "vibe", 6, 10)).toBeNull();
   });
+  it("breaks legacy link cycles so canonical and members agree", () => {
+    const db = openDb(":memory:");
+    seed(db, "a", 1, 0, 10, 12.75, NOW - 1000);
+    seed(db, "b", 2, 0, 10, 12.75, NOW);
+    seed(db, "c", 2, 0, 10, 12.75, NOW);
+    db.links = new Map([
+      ["b", "a"],
+      ["a", "c"],
+    ]);
+    db.linksInfo = new Map([
+      ["b", "likely"],
+      ["a", "likely"],
+    ]);
+    refreshLinks(db, accounts("a", "b", "c"));
+    expect(Object.fromEntries(db.links)).toEqual({ a: "b", c: "b" });
+    for (const n of ["a", "b", "c"]) {
+      expect(db.canonical(n)).toBe("b");
+      expect(db.members(n)).toEqual(["b", "a", "c"]);
+    }
+    const e = eng(db);
+    expect(e.tryReserve("b", "vibe", 6, 10)).not.toBeNull();
+    expect(e.tryReserve("c", "vibe", 6, 10)).toBeNull();
+  });
+  it("resolves persisted cycles to one canonical", () => {
+    const db = openDb(":memory:");
+    db.links = new Map([
+      ["b", "c"],
+      ["c", "b"],
+    ]);
+    expect(db.canonical("b")).toBe("b");
+    expect(db.canonical("c")).toBe("b");
+    expect(db.members("c")).toEqual(["b", "c"]);
+  });
   it("orders members and ties by code point", () => {
     const db = openDb(":memory:");
     for (const n of ["\u{1F600}", "�"]) seed(db, n, 1);

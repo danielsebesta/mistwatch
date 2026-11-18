@@ -11,11 +11,12 @@ const ND = /\p{Nd}/u;
 const NUM = /"difficulty"\s*:\s*(\p{Nd}+)/u;
 const digitValue = (c: number): number => {
   if (c >= 0x1d7ce && c <= 0x1d7ff) return (c - 0x1d7ce) % 10;
+  // Nd code points come in contiguous 0-9 blocks, so adjacent blocks form a run whose length is a multiple of ten
   let v = 0;
-  while (v < 9 && ND.test(String.fromCodePoint(c - v - 1))) v++;
-  return v;
+  while (ND.test(String.fromCodePoint(c - v - 1))) v++;
+  return v % 10;
 };
-const pyDigits = (s: string): number => {
+export const pyDigits = (s: string): number => {
   let n = 0;
   for (const ch of s) n = Math.min(n * 10 + digitValue(ch.codePointAt(0) ?? 0), 1e6);
   return n;
@@ -57,6 +58,7 @@ export const rate = async (
   body: ChatBody,
   model: string,
   timeoutS: number,
+  signal?: AbortSignal,
 ): Promise<[number, number, number] | null> => {
   const view = promptView(body);
   const ck = createHash("sha1").update(view, "utf8").digest("hex");
@@ -88,7 +90,7 @@ export const rate = async (
         "Content-Type": "application/json",
       },
       body: JSON.stringify(req),
-      signal: AbortSignal.timeout(timeoutS * 1000),
+      signal: AbortSignal.any([AbortSignal.timeout(timeoutS * 1000), ...(signal ? [signal] : [])]),
       redirect: "manual",
     });
     if (!res.ok) throw new Error(`upstream ${res.status}`);

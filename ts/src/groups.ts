@@ -1,5 +1,5 @@
 import { type BudgetEngine, poolRetryAt, poolRoom, WINDOWS } from "./budget.ts";
-import { cmpCp, type DB } from "./db.ts";
+import { cmpCp, type DB, resolveRoot } from "./db.ts";
 import type { Account, PoolAgg, PoolStatus, SharedGroup, Snapshot, Summary, WindowAgg } from "./types.ts";
 import { POOLS } from "./types.ts";
 export const SAME_PASS_S = 90.0;
@@ -109,6 +109,8 @@ export const refreshLinks = (db: DB, accounts: Account[]): Map<string, string> =
       const pc = prio.get(canon) ?? 999;
       if (pm < pc || (pm === pc && cmpCp(m, canon) < 0)) canon = m;
     }
+    links.delete(canon);
+    info.delete(canon);
     const per = fresh.get(canon);
     const spent = per ? Object.values(per).some((s) => s.used_eur > EPS_EUR) : false;
     for (const m of members) {
@@ -118,13 +120,7 @@ export const refreshLinks = (db: DB, accounts: Account[]): Map<string, string> =
       }
     }
   }
-  for (const m of [...links.keys()]) {
-    let root = links.get(m) ?? m;
-    for (let i = 0; i <= links.size; i++) {
-      const next = links.get(root);
-      if (next === undefined || next === m) break;
-      root = next;
-    }
+  for (const [m, root] of [...links.keys()].map((k) => [k, resolveRoot(links, k)] as const)) {
     if (root === m) {
       links.delete(m);
       info.delete(m);
