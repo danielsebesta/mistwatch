@@ -41,6 +41,22 @@ describe("paths and secrets", () => {
     expect(() => anyKey(acct())).toThrow("account a has no keys configured");
   });
 });
+describe("loadConfig floats", () => {
+  const load = (body: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "mwcfg-"));
+    const p = join(dir, "config.toml");
+    writeFileSync(p, body);
+    return () => loadConfig(p);
+  };
+  it("rejects strings Python float() rejects", () => {
+    for (const s of ['""', '"0x10"', '"0b1"', '"abc"']) {
+      expect(load(`[pricing]\nusd_to_eur = ${s}\n`)).toThrow();
+    }
+  });
+  it("accepts numeric strings", () => {
+    expect(load('[pricing]\nusd_to_eur = " 0.5e0 "\n')().usd_to_eur).toBe(0.5);
+  });
+});
 describe("loadConfig", () => {
   it("reports invalid TOML without quoting the source", () => {
     const dir = mkdtempSync(join(tmpdir(), "mwcfg-"));

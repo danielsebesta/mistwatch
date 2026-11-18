@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { dumpJson, merge, opencode, opencodeConfigPath, pi } from "./agents.ts";
+import { dumpJson, opencode, opencodeConfigPath, pi } from "./agents.ts";
 import type { PoolStatusDict } from "./types.ts";
 
 const USAGE = `usage: mistwatch <command> [options]
@@ -22,7 +22,6 @@ commands:
   agent-config   provider config for pi|opencode (--write, --env)`;
 const openApp = async () => (await import("./open.ts")).openApp();
 const serverUrl = (cfg: { host: string; port: number }): string => `http://${cfg.host}:${cfg.port}`;
-const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 let stdinQueue: string[] | null = null;
 const stdinLines = async (): Promise<string[]> => {
   if (stdinQueue === null) {
@@ -138,9 +137,9 @@ const cmdInit = async (args: string[]): Promise<number> => {
     console.log(`${p} already exists (use --force)`);
     return 1;
   }
-  mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, CONFIG_TEMPLATE, "utf8");
-  console.log(`wrote ${p}`);
+  const { applyFile } = await import("./setup.ts");
+  const res = applyFile(p, () => CONFIG_TEMPLATE, new Date());
+  console.log(`wrote ${p}${res.backup ? ` (backup: ${res.backup})` : ""}`);
   if (values["import-vibe"]) return cmdImportVibe(["--name", "vibe-login"]);
   console.log("Next: `mistwatch serve`, then open the web UI to create your login and add keys.");
   return 0;
@@ -213,8 +212,11 @@ const cmdStatus = async (args: string[]): Promise<number> => {
   const { cfg, db } = await openApp();
   const eng = createBudgetEngine(db, cfg.limits);
   const pools: PoolStatusDict[] = [];
+  let lastSync = 0;
+  for (const acc of cfg.accounts)
+    for (const pool of ["vibe", "api"]) lastSync = Math.max(lastSync, db.latestSnapshot(acc.name, pool)?.ts ?? 0);
   const d = {
-    last_sync: 0,
+    last_sync: lastSync,
     pools,
     by_client_7d: db.byClientSince(Date.now() / 1000 - 7 * 86400),
   };
@@ -242,12 +244,13 @@ const cmdServe = async (args: string[]): Promise<number> => {
   const { startServer } = await import("./app.ts");
   const cfg = loadConfig();
   if (values.port !== undefined) {
-    const port = Number.parseInt(values.port, 10);
-    if (!Number.isFinite(port)) {
-      console.error("mistwatch: --port must be an integer");
+    const { parsePort } = await import("./setup.ts");
+    try {
+      cfg.port = parsePort(values.port) ?? cfg.port;
+    } catch (e) {
+      console.error(`mistwatch: ${e instanceof Error ? e.message : String(e)}`);
       return 2;
     }
-    cfg.port = port;
   }
   await startServer(cfg);
   return 0;
@@ -339,28 +342,19 @@ const cmdAgentConfig = async (args: string[]): Promise<number> => {
     console.error(`\n# set ${env}=<a key from the API keys page>; add --write to merge this into the file`);
     return 0;
   }
-  let cur: Record<string, unknown> = {};
-  let raw: string | null = null;
+  const { applyFile, planJson, SetupError } = await import("./setup.ts");
   try {
-    raw = readFileSync(path, "utf8");
+    const res = applyFile(path, (raw) => planJson(raw, data), new Date());
+    console.log(
+      res.action === "unchanged"
+        ? `${path} is already up to date`
+        : `wrote ${path}${res.backup ? ` (backup: ${res.backup})` : ""}. Set ${env}=<key from the API keys page>.`,
+    );
   } catch (e) {
-    if (!(e && typeof e === "object" && "code" in e && e.code === "ENOENT")) throw e;
+    if (!(e instanceof SetupError)) throw e;
+    console.log(`${path}: ${e.message}. Paste the block above manually.`);
+    return 1;
   }
-  if (raw !== null) {
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      if (!isRec(parsed)) throw new SyntaxError("not plain JSON");
-      cur = parsed;
-    } catch (e) {
-      if (!(e instanceof SyntaxError)) throw e;
-      console.log(`${path} is not plain JSON (comments?); not touching it. Paste the block above manually.`);
-      return 1;
-    }
-    writeFileSync(`${path}.bak`, raw, "utf8");
-  }
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${dumpJson(merge(cur, data))}\n`, "utf8");
-  console.log(`wrote ${path} (backup: .json.bak). Set ${env}=<key from the API keys page>.`);
   return 0;
 };
 export const main = async (argv: string[]): Promise<number> => {

@@ -211,7 +211,7 @@ export const startSyncLoop = (st: State): (() => void) => {
       }
       if (stopped) break;
       await new Promise<void>((ok) => {
-        const t = setTimeout(ok, st.cfg.limits.sync_interval_s * 1000);
+        const t = setTimeout(ok, Math.min(Math.max(st.cfg.limits.sync_interval_s, 1), 2_147_483) * 1000);
         t.unref();
         wake = ok;
       });

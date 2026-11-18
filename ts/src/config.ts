@@ -87,13 +87,15 @@ const finiteInt = (v: unknown): number => {
   if (typeof v === "number" && !Number.isFinite(v)) throw new TypeError(`cannot convert ${v} to int`);
   return pyInt(v);
 };
+const FLOAT_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$|^[+-]?infinity$/i;
 const pyFloat = (v: unknown): number => {
   if (typeof v === "boolean") return v ? 1 : 0;
   if (typeof v === "number") return v;
   if (typeof v === "bigint") return Number(v);
   if (typeof v === "string") {
-    const n = Number(v.trim());
-    if (!Number.isNaN(n)) return n;
+    const t = v.trim();
+    const n = Number(t);
+    if (FLOAT_RE.test(t) && !Number.isNaN(n)) return n;
   }
   throw new TypeError(`float() argument must be a string or a number, not ${describe(v)}`);
 };

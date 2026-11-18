@@ -61,7 +61,7 @@ export type SetupDeps = {
   start: (cfg: Config) => Promise<unknown>;
 };
 export class SetupArgError extends Error {}
-class SetupError extends Error {}
+export class SetupError extends Error {}
 const FLAGS = {
   yes: { type: "boolean", short: "y", default: false },
   harness: { type: "string" },
@@ -103,7 +103,7 @@ export const parseHarnesses = (raw: string): Harness[] => {
     throw new SetupArgError(`--harness expects ${HARNESSES.join(", ")} or all (got '${bad.join(",") || raw}')`);
   return HARNESSES.filter((h) => names.includes(h));
 };
-const parsePort = (raw: string | undefined): number | null => {
+export const parsePort = (raw: string | undefined): number | null => {
   if (raw === undefined) return null;
   const port = /^\d+$/.test(raw.trim()) ? Number(raw.trim()) : 0;
   if (port < 1 || port > 65535) throw new SetupArgError(`--port expects an integer from 1 to 65535 (got '${raw}')`);
