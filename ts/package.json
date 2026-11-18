@@ -29,6 +29,8 @@
     "build": "tsx scripts/build.ts",
     "typecheck": "tsc -p . --noEmit && tsc -p web --noEmit",
     "lint": "biome check .",
+    "build:web": "tsx scripts/build-web.ts",
+    "pretest": "npm run build:web --silent",
     "test": "vitest run",
     "check": "npm run typecheck && npm run lint && npm run test"
   },

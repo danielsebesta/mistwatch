@@ -22,13 +22,8 @@ export const buildWeb = async (): Promise<WebBuildResult> => {
   const webDir = join(here, "..", "web");
   const outDir = join(here, "..", "dist", "web");
   const pubDir = join(webDir, "public");
-  const srcAssets = join(here, "..", "..", "src", "mistwatch", "web");
-  mkdirSync(pubDir, { recursive: true });
   mkdirSync(outDir, { recursive: true });
-  for (const f of ASSETS) {
-    copyFileSync(join(srcAssets, f), join(pubDir, f));
-    copyFileSync(join(srcAssets, f), join(outDir, f));
-  }
+  for (const f of ASSETS) copyFileSync(join(pubDir, f), join(outDir, f));
   const res = await build({
     entryPoints: [join(webDir, "src", "main.ts")],
     bundle: true,

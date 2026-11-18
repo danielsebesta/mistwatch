@@ -19,7 +19,7 @@ process.env.MISTWATCH_NO_KEYRING = "1";
 const BASE = "http://localhost:8787";
 const H = { "x-mw": "1" };
 const PW = "correct horse battery";
-const WEB_DIR = fileURLToPath(new URL("../../src/mistwatch/web", import.meta.url));
+const WEB_DIR = fileURLToPath(new URL("../dist/web", import.meta.url));
 type Handler = (url: string, init: RequestInit | undefined) => Response | Promise<Response>;
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const json = (v: unknown, status = 200): Response =>
