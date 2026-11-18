@@ -76,6 +76,17 @@ describe("host and origin allowlist", () => {
     expect(localRequestAllowed({ host: "127.0.0.1:8787", origin: undefined }, OPTS)).toBe(true);
   });
 });
+describe("configured extra hosts", () => {
+  const extra = { port: 8787, extraHosts: ["mw.example.com"] };
+  it("allows a listed host and origin on any port, nothing else", () => {
+    expect(hostAllowed("mw.example.com", extra)).toBe(true);
+    expect(originAllowed("https://mw.example.com", extra)).toBe(true);
+    expect(originAllowed("https://evil.example.com", extra)).toBe(false);
+    expect(hostAllowed("mw.example.com.evil.net", extra)).toBe(false);
+    expect(originAllowed("https://mw.example.com", { port: 8787 })).toBe(false);
+    expect(originAllowed("http://127.0.0.1:9999", extra)).toBe(false);
+  });
+});
 describe("constant-time equality and tokens", () => {
   it("safeEqual compares without length leaks", () => {
     expect(safeEqual("abc", "abc")).toBe(true);

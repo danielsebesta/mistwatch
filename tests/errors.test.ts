@@ -36,7 +36,7 @@ describe("AppError", () => {
     expect(x.name).toBe("mistwatch_body_too_large");
     expect(x.code).toBe("mistwatch_body_too_large");
     expect(x.status).toBe(413);
-    expect(x.message).toBe("request body too large");
+    expect(x.message).toBe("The request body is too large.");
     expect(x.stack).toBeTypeOf("string");
   });
   it("toAppError normalises unknown throws without leaking internals", () => {
@@ -56,10 +56,18 @@ describe("AppError", () => {
 describe("bodies and headers", () => {
   it("proxyErrorBody matches the Python {error:{type,message,...}} shape", () => {
     expect(proxyErrorBody(errors.auth())).toEqual({
-      error: { type: "mistwatch_auth", message: "invalid proxy token" },
+      error: {
+        type: "mistwatch_auth",
+        message:
+          "Missing or invalid Mistwatch key. Create one under API keys in the web UI and send it as Authorization: Bearer mw-...",
+      },
     });
     expect(proxyErrorBody(errors.upstream())).toEqual({
-      error: { type: "mistwatch_upstream", message: "all upstream attempts failed" },
+      error: {
+        type: "mistwatch_upstream",
+        message:
+          "Mistral did not accept the request on any account. Check the account keys in the web UI and try again.",
+      },
     });
     const b = proxyErrorBody(errors.budget(42, [{ account: "a" }]));
     expect(b.error.type).toBe("mistwatch_budget_exhausted");

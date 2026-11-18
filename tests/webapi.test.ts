@@ -152,7 +152,7 @@ describe("security guards", () => {
     const { app } = mkApp();
     const a = await api(app, "/api/session", { headers: { host: "evil.example.com" } });
     expect(a.status).toBe(403);
-    expect(await a.json()).toEqual({ detail: "forbidden host" });
+    expect(await a.json()).toEqual({ detail: expect.stringContaining("This address is not allowed") });
     const u = await api(app, "/", { headers: { host: "evil.example.com:8787" } });
     expect(u.status).toBe(403);
     const b: unknown = await u.json();
@@ -174,7 +174,7 @@ describe("security guards", () => {
     const r = await api(app, "/api/session");
     expect(r.status).toBe(429);
     expect(Number(r.headers.get("retry-after"))).toBeGreaterThan(0);
-    expect(await r.json()).toEqual({ detail: "rate limit exceeded" });
+    expect(await r.json()).toEqual({ detail: expect.stringContaining("Too many requests") });
   });
   it("rate limits upstream-bound operations", async () => {
     const { app } = mkApp({ upstreamLimit: createRateLimiter({ limit: 1, windowS: 3600 }) });
@@ -182,7 +182,7 @@ describe("security guards", () => {
     expect((await jpost(app, "/api/sync", {}, authed(cookie))).status).toBe(200);
     const r = await jpost(app, "/api/sync", {}, authed(cookie));
     expect(r.status).toBe(429);
-    expect(await r.json()).toEqual({ detail: "rate limit exceeded" });
+    expect(await r.json()).toEqual({ detail: expect.stringContaining("Too many requests") });
   });
   it("returns 400 for malformed or non-object JSON bodies", async () => {
     const { app } = mkApp();

@@ -36,7 +36,8 @@ export const hostAllowed = (host: string | null | undefined, opts: HostAllowOpts
   const p = splitHost(host);
   if (p === null) return false;
   const name = p.name.endsWith(".") ? p.name.slice(0, -1) : p.name;
-  return nameAllowed(name, opts) && (p.port === null || p.port === opts.port);
+  if (!nameAllowed(name, opts)) return false;
+  return !LOCAL_NAMES.has(name) || p.port === null || p.port === opts.port;
 };
 export const originAllowed = (origin: string | null | undefined, opts: HostAllowOpts): boolean => {
   if (origin === null || origin === undefined || origin === "") return true;
@@ -51,6 +52,7 @@ export const originAllowed = (origin: string | null | undefined, opts: HostAllow
   if (u.username !== "" || u.password !== "") return false;
   const name = u.hostname.replace(/^\[|\]$/g, "").replace(/\.$/, "");
   if (!nameAllowed(name, opts)) return false;
+  if (!LOCAL_NAMES.has(name)) return true;
   const port = u.port === "" ? (u.protocol === "https:" ? 443 : 80) : Number(u.port);
   return port === opts.port;
 };

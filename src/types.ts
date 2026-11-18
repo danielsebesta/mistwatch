@@ -23,6 +23,7 @@ export type PriceOverride = { input: number; output: number; cached?: number | u
 export type Config = {
   host: string;
   port: number;
+  allowed_hosts: string[];
   upstream: string;
   usd_to_eur: number;
   db_path: string;

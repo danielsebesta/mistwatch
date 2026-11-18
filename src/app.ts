@@ -51,11 +51,11 @@ export const createApp = (st: State, opts: AppOpts = {}): Hono => {
   });
   app.use("*", async (c, next) => {
     const h = { host: c.req.header("host"), origin: c.req.header("origin") };
-    if (localRequestAllowed(h, { port: st.cfg.port })) {
+    if (localRequestAllowed(h, { port: st.cfg.port, extraHosts: st.cfg.allowed_hosts })) {
       await next();
       return;
     }
-    const e = errors.forbidden("forbidden host");
+    const e = errors.forbiddenHost(st.cfg.port);
     const isApi = c.req.path === "/api" || c.req.path.startsWith("/api/");
     return new Response(JSON.stringify(isApi ? apiErrorBody(e) : proxyErrorBody(e)), {
       status: e.status,

@@ -231,8 +231,13 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
   const errResp = (e: AppError): Response =>
     Response.json(proxyErrorBody(e), { status: e.status, headers: errorHeaders(e) });
   const forward = async (req: Request): Promise<Response> => {
-    if (!localRequestAllowed({ host: req.headers.get("host"), origin: req.headers.get("origin") }, { port: cfg.port }))
-      throw asException(errors.forbidden("forbidden host"));
+    if (
+      !localRequestAllowed(
+        { host: req.headers.get("host"), origin: req.headers.get("origin") },
+        { port: cfg.port, extraHosts: cfg.allowed_hosts },
+      )
+    )
+      throw asException(errors.forbiddenHost(cfg.port));
     const url = new URL(req.url);
     const urlPath = url.pathname;
     if (urlPath === "/api" || urlPath.startsWith("/api/"))

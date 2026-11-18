@@ -57,6 +57,27 @@ describe("loadConfig floats", () => {
     expect(load('[pricing]\nusd_to_eur = " 0.5e0 "\n')().usd_to_eur).toBe(0.5);
   });
 });
+describe("allowed_hosts", () => {
+  it("is normalised and validated", () => {
+    const ok = (body: string) => {
+      const dir = mkdtempSync(join(tmpdir(), "mwcfg-"));
+      const p = join(dir, "config.toml");
+      writeFileSync(p, body);
+      return loadConfig(p);
+    };
+    expect(ok("").allowed_hosts).toEqual([]);
+    expect(
+      ok(`[server]
+allowed_hosts = [" MW.Example.com. ", ""]
+`).allowed_hosts,
+    ).toEqual(["mw.example.com"]);
+    expect(() =>
+      ok(`[server]
+allowed_hosts = "x"
+`),
+    ).toThrow();
+  });
+});
 describe("loadConfig", () => {
   it("reports invalid TOML without quoting the source", () => {
     const dir = mkdtempSync(join(tmpdir(), "mwcfg-"));

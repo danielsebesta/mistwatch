@@ -13,6 +13,7 @@ export const CONFIG_TEMPLATE = `# mistwatch config (server, limits, pricing). Ac
 [server]
 host = "127.0.0.1"
 port = 8787
+# Extra host names allowed to reach the UI and API, for example a tunnel: allowed_hosts = ["mw.example.com"]
 
 [upstream]
 base_url = "https://api.mistral.ai"
@@ -52,6 +53,7 @@ const defaultRouterCfg = (): RouterCfg => ({
 export const defaultConfig = (): Config => ({
   host: "127.0.0.1",
   port: 8787,
+  allowed_hosts: [],
   upstream: "https://api.mistral.ai",
   usd_to_eur: DEFAULT_USD_TO_EUR,
   db_path: join(homeDir(), "mistwatch.db"),
@@ -104,6 +106,10 @@ const pyStr = (v: unknown): string => {
   if (typeof v === "number" || typeof v === "bigint") return String(v);
   if (typeof v === "boolean") return v ? "True" : "False";
   throw new TypeError(`str() argument must be a primitive, not ${describe(v)}`);
+};
+const hostList = (v: unknown): string[] => {
+  if (!Array.isArray(v)) throw new TypeError(`allowed_hosts must be a list of host names, not ${describe(v)}`);
+  return v.map((h) => pyStr(h).trim().toLowerCase().replace(/.$/, "")).filter((h) => h !== "");
 };
 const pick = <T>(src: Table, key: string, def: T, coerce: (v: unknown) => T): T =>
   key in src ? coerce(src[key]) : def;
@@ -164,6 +170,7 @@ export const loadConfig = (path?: string): Config => {
   const server = optTable(raw.server, "server");
   cfg.host = pick(server, "host", cfg.host, pyStr);
   cfg.port = pick(server, "port", cfg.port, pyInt);
+  cfg.allowed_hosts = pick(server, "allowed_hosts", cfg.allowed_hosts, hostList);
   cfg.upstream = pick(optTable(raw.upstream, "upstream"), "base_url", cfg.upstream, pyStr).replace(/\/+$/, "");
   const pricing = optTable(raw.pricing, "pricing");
   cfg.usd_to_eur = pick(pricing, "usd_to_eur", cfg.usd_to_eur, pyFloat);

@@ -124,8 +124,13 @@ export const createWebApi = (st: State, opts: WebApiOpts = {}): Hono => {
     setCookie(c, COOKIE, token, { httpOnly: true, sameSite: "Strict", path: "/", maxAge: SESSION_TTL });
   };
   api.use("*", async (c, next) => {
-    if (!localRequestAllowed({ host: c.req.header("host"), origin: c.req.header("origin") }, { port: st.cfg.port }))
-      throw asException(errors.forbidden("forbidden host"));
+    if (
+      !localRequestAllowed(
+        { host: c.req.header("host"), origin: c.req.header("origin") },
+        { port: st.cfg.port, extraHosts: st.cfg.allowed_hosts },
+      )
+    )
+      throw asException(errors.forbiddenHost(st.cfg.port));
     const r = apiLimit.check(addr(c));
     if (!r.allowed) throw asException(errors.rateLimited(r.retryAfter));
     await next();
