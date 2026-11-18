@@ -1,5 +1,6 @@
 import type { ChatBody, Decision, Step } from "./types.ts";
 // Weakest and cheapest first. Every step is a model together with a reasoning effort it supports.
+// Step 0 (no reasoning at all) is only for trivial prompts, see isTrivial; every other request gets at least low.
 export const LADDER: Step[] = [
   { model: "mistral-small-2603", effort: "none", vision: true, ctx: 262_144, label: "small/none" },
   { model: "zai-glm-5-3-flash", effort: "low", vision: true, ctx: 1_048_576, label: "glm-flash/low" },
@@ -17,9 +18,8 @@ export const TOP = LADDER.length - 1;
 // when it cannot answer.
 export const SCORE_MAX = 20;
 export const LLM_WEIGHT = 1;
-// [highest score that still uses this step, step index]
+// [highest score that still uses this step, step index]; step 0 is not reachable by score
 export const SCORE_TO_LEVEL: [number, number][] = [
-  [2, 0],
   [4, 1],
   [6, 2],
   [8, 3],
@@ -158,6 +158,16 @@ export const scoreRequest = (body: ChatBody): [number, string[], number, boolean
 };
 // The tiny model judges every request that has any user text, however short: a few words can be a
 // hard job in a large project.
+// A prompt of a few characters, outside an agent loop ("ok", "hi", two letters): no reasoning needed.
+const TRIVIAL_MAX_CP = 3;
+const isTrivial = (body: ChatBody): boolean => {
+  const msgs = userMsgs(body);
+  return (
+    !msgs.some((m) => m.role === "tool") &&
+    cpLen(trimUnicode(lastUserText(msgs))) <= TRIVIAL_MAX_CP &&
+    lastUserText(msgs) !== ""
+  );
+};
 export const worthAsking = (body: ChatBody): boolean => cpLen(trimUnicode(lastUserText(userMsgs(body)))) > 0;
 const ladderAt = (i: number): Step => {
   const s = LADDER[((i % LADDER.length) + LADDER.length) % LADDER.length];
@@ -186,8 +196,12 @@ export const decide = (
   }
   const drop = pressure < 0.1 ? 3 : pressure < 0.25 ? 2 : 0;
   if (drop) {
-    level = Math.max(0, level - drop);
+    level = Math.max(1, level - drop);
     why.push(`budget pressure ${Math.round(pressure * 100)}% -> -${drop}`);
+  }
+  if (level === 1 && isTrivial(body)) {
+    level = 0;
+    why.push("trivial prompt -> no reasoning");
   }
   let step = ladderAt(level);
   if (image && !step.vision) {

@@ -97,8 +97,8 @@ describe("cli init and quick commands", () => {
   it("dry-runs the router without touching the config", async () => {
     expect(await main(["route", "hello world"])).toBe(0);
     const out = logs.join("\n");
-    expect(out).toContain("mistral-small-2603");
-    expect(out).toContain("level=0/9");
+    expect(out).toContain("zai-glm-5-3-flash");
+    expect(out).toContain("effort=low");
   });
   it("reports a missing config", async () => {
     await expect(main(["status"])).rejects.toThrow("not found - run `mistwatch init` first");

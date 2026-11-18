@@ -23,10 +23,26 @@ describe("router", () => {
     expect(r.effort).toBe("low");
     expect(scoreRequest({ messages: [{ role: "user", content: "😀".repeat(400) }] })[2]).toBe(100);
   });
-  it("trivial goes small", () => {
-    const r = d("ahoj");
-    expect(r.model).toBe("mistral-small-2603");
-    expect(r.effort).toBe("none");
+  it("a prompt of a few characters gets no reasoning, anything longer gets at least low", () => {
+    for (const tiny of ["ok", "a", "čau"]) {
+      const r = d(tiny);
+      expect(r.model).toBe("mistral-small-2603");
+      expect(r.effort).toBe("none");
+    }
+    for (const text of ["ahoj", "hello world", "co je to"]) {
+      const r = d(text);
+      expect(r.effort).not.toBe("none");
+      expect(r.effort).not.toBeNull();
+    }
+    expect(d("ok", { tools: [{}] }).effort).toBe("none");
+    const loop: ChatBody = {
+      messages: [
+        { role: "user", content: "ok" },
+        { role: "tool", content: "result" },
+      ],
+    };
+    expect(decide(loop).effort).not.toBe("none");
+    expect(decide(loop, 0.05).effort).not.toBe("none");
   });
   it("hard debugging goes up the ladder", () => {
     const r = d(
@@ -143,7 +159,7 @@ describe("0-20 scale", () => {
   it("covers every score with a step and every step with a score range", () => {
     expect(SCORE_MAX).toBe(20);
     expect(SCORE_TO_LEVEL.at(-1)?.[0]).toBe(20);
-    expect(SCORE_TO_LEVEL.map(([, level]) => level)).toEqual(LADDER.map((_, i) => i));
+    expect(SCORE_TO_LEVEL.map(([, level]) => level)).toEqual(LADDER.map((_, i) => i).slice(1));
     for (let s = 0; s <= 20; s++) expect(decide(body, 1.0, s).level).toBeGreaterThanOrEqual(0);
   });
   it("only uses efforts the model accepts", () => {
