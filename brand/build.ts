@@ -1,9 +1,8 @@
 // Builds the Mistwatch logo and favicons. Run: npx tsx brand/build.ts   (output goes to web/public, or to $OUT)
 // Then optimise: npx svgo@3 --config brand/svgo.config.mjs web/public/*.svg
 //
-// The letters are pixel grids taken from the Tiny5 font (SIL OFL 1.1, see OFL.txt): its glyphs are sets of
-// 128-unit squares, so each capital is a list of (column, row from top) cells, 5 rows high. The output SVGs are
-// plain rectangles and need no font.
+// Letters are pixel grids: each capital is a list of (column, row from top) cells, 5 rows high. The output
+// SVGs are plain rectangles.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

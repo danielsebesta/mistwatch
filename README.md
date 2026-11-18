@@ -113,7 +113,7 @@ npm run check    # typecheck, lint, tests
 npm run build    # dist/cli.js and dist/web
 ```
 
-The logo, favicons and colour palette are generated from `brand/` (`npx tsx brand/build.ts`, `npx tsx brand/contrast.ts`). The mark is drawn with the [Tiny5](https://github.com/Gissio/font_tiny5) font (SIL OFL 1.1, see `brand/OFL.txt`) and is deliberately different from the Mistral AI logo.
+The logo, favicons and colour palette are generated from `brand/` (`npx tsx brand/build.ts`, `npx tsx brand/contrast.ts`).
 
 ## Licence
 
