@@ -1,71 +1,120 @@
-<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="web/public/logo-dark.svg"><img src="web/public/logo.svg" alt="Mistwatch" height="48"></picture></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/danielsebesta/mistwatch/master/web/public/logo-dark.svg">
+    <img src="https://raw.githubusercontent.com/danielsebesta/mistwatch/master/web/public/logo.svg" alt="Mistwatch" height="48">
+  </picture>
+</p>
 
-# Mistwatch
+<p align="center">A local proxy for Mistral AI that tracks your budgets and gives your coding tools one <code>auto</code> model.</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/mistwatch"><img alt="npm" src="https://img.shields.io/npm/v/mistwatch?color=ff8204&logo=npm"></a>
+  <a href="https://www.npmjs.com/package/mistwatch"><img alt="downloads" src="https://img.shields.io/npm/dm/mistwatch?color=ff8204"></a>
+  <a href="https://github.com/danielsebesta/mistwatch/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/danielsebesta/mistwatch/ci.yml?branch=master&label=CI"></a>
+  <a href="https://github.com/danielsebesta/mistwatch/pkgs/container/mistwatch"><img alt="Docker" src="https://img.shields.io/badge/docker-ghcr.io-2496ed?logo=docker&logoColor=white"></a>
+  <img alt="Node 24+" src="https://img.shields.io/node/v/mistwatch?color=339933&logo=node.js&logoColor=white">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/npm/l/mistwatch?color=blue"></a>
+</p>
 
 > **Unofficial tool.** Mistwatch is an independent project. It is not a product of Mistral AI and is not affiliated with, endorsed by or sponsored by it. "Mistral" is a trademark of Mistral AI and is used here only to describe the service the tool talks to.
 
-A local proxy for Mistral (Vibe Code + Studio/API) that watches your budgets, spreads spending over time and offers an `auto` model.
+## What it does
 
-```
-mistwatch serve        # then open http://127.0.0.1:8787/
-```
+- **Tracks your budgets.** It shows how much of your Vibe Code and Studio (API) allowance you have used, per 5 hours, day, week and month.
+- **Spreads usage over time.** It paces requests so you do not burn a whole month's allowance in one afternoon. When nothing is left it answers `429` with a `Retry-After` header.
+- **Offers an `auto` model.** It picks a suitable Mistral model for each request.
+- **Pools several accounts.** Requests go to whichever account still has room.
+- **Works with your tools.** OpenCode, Pi and the Vibe CLI, or anything that speaks the OpenAI chat API.
 
 ## Quick start
 
-```
-npx mistwatch setup            # config, Vibe login, client token, tool configs
-npx mistwatch serve
+You need Node 24 or newer. Use whichever package manager you like:
+
+```sh
+npx mistwatch setup        # npm
+pnpm dlx mistwatch setup   # pnpm
+yarn dlx mistwatch setup   # yarn (Berry)
+bunx mistwatch setup       # bun
 ```
 
-For scripts and AI agents: `npx mistwatch setup --yes --harness vibe` (or `opencode`, `pi`). See [AGENTS.md](AGENTS.md).
+Setup creates the config, imports your Vibe login, creates a client token (shown once) and writes the config of your tools. Then start the proxy and open the web UI:
+
+```sh
+npx mistwatch serve        # http://127.0.0.1:8787/
+```
+
+To install it globally instead: `npm i -g mistwatch`, `pnpm add -g mistwatch`, `yarn global add mistwatch` or `bun add -g mistwatch`, then run `mistwatch`.
+
+Your tools read the client token from the `MISTWATCH_TOKEN` environment variable. Set it as setup tells you.
+
+For scripts and AI agents there is a non-interactive form: `mistwatch setup --yes --harness vibe` (or `opencode`, `pi`). See [AGENTS.md](AGENTS.md).
+
+### Docker
+
+```sh
+docker run -d --name mistwatch -p 127.0.0.1:8787:8787 -v mistwatch:/data ghcr.io/danielsebesta/mistwatch
+```
+
+Publish the port on `127.0.0.1` as shown, so the UI is not exposed to your network. The container keeps its config and database in the `mistwatch` volume. Open <http://127.0.0.1:8787/>, create your login and add your keys there.
 
 ## Web UI
 
-Served at `/`. Sign in with an account (the first run offers to create one). Pages:
+- **Overview**: Vibe and Studio budgets, limits per period, a spending chart and recent requests.
+- **Accounts**: your Mistral accounts, each with a Vibe key (can be taken over from the Vibe CLI in one click) and a Studio API key. A key is checked before it is saved.
+- **API keys**: `mw-…` keys for your tools. A key is shown only once, when you create it. The same page has ready-made configs for OpenCode, Pi and the Vibe CLI, plus environment variables for other tools.
+- **Settings**: change your password, add users and rename models in charts and tables.
 
-- **Overview**: Vibe and Studio budgets, limits per 5 hours / day / week / month, a spending chart and recent requests.
-- **Accounts**: Mistral accounts, each with a Vibe key (can be taken over from the Vibe CLI in one click) and a Studio API key. A key is checked before it is saved and its budget is loaded.
-- **API keys**: `mw-…` keys for your tools. The full key is shown only once, when you create it.
-- **Connect your tools** (on the API keys page): ready-made configs for OpenCode, Pi and Vibe CLI to copy or download, plus environment variables for other tools that speak the OpenAI API.
-- **Settings**: change password, sign out, add users and rename models in charts and tables.
+## Connecting your tools
 
-## Connecting agents
+`mistwatch setup` does it in one go. You can also do one tool at a time:
 
-Besides the UI, the CLI can write the config for you: `mistwatch setup` does everything in one go, or per tool `mistwatch agent-config opencode --write`, `mistwatch agent-config pi --write`, `mistwatch vibe-config`. The key is read from the `MISTWATCH_TOKEN` environment variable.
+```sh
+mistwatch agent-config opencode --write
+mistwatch agent-config pi --write
+mistwatch vibe-config
+```
 
-Claude Code (Anthropic Messages format) and current Codex CLI (OpenAI Responses format) do not work directly, because Mistral does not offer those formats. Put a translating proxy (for example LiteLLM) in front of Mistwatch.
+Claude Code and current Codex CLI do not work directly, because they need the Anthropic Messages or OpenAI Responses format and Mistral offers neither. Put a translating proxy such as LiteLLM in front of Mistwatch if you need them.
 
-A description for agents and integrators is served at `/llms.txt` (no sign-in needed): address, authentication, the `auto` models, `401` and `429` errors with `Retry-After`, and the recommended way to integrate.
+Agents and integrators can read `/llms.txt` on a running proxy (no sign-in needed). It describes the address, authentication, the `auto` models and the `401` and `429` errors.
 
-## Security
+## Commands
 
-- Passwords: salted scrypt. Sessions and proxy keys: only a SHA-256 hash is stored.
-- Mistral keys cannot be hashed (they are forwarded), so they live in the system keyring (Windows Credential Manager); the database only holds a reference.
-- Cookies are `HttpOnly` and `SameSite=Strict`, changes require the `x-mw` header, and 5 failed sign-ins lock the account for 60 seconds.
-- The server listens on `127.0.0.1` only. Do not expose it to a network without a reverse proxy with HTTPS.
-- Forgot your password: `mistwatch passwd <username>`.
+| Command | What it does |
+| --- | --- |
+| `setup` | One-step setup for your tools |
+| `serve` | Run the proxy and web UI (`--port`) |
+| `status` | Show the budget of every account |
+| `sync` | Pull budget usage from Mistral now |
+| `route "prompt"` | Show which model `auto` would pick |
+| `import-vibe` | Add the Vibe CLI login as an account |
+| `passwd <user>` | Create a user or reset a password |
+| `init` | Write a fresh config file |
 
 ## Configuration
 
-`~/.mistwatch/config.toml` now holds only the server, limits, prices and `[router]`. Accounts and clients from an old config are moved into the database once, on first start. After that, remove them from `config.toml` (especially any plaintext keys).
+Settings live in `~/.mistwatch/config.toml` (server address and port, limits, prices, the `auto` router). Set `MISTWATCH_HOME` to keep it somewhere else. Accounts and keys are stored in the database, not in the config file.
 
-Other commands: `status`, `sync`, `route "prompt" [--llm]`, `vibe-config`, `import-vibe`.
+To reach the UI under another host name, for example through a tunnel, add it to `allowed_hosts` under `[server]`.
 
-## Logo and favicons
+## Security
 
-The "MW" mark and the wordmark are built from pixels of the [Tiny5](https://github.com/Gissio/font_tiny5) font (SIL OFL 1.1, see `brand/OFL.txt`) in a colour gradient from amber to coral. It is deliberately a different typeface, shape and palette than the Mistral AI logo. The files are generated by `brand/build.py` (output goes to `web/public/`) and optimised with `svgo`:
-
-```
-uv run --no-project --with fonttools --with pillow python brand/build.py
-npx svgo@3 --config brand/svgo.config.mjs web/public/*.svg
-```
-
-## Look and feel
-
-The UI is dark only. `brand/palette.mjs` generates the palette from one seed colour (default orange `#ff8204`) using Material You (M3, Vibrant scheme) and writes it as tokens into `web/index.html` and `brand/palette.json`. For another colour: `cd brand && npm install && node palette.mjs "#3fb8af"`, then `uv run --no-project --with fonttools --with pillow python brand/build.py` (the logo and favicons are recoloured to match the background). Surfaces, outlines, text and accent colours follow the M3 dark-scheme roles (surface, surfaceContainer*, outline, onSurface, primary, error). Check token contrast with `python brand/contrast.py`.
-
-The Inter font is loaded from Google Fonts. It is the only external request the page makes; without internet a system font is used.
+- Passwords are hashed with salted scrypt. Sessions and proxy keys are stored only as SHA-256 hashes.
+- Mistral keys have to be forwarded, so they cannot be hashed. They are kept in your system keyring (Windows Credential Manager, macOS Keychain, libsecret). The database holds only a reference. The Docker image has no keyring and stores them in the data volume instead.
+- Cookies are `HttpOnly` and `SameSite=Strict`, and five failed sign-ins lock an account for 60 seconds.
+- The server listens on `127.0.0.1` only. If you expose it to a network, put a reverse proxy with HTTPS in front.
+- Forgot your password? Run `mistwatch passwd <username>`.
 
 ## Development
 
-Node 24 or newer. `npm ci`, then `npm run check` (typecheck, lint, tests) and `npm run build` (single `dist/cli.js` plus `dist/web`). The release smoke test runs manually from GitHub Actions. Licence: MIT.
+```sh
+npm ci
+npm run check    # typecheck, lint, tests
+npm run build    # dist/cli.js and dist/web
+```
+
+The logo and the colour palette are generated from `brand/`. The mark is drawn with the [Tiny5](https://github.com/Gissio/font_tiny5) font (SIL OFL 1.1, see `brand/OFL.txt`) and is deliberately different from the Mistral AI logo.
+
+## Licence
+
+[MIT](LICENSE)

@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [main, ts-rewrite]
+    branches: [master]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:

@@ -184,7 +184,8 @@ export const loadConfig = (path?: string): Config => {
   }
   const cfg = defaultConfig();
   const server = optTable(raw.server, "server");
-  cfg.host = pick(server, "host", cfg.host, pyStr);
+  // MISTWATCH_HOST exists for the Docker image, where the server must listen on 0.0.0.0
+  cfg.host = process.env.MISTWATCH_HOST || pick(server, "host", cfg.host, pyStr);
   cfg.port = pick(server, "port", cfg.port, pyInt);
   cfg.allowed_hosts = pick(server, "allowed_hosts", cfg.allowed_hosts, hostList);
   cfg.upstream = pick(optTable(raw.upstream, "upstream"), "base_url", cfg.upstream, pyStr).replace(/\/+$/, "");

@@ -246,3 +246,12 @@ token = "tok"
     expect(() => loadConfig(p)).toThrow("cannot convert");
   });
 });
+describe("MISTWATCH_HOST", () => {
+  it("overrides the host from config.toml", () => {
+    const p = join(mkdtempSync(join(tmpdir(), "mw-host-")), "config.toml");
+    writeFileSync(p, '[server]\nhost = "127.0.0.1"\n');
+    expect(loadConfig(p).host).toBe("127.0.0.1");
+    vi.stubEnv("MISTWATCH_HOST", "0.0.0.0");
+    expect(loadConfig(p).host).toBe("0.0.0.0");
+  });
+});
