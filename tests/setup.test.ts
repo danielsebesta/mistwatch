@@ -72,6 +72,8 @@ const make = (
     depth?: ColorDepth;
     vibeKey?: boolean;
     platform?: NodeJS.Platform;
+    installed?: string[];
+    fetch?: SetupDeps["fetch"];
   } = {},
 ): Harnessed => {
   const out: string[] = [];
@@ -99,6 +101,8 @@ const make = (
     start: async (cfg) => {
       started.push(cfg);
     },
+    which: (c) => (opts.installed ?? ["vibe", "opencode", "pi"]).includes(c),
+    ...(opts.fetch ? { fetch: opts.fetch } : {}),
   };
   return { deps, out, err, asked, started };
 };
@@ -506,10 +510,11 @@ describe("harness planners", () => {
 
 describe("setup prompts", () => {
   it("asks about the Vibe login, the tools and whether to start", async () => {
-    const h = make({ interactive: true, answers: ["", "2,3", "n"] });
+    const h = make({ interactive: true, answers: ["", "", "2,3", "n"] });
     expect(await runSetup([], h.deps)).toBe(0);
-    expect(h.asked).toHaveLength(3);
-    expect(h.asked[0]).toContain("Import it as an account?");
+    expect(h.asked).toHaveLength(4);
+    expect(text(h)).toContain("Where does Mistwatch run?");
+    expect(h.asked[1]).toContain("Import it as an account?");
     expect(existsSync(paths().vibe)).toBe(false);
     expect(existsSync(paths().opencode)).toBe(true);
     expect(existsSync(paths().pi)).toBe(true);
@@ -517,13 +522,13 @@ describe("setup prompts", () => {
     expect(text(h)).toContain("1  Vibe CLI");
   });
   it("starts the server when the user agrees and skips the tool question with --harness", async () => {
-    const h = make({ interactive: true, answers: ["y", "y"] });
+    const h = make({ interactive: true, answers: ["", "y", "y"] });
     expect(await runSetup(["--harness", "vibe"], h.deps)).toBe(0);
-    expect(h.asked).toHaveLength(2);
+    expect(h.asked).toHaveLength(3);
     expect(h.started).toHaveLength(1);
   });
   it("can decline the Vibe import and re-asks on unclear answers", async () => {
-    const h = make({ interactive: true, answers: ["n", "9", "1", "n"] });
+    const h = make({ interactive: true, answers: ["", "n", "9", "1", "n"] });
     expect(await runSetup([], h.deps)).toBe(0);
     expect(text(h)).toContain("not imported");
     expect(text(h)).toContain("Not understood.");
@@ -580,7 +585,7 @@ describe("setup --port", () => {
 
 describe("setup token and prompt robustness", () => {
   it("asks which tools to use before it creates the key", async () => {
-    const h = make({ interactive: true, answers: ["n", "1", "n"] });
+    const h = make({ interactive: true, answers: ["", "n", "1", "n"] });
     const ask = h.deps.io.ask;
     let keysWhenAsked = -1;
     h.deps.io.ask = async (q) => {
@@ -774,5 +779,49 @@ describe("planToml legacy auto models", () => {
     const doc = parse(out);
     expect(doc.allowed_models).toEqual(["auto", "a"]);
     expect((doc.models as Record<string, unknown>[]).map((m) => m.name)).toEqual(["auto"]);
+  });
+});
+
+describe("setup where and installed tools", () => {
+  const reply401 = async () => new Response('{"error":{"type":"mistwatch_auth"}}', { status: 401 });
+  it("asks for a hosted address, skips the local steps and points the tool at it", async () => {
+    const seen: string[] = [];
+    const h = make({
+      interactive: true,
+      answers: ["2", "nope", "http://100.64.0.1:8787/"],
+      fetch: async (u) => {
+        seen.push(String(u));
+        return reply401();
+      },
+    });
+    expect(await runSetup(["--harness", "vibe", "--no-banner"], h.deps)).toBe(0);
+    expect(seen).toEqual(["http://100.64.0.1:8787/v1/models"]);
+    expect(text(h)).toContain("answers (a key is needed");
+    expect(text(h)).toContain('Create a key under "API keys"');
+    expect(existsSync(paths().cfg)).toBe(false);
+    expect(readFileSync(paths().vibe, "utf8")).toContain("http://100.64.0.1:8787/v1");
+  });
+  it("--url works without questions and does not fail when the server is unreachable", async () => {
+    const h = make({
+      fetch: async () => {
+        throw new Error("boom");
+      },
+    });
+    expect(await runSetup(["--yes", "--url", "http://h:1", "--harness", "vibe", "--no-banner"], h.deps)).toBe(0);
+    expect(h.asked).toEqual([]);
+    expect(text(h)).toContain("cannot reach http://h:1");
+    expect(existsSync(paths().cfg)).toBe(false);
+  });
+  it("says which tools are missing and how to install them", async () => {
+    const h = make({ installed: ["vibe"] });
+    expect(await runSetup(["--yes", "--harness", "vibe,opencode,pi", "--no-banner"], h.deps)).toBe(0);
+    expect(text(h)).toContain("npm install -g opencode-ai");
+    expect(text(h)).toContain("npm install -g @earendil-works/pi-coding-agent");
+    expect(text(h)).not.toContain("uv tool install mistral-vibe");
+  });
+  it("tells how to install Vibe when it is missing", async () => {
+    const h = make({ installed: [] });
+    await runSetup(["--yes", "--harness", "vibe", "--no-banner"], h.deps);
+    expect(text(h)).toContain("uv tool install mistral-vibe");
   });
 });

@@ -61,6 +61,9 @@ export type SetupDeps = {
   now: () => Date;
   vibeKeyPresent: () => boolean;
   start: (cfg: Config) => Promise<unknown>;
+  // Optional so older callers keep working: is this command on PATH, and a fetch for reaching a remote Mistwatch.
+  which?: (command: string) => boolean;
+  fetch?: typeof fetch;
 };
 export class SetupArgError extends Error {}
 export class SetupError extends Error {}
@@ -511,11 +514,22 @@ export const planPort = (raw: string, port: number): string | null => {
 };
 type Status = "ok" | "warn" | "fail" | "skip";
 type Step = { step: string; status: Status; message: string };
-type HarnessResult = { harness: Harness; path: string; action: FileAction | "failed"; backup: string | null };
+type HarnessResult = {
+  harness: Harness;
+  path: string;
+  action: FileAction | "failed";
+  backup: string | null;
+  installed?: boolean;
+};
 type Report = {
   ok: boolean;
   steps: Step[];
-  config: { path: string; action: "created" | "kept" | "replaced" | "updated" | "failed"; backup: string | null };
+  config: {
+    path: string;
+    action: "created" | "kept" | "replaced" | "updated" | "failed" | "skipped";
+    backup: string | null;
+  };
+  remote_url: string | null;
   vibe_login: "imported" | "linked" | "missing" | "failed";
   client_token: { created: boolean; existing_keys: number; masked: string | null; token?: string; hint?: string };
   harnesses: HarnessResult[];
@@ -659,7 +673,9 @@ const pickHarnesses = async (ctx: Ctx): Promise<Harness[]> => {
   const { io } = ctx.deps;
   io.out(`\n  ${ctx.style.accent("?")} Which tools should use Mistwatch?`);
   for (const [i, h] of HARNESSES.entries())
-    io.out(`      ${i + 1}  ${TOOLS[h].label}${i === 0 ? ctx.style.dim("  (default)") : ""}`);
+    io.out(
+      `      ${i + 1}  ${TOOLS[h].label}${i === 0 ? ctx.style.dim("  (default)") : ""}${ctx.style.dim(toolInstalled(ctx.deps, h) ? "  installed" : "  not found on this computer")}`,
+    );
   for (let i = 0; i < 3; i++) {
     const a = ((await io.ask(`    Numbers or names, comma-separated, 'all', or Enter for the default: `)) ?? "").trim();
     if (a === "") return ["vibe"];
@@ -669,17 +685,34 @@ const pickHarnesses = async (ctx: Ctx): Promise<Harness[]> => {
   }
   return ["vibe"];
 };
+const INSTALL: Record<Harness, { bin: string; cmd: string }> = {
+  vibe: { bin: "vibe", cmd: "uv tool install mistral-vibe" },
+  opencode: { bin: "opencode", cmd: "npm install -g opencode-ai" },
+  pi: { bin: "pi", cmd: "npm install -g @earendil-works/pi-coding-agent" },
+};
+export const onPath = (command: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform): boolean => {
+  const dirs = (env.PATH ?? env.Path ?? "").split(platform === "win32" ? ";" : ":").filter(Boolean);
+  const exts = platform === "win32" ? ["", ...(env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean)] : [""];
+  return dirs.some((d) => exts.some((x) => existsSync(join(d, command + x))));
+};
+// On PATH, or the tool's own config folder exists (it was installed once, even if PATH is odd here).
+const toolInstalled = (deps: SetupDeps, h: Harness): boolean => {
+  const config = dirname(HARNESS_PATHS(deps)[h]);
+  return (deps.which ?? ((c: string) => onPath(c, process.env, deps.platform)))(INSTALL[h].bin) || existsSync(config);
+};
 const HARNESS_PATHS = (deps: SetupDeps): Record<Harness, string> => ({
   vibe: join(deps.vibeHome, "config.toml"),
   opencode: opencodeConfigPath(deps.home, deps.platform),
   pi: join(deps.home, ".pi", "agent", "models.json"),
 });
-const stepHarness = (ctx: Ctx, h: Harness, cfg: Config): void => {
+const stepHarness = (ctx: Ctx, h: Harness, cfg: Config | null): void => {
   const path = HARNESS_PATHS(ctx.deps)[h];
-  const base = ctx.opts.url ?? clientBaseUrl(cfg);
+  const base = ctx.opts.url ?? clientBaseUrl(cfg ?? { host: "127.0.0.1", port: 8787 });
   const label = TOOLS[h].label;
   const shown = pretty(path, ctx.deps.home);
-  const result: HarnessResult = { harness: h, path, action: "failed", backup: null };
+  // checked before the config is written, because writing creates the tool's config folder
+  const installed = toolInstalled(ctx.deps, h);
+  const result: HarnessResult = { harness: h, path, action: "failed", backup: null, installed };
   ctx.report.harnesses.push(result);
   try {
     const plan = (raw: string | null): string | null =>
@@ -695,6 +728,7 @@ const stepHarness = (ctx: Ctx, h: Harness, cfg: Config): void => {
   } catch (e) {
     note(ctx, "fail", label, `${shown}: ${errText(e)}`);
   }
+  if (!installed) note(ctx, "warn", label, `not installed on this computer. Install it with: ${INSTALL[h].cmd}`);
 };
 const stepVerify = (ctx: Ctx, app: App): void => {
   const eng = createBudgetEngine(app.db, app.cfg.limits);
@@ -714,7 +748,7 @@ const tokenCommand = (platform: NodeJS.Platform): string =>
     ? "setx MISTWATCH_TOKEN <token>   (then open a new terminal)"
     : "export MISTWATCH_TOKEN=<token>   (add it to your shell profile)";
 const toolHint: Record<Harness, string> = {
-  vibe: 'In Vibe, set provider = "mistwatch" on the models you use.',
+  vibe: 'In Vibe, open /model and pick "Auto (budget-aware router)"; your Mistral models now go through Mistwatch too.',
   opencode: 'In OpenCode, pick a model of the "mistwatch" provider (start with auto).',
   pi: "In Pi, pick the mistwatch provider and the model auto.",
 };
@@ -748,6 +782,49 @@ const startNow = async (ctx: Ctx, cfg: Config): Promise<void> => {
     note(ctx, "fail", "Serve", errText(e));
   }
 };
+// Interactive only: Mistwatch on this computer (the default) or on another machine / a hosted instance.
+const askWhere = async (ctx: Ctx): Promise<void> => {
+  const { io } = ctx.deps;
+  io.out(`
+  ${ctx.style.accent("?")} Where does Mistwatch run?`);
+  io.out(`      1  On this computer${ctx.style.dim("  (default)")}`);
+  io.out("      2  On another machine or a hosted instance");
+  const a = ((await io.ask("    Number, or Enter for the default: ")) ?? "").trim();
+  if (a !== "2") return;
+  for (let i = 0; i < 3; i++) {
+    const raw = (
+      (await io.ask("    Address of that Mistwatch, e.g. http://100.64.0.1:8787 or https://mw.example.com: ")) ?? ""
+    ).trim();
+    try {
+      ctx.opts.url = parseUrl(raw);
+      if (ctx.opts.url) return;
+    } catch (e) {
+      io.out(`    ${ctx.style.paint(errText(e), BAD)}`);
+    }
+  }
+  throw new SetupError("no usable address given; run again with --url http://HOST:8787");
+};
+// A remote Mistwatch answers 401 without a key: that is enough to know it is there.
+const stepRemote = async (ctx: Ctx, url: string): Promise<void> => {
+  ctx.report.remote_url = url;
+  ctx.report.config.action = "skipped";
+  note(ctx, "skip", "Config", `not needed here, Mistwatch runs at ${url}`);
+  const doFetch = ctx.deps.fetch ?? fetch;
+  try {
+    const res = await doFetch(`${url}/v1/models`, { signal: AbortSignal.timeout(5000) });
+    const kind = res.status === 401 ? "answers (a key is needed, as expected)" : `answers with ${res.status}`;
+    note(ctx, "ok", "Server", `${url} ${kind}`);
+  } catch (e) {
+    note(ctx, "warn", "Server", `cannot reach ${url} from here (${errText(e)}); the tool configs are written anyway`);
+  }
+};
+const remoteSummary = (ctx: Ctx, url: string): string[] => {
+  const out = ["", `  ${ctx.style.accent("Next steps")}`];
+  out.push(`    - Create a key under "API keys" in the web UI at ${url}/`);
+  out.push(`    - Make it available to your tools: ${tokenCommand(ctx.deps.platform).replace("<token>", "<key>")}`);
+  for (const h of ctx.report.harnesses) if (h.action !== "failed") out.push(`    - ${toolHint[h.harness]}`);
+  return out;
+};
 export const runSetup = async (args: string[], deps: SetupDeps): Promise<number> => {
   const { io } = deps;
   let opts: SetupOptions;
@@ -773,6 +850,7 @@ export const runSetup = async (args: string[], deps: SetupDeps): Promise<number>
       ok: true,
       steps: [],
       config: { path: configPath(), action: "failed", backup: null },
+      remote_url: null,
       vibe_login: "missing",
       client_token: { created: false, existing_keys: 0, masked: null },
       harnesses: [],
@@ -788,20 +866,26 @@ export const runSetup = async (args: string[], deps: SetupDeps): Promise<number>
   if (!opts.noBanner) ctx.say(`${banner(style, "Budget-aware proxy for Mistral").join("\n")}\n`);
   let app: App | null = null;
   try {
-    stepConfig(ctx);
-    app = openApp();
-    cfg = app.cfg;
-    await stepVibe(ctx, app.store);
-    const picked = await pickHarnesses(ctx);
-    stepToken(ctx, app.store);
-    for (const h of picked) stepHarness(ctx, h, app.cfg);
-    stepVerify(ctx, app);
+    if (!opts.url && !ctx.auto) await askWhere(ctx);
+    if (opts.url) {
+      await stepRemote(ctx, opts.url);
+      for (const h of await pickHarnesses(ctx)) stepHarness(ctx, h, null);
+    } else {
+      stepConfig(ctx);
+      app = openApp();
+      cfg = app.cfg;
+      await stepVibe(ctx, app.store);
+      const picked = await pickHarnesses(ctx);
+      stepToken(ctx, app.store);
+      for (const h of picked) stepHarness(ctx, h, app.cfg);
+      stepVerify(ctx, app);
+    }
   } catch (e) {
     note(ctx, "fail", "Setup", errText(e));
   } finally {
     app?.db.close();
   }
-  for (const line of summary(ctx, cfg)) ctx.say(line);
+  for (const line of opts.url ? remoteSummary(ctx, opts.url) : summary(ctx, cfg)) ctx.say(line);
   if (ctx.report.ok && cfg) {
     if (!opts.start && !ctx.auto) ctx.say("");
     if (opts.start || (!ctx.auto && (await confirm(ctx, "Start Mistwatch now?", true)))) {
@@ -868,5 +952,7 @@ export const defaultSetupDeps = (): SetupDeps => {
     now: () => new Date(),
     vibeKeyPresent: () => vibeCliKeyPresent(),
     start: async (cfg) => (await import("./app.ts")).startServer(cfg),
+    which: (command) => onPath(command, process.env, process.platform),
+    fetch: (input, init) => fetch(input, init),
   };
 };

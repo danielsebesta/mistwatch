@@ -99,7 +99,7 @@ Settings live in `~/.mistwatch/config.toml` (server address and port, limits, pr
 
 To reach the UI under another host name, for example through a tunnel, add it to `allowed_hosts` under `[server]`. In Docker, set `MISTWATCH_ALLOWED_HOSTS` instead (comma separated, for example `mw.tailnet.ts.net,100.64.0.1`); it is added to the list from the file.
 
-To point Vibe, OpenCode or Pi at a Mistwatch running on another machine, run `mistwatch setup --yes --harness vibe --url http://HOST:8787` on the machine with the tool. The `/v1` part is added for you.
+`mistwatch setup` asks whether Mistwatch runs on this computer or on another machine/hosted instance (or pass `--url http://HOST:8787`). For a hosted one it only writes the tool configs and checks that the server answers. It also says which of Vibe, OpenCode and Pi are not installed and how to install them.
 
 ## Security
 
