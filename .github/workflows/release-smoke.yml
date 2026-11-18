@@ -1,0 +1,111 @@
+name: Release smoke
+on:
+  workflow_dispatch:
+jobs:
+  pack-install:
+    name: pack+install (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, windows-11-arm, macos-latest, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Pack
+        working-directory: ts
+        shell: bash
+        run: |
+          npm ci
+          npm run build
+          npm pack --pack-destination "$RUNNER_TEMP"
+      - name: Install and run from the tarball
+        shell: bash
+        env:
+          MISTWATCH_NO_KEYRING: "1"
+        run: |
+          mkdir "$RUNNER_TEMP/consumer" && cd "$RUNNER_TEMP/consumer"
+          export HOME="$RUNNER_TEMP/home" USERPROFILE="$RUNNER_TEMP/home" XDG_CONFIG_HOME="$RUNNER_TEMP/home/.config" MISTWATCH_HOME="$RUNNER_TEMP/home/mw"
+          mkdir -p "$HOME"
+          npm init -y >/dev/null
+          npm install "$RUNNER_TEMP"/mistwatch-*.tgz
+          npx mistwatch --help
+          npx mistwatch setup --yes --harness vibe,opencode,pi --no-banner --port 18787
+          npx mistwatch status
+          npx mistwatch serve --port 18787 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18787/ >/dev/null && break; sleep 1; done
+          curl -fsS http://127.0.0.1:18787/ | grep -qi "<html"
+          kill %1 || true
+  publish-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - working-directory: ts
+        run: |
+          npm ci
+          npm run build
+          npm publish --dry-run
+  docker:
+    name: docker (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: ${{ matrix.platform }}
+          load: true
+          tags: mistwatch:smoke
+      - run: docker run --rm --platform ${{ matrix.platform }} mistwatch:smoke --help
+  mobile-overflow:
+    name: mobile overflow (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - working-directory: ts
+        run: |
+          npm ci
+          npm run build
+      - name: Check 390px overflow
+        env:
+          MISTWATCH_NO_KEYRING: "1"
+          BROWSER: ${{ matrix.browser }}
+        run: |
+          export MISTWATCH_HOME="$RUNNER_TEMP/mw" HOME="$RUNNER_TEMP/home"
+          mkdir -p "$HOME"
+          node ts/dist/cli.js init
+          node ts/dist/cli.js serve --port 18787 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18787/ >/dev/null && break; sleep 1; done
+          mkdir "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y >/dev/null && npm i playwright >/dev/null
+          npx playwright install --with-deps "$BROWSER"
+          cat > check.mjs <<'JS'
+          import { chromium, firefox, webkit } from "playwright";
+          const b = await { chromium, firefox, webkit }[process.env.BROWSER].launch();
+          const p = await b.newPage({ viewport: { width: 390, height: 800 } });
+          await p.goto("http://127.0.0.1:18787/");
+          await p.waitForTimeout(1500);
+          const w = await p.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+          await b.close();
+          console.log(w);
+          if (w[0] > w[1]) process.exit(1);
+          JS
+          node check.mjs
