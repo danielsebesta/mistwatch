@@ -42,6 +42,24 @@ describe("paths and secrets", () => {
   });
 });
 describe("loadConfig", () => {
+  it("reports invalid TOML without quoting the source", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mwcfg-"));
+    const p = join(dir, "config.toml");
+    writeFileSync(
+      p,
+      `[[accounts]]
+name = "a"
+keys = { api = "sk-secret-123" 
+broken = = 1
+`,
+    );
+    expect(() => loadConfig(p)).toThrow(/invalid TOML at line \d+, column \d+/);
+    try {
+      loadConfig(p);
+    } catch (e) {
+      expect(String((e as Error).message)).not.toContain("sk-secret-123");
+    }
+  });
   it("keeps prototype-named TOML keys as plain data", () => {
     const dir = mkdtempSync(join(tmpdir(), "mwcfg-"));
     const p = join(dir, "config.toml");

@@ -334,17 +334,17 @@ export const createStore = (db: DB) => {
     updateAccount,
     deleteAccount: (name: string): void => {
       const acct = getAccount(name);
-      if (acct) for (const ref of Object.values(acct.keys)) dropSecret(ref);
       run("DELETE FROM accounts WHERE name=?", name);
+      if (acct) for (const ref of Object.values(acct.keys)) dropSecret(ref);
     },
     setKey,
     removeKey: (name: string, pool: string): void => {
       const acct = getAccount(name);
       if (!acct || !Object.hasOwn(acct.keys, pool)) return;
       const ref = acct.keys[pool];
-      if (ref !== undefined) dropSecret(ref);
       delete acct.keys[pool];
       run("UPDATE accounts SET keys=? WHERE name=?", JSON.stringify(acct.keys), name);
+      if (ref !== undefined) dropSecret(ref);
     },
     keyInfo: (acct: Account): Record<string, KeyInfo | null> => {
       const out: Record<string, KeyInfo | null> = {};

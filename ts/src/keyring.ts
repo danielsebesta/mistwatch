@@ -83,5 +83,17 @@ const napiAccountStore: AccountStore = {
     new (native().Entry)(service, user).deletePassword();
   },
 };
-export const keyring: Keyring =
+const system: Keyring =
   process.platform === "win32" ? createKeyring(napiStore) : createAccountKeyring(napiAccountStore);
+// MISTWATCH_NO_KEYRING is checked on every call so tests and sandboxes never touch the real OS keyring
+const off = (): boolean => Boolean(process.env.MISTWATCH_NO_KEYRING);
+export const keyring: Keyring = {
+  get: (service, user) => (off() ? null : system.get(service, user)),
+  set: (service, user, password) => {
+    if (off()) throw new Error("the OS keyring is disabled (MISTWATCH_NO_KEYRING)");
+    system.set(service, user, password);
+  },
+  drop: (service, user) => {
+    if (!off()) system.drop(service, user);
+  },
+};

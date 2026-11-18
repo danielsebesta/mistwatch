@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { parse } from "smol-toml";
+import { parse, TomlError } from "smol-toml";
 import { type Keyring, keyring } from "./keyring.ts";
 import type { Account, Client, Config, Limits, ManualPool, PriceOverride, RouterCfg } from "./types.ts";
 
@@ -150,7 +150,14 @@ const parseOverrides = (v: unknown): Record<string, PriceOverride> => {
 export const loadConfig = (path?: string): Config => {
   const p = path ?? configPath();
   if (!existsSync(p)) throw new Error(`${p} not found - run \`mistwatch init\` first`);
-  const raw = parse(readFileSync(p, "utf8"));
+  let raw: Record<string, unknown>;
+  try {
+    raw = parse(readFileSync(p, "utf8"));
+  } catch (e) {
+    // the library message quotes source lines, which can hold keys and tokens
+    const at = e instanceof TomlError ? ` at line ${e.line}, column ${e.column}` : "";
+    throw new Error(`${p}: invalid TOML${at}`);
+  }
   const cfg = defaultConfig();
   const server = optTable(raw.server, "server");
   cfg.host = pick(server, "host", cfg.host, pyStr);

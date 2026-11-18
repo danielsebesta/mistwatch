@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import {
   chmodSync,
   constants,
@@ -275,10 +276,10 @@ export const applyFile = (
   const next = plan(raw);
   if (next === null) return { action: "unchanged", backup: null };
   mkdirSync(dirname(target), { recursive: true });
-  const tmp = `${target}.mistwatch-tmp`;
+  const tmp = `${target}.${process.pid}-${randomBytes(4).toString("hex")}.mistwatch-tmp`;
   let backup: string | null = null;
   try {
-    writeFileSync(tmp, next, "utf8");
+    writeFileSync(tmp, next, { encoding: "utf8", flag: "wx", mode: 0o600 });
     if (raw !== null) {
       chmodSync(tmp, statSync(target).mode & 0o7777);
       backup = backupFile(path, now);
