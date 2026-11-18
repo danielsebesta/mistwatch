@@ -98,7 +98,7 @@ describe("cli init and quick commands", () => {
     expect(await main(["route", "hello world"])).toBe(0);
     const out = logs.join("\n");
     expect(out).toContain("mistral-small-2603");
-    expect(out).toContain("level=0/5");
+    expect(out).toContain("level=0/9");
   });
   it("reports a missing config", async () => {
     await expect(main(["status"])).rejects.toThrow("not found - run `mistwatch init` first");

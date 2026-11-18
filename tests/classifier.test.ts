@@ -101,9 +101,9 @@ describe("rate hardening", () => {
     const cp = String.fromCodePoint;
     expect((await rate(reply(cp(0x663)), "https://x", "k", body("digit prompt arabic"), "m", 1))?.[0]).toBe(3);
     expect((await rate(reply(cp(0x1d7d5)), "https://x", "k", body("digit prompt math"), "m", 1))?.[0]).toBe(7);
-    expect((await rate(reply(cp(0xff18, 0xff19)), "https://x", "k", body("digit prompt wide"), "m", 1))?.[0]).toBe(10);
+    expect((await rate(reply(cp(0xff18, 0xff19)), "https://x", "k", body("digit prompt wide"), "m", 1))?.[0]).toBe(20);
     expect((await rate(reply(cp(0xff12, 0xff10)), "https://x", "k", body("digit prompt twenty"), "m", 1))?.[0]).toBe(
-      10,
+      20,
     );
     expect((await rate(reply(cp(0xff14)), "https://x", "k", body("digit prompt four"), "m", 1))?.[0]).toBe(4);
   });

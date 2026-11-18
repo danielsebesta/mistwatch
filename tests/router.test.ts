@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { apply, decide, decisionHeader, LADDER, scoreRequest, worthAsking } from "../src/router.ts";
+import {
+  apply,
+  decide,
+  decisionHeader,
+  LADDER,
+  SCORE_MAX,
+  SCORE_TO_LEVEL,
+  scoreRequest,
+  VALID_EFFORT,
+  worthAsking,
+} from "../src/router.ts";
 import type { ChatBody } from "../src/types.ts";
 
 const d = (text: string, kw: Record<string, unknown> = {}) =>
@@ -7,10 +17,10 @@ const d = (text: string, kw: Record<string, unknown> = {}) =>
 describe("router", () => {
   it("counts code points", () => {
     const r = d(`debug ${"😀".repeat(751)}`, { tools: [{}] });
-    expect(r.score).toBe(4);
+    expect(r.score).toBe(8);
     expect(r.reason).toContain("long prompt");
     expect(r.model).toBe("mistral-large-4-0");
-    expect(r.effort).toBe("medium");
+    expect(r.effort).toBe("low");
     expect(scoreRequest({ messages: [{ role: "user", content: "😀".repeat(400) }] })[2]).toBe(100);
   });
   it("trivial goes small", () => {
@@ -105,16 +115,18 @@ describe("auto routing", () => {
   });
   it("takes the stronger step only when it is cheaper", () => {
     const five: ChatBody = { messages: [{ role: "user", content: "x" }] };
-    const at3 = decide(five, 1.0, 5);
+    const at3 = decide(five, 1.0, 12);
     expect(at3.model).toBe("mistral-large-4-0");
     const price = (m: string) =>
       m === "deepseek-v4-1-flash-1017" ? { input: 0.1, output: 0.4 } : { input: 2, output: 6 };
-    const cheaper = decide(five, 1.0, 5, price);
+    const cheaper = decide(five, 1.0, 12, price);
     expect(cheaper.model).toBe("deepseek-v4-1-flash-1017");
     expect(cheaper.reason).toContain("stronger and cheaper");
-    const dear = decide(five, 1.0, 5, () => ({ input: 2, output: 6 }));
+    const dear = decide(five, 1.0, 12, (m) =>
+      m === "deepseek-v4-1-flash-1017" ? { input: 5, output: 20 } : { input: 2, output: 6 },
+    );
     expect(dear.model).toBe("mistral-large-4-0");
-    expect(decide(five, 0.05, 5, price).reason).not.toContain("stronger and cheaper");
+    expect(decide(five, 0.05, 12, price).reason).not.toContain("stronger and cheaper");
   });
 });
 describe("ladder", () => {
@@ -124,5 +136,26 @@ describe("ladder", () => {
     expect(LADDER.findIndex((s) => s.model === "deepseek-v4-1-flash-1017")).toBeLessThan(
       LADDER.findIndex((s) => s.model === "zai-glm-5-3"),
     );
+  });
+});
+describe("0-20 scale", () => {
+  const body: ChatBody = { messages: [{ role: "user", content: "x" }] };
+  it("covers every score with a step and every step with a score range", () => {
+    expect(SCORE_MAX).toBe(20);
+    expect(SCORE_TO_LEVEL.at(-1)?.[0]).toBe(20);
+    expect(SCORE_TO_LEVEL.map(([, level]) => level)).toEqual(LADDER.map((_, i) => i));
+    for (let s = 0; s <= 20; s++) expect(decide(body, 1.0, s).level).toBeGreaterThanOrEqual(0);
+  });
+  it("only uses efforts the model accepts", () => {
+    for (const step of LADDER) expect(VALID_EFFORT[step.model]?.has(step.effort ?? "none")).toBe(true);
+  });
+  it("climbs with the score and clamps out-of-range ratings", () => {
+    const levels = Array.from({ length: 21 }, (_, s) => decide(body, 1.0, s).level);
+    expect([...levels].sort((a, b) => a - b)).toEqual(levels);
+    expect(decide(body, 1.0, 99).level).toBe(decide(body, 1.0, 20).level);
+    expect(decide(body, 1.0, 20).model).toBe("zai-glm-5-3");
+  });
+  it("uses GLM Flash at more than one effort", () => {
+    expect(LADDER.filter((s) => s.model === "zai-glm-5-3-flash").map((s) => s.effort)).toEqual(["low", "high"]);
   });
 });

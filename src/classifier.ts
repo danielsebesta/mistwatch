@@ -2,13 +2,14 @@ import { createHash } from "node:crypto";
 import { cpLen, messageText, truthy } from "./router.ts";
 import type { ChatBody, FetchLike } from "./types.ts";
 export const SYSTEM =
-  "Rate how hard the user's last request is for an AI coding assistant on a 0-10 integer scale. " +
+  "Rate how hard the user's last request is for an AI coding assistant on a 0-20 integer scale. " +
   "Judge the whole situation, not only the wording: the request, the project instructions if shown, " +
   "the tools available, what the assistant has already done and how much code it has read. " +
   "A short request can be hard in a large or unusual project, and a long one can be easy. " +
-  "0-1 greeting or trivial; 2-3 simple question, short edit, translation; " +
-  "4-5 moderate coding or analysis; 6-7 multi-step debugging, design, long reasoning; " +
-  "8-10 research-grade, hard math or proofs, large system design. " +
+  "0-2 greeting or trivial; 3-5 simple question, short edit, translation; " +
+  "6-9 small coding task or analysis; 10-13 moderate coding, multi-file change; " +
+  "14-17 multi-step debugging, design, long reasoning; " +
+  "18-20 research-grade, hard math or proofs, large system design. " +
   'Reply with JSON only: {"difficulty": <int>}';
 const ND = /\p{Nd}/u;
 const NUM = /"difficulty"\s*:\s*(\p{Nd}+)/u;
@@ -146,7 +147,7 @@ export const rate = async (
     const content = isRec(c0) && isRec(c0.message) && typeof c0.message.content === "string" ? c0.message.content : "";
     const m = NUM.exec(content);
     if (!m || m[1] === undefined) return null;
-    score = Math.max(0, Math.min(10, parseDigits(m[1])));
+    score = Math.max(0, Math.min(20, parseDigits(m[1])));
     const u = isRec(data) && isRec(data.usage) ? data.usage : {};
     promptT = toInt(u.prompt_tokens);
     completionT = toInt(u.completion_tokens);

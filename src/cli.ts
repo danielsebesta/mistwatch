@@ -299,7 +299,7 @@ const cmdRoute = async (args: string[]): Promise<number> => {
     console.log(`tiny LLM (${cfg.router.classifier_model}): ${llm ?? "None"}`);
   }
   const d = decide(body, pressure, llm);
-  console.log(`${d.model}  effort=${d.effort ?? "None"}  level=${d.level}/${TOP}  score=${d.score}/10`);
+  console.log(`${d.model}  effort=${d.effort ?? "None"}  level=${d.level}/${TOP}  score=${d.score}/20`);
   console.log(`  ${d.reason}`);
   return 0;
 };

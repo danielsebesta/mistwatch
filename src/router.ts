@@ -1,22 +1,34 @@
 import type { ChatBody, Decision, Step } from "./types.ts";
+// Weakest and cheapest first. Every step is a model together with a reasoning effort it supports.
 export const LADDER: Step[] = [
   { model: "mistral-small-2603", effort: "none", vision: true, ctx: 262_144, label: "small/none" },
   { model: "zai-glm-5-3-flash", effort: "low", vision: true, ctx: 1_048_576, label: "glm-flash/low" },
+  { model: "zai-glm-5-3-flash", effort: "high", vision: true, ctx: 1_048_576, label: "glm-flash/high" },
+  { model: "mistral-large-4-0", effort: "low", vision: true, ctx: 1_048_576, label: "large-4/low" },
   { model: "mistral-large-4-0", effort: "medium", vision: true, ctx: 1_048_576, label: "large-4/medium" },
   { model: "mistral-large-4-0", effort: "high", vision: true, ctx: 1_048_576, label: "large-4/high" },
+  { model: "deepseek-v4-1-flash-1017", effort: "low", vision: true, ctx: 1_048_576, label: "deepseek/low" },
   { model: "deepseek-v4-1-flash-1017", effort: "high", vision: true, ctx: 1_048_576, label: "deepseek/high" },
+  { model: "deepseek-v4-1-flash-1017", effort: "max", vision: true, ctx: 1_048_576, label: "deepseek/max" },
   { model: "zai-glm-5-3", effort: "max", vision: false, ctx: 1_048_576, label: "glm-5.3/max" },
 ];
 export const TOP = LADDER.length - 1;
-// The tiny model judges the request; the heuristic score only stands in when it cannot answer.
+// Difficulty is rated 0-20. The tiny model judges the request; the heuristic (0-10, doubled) only stands in
+// when it cannot answer.
+export const SCORE_MAX = 20;
 export const LLM_WEIGHT = 1;
+// [highest score that still uses this step, step index]
 export const SCORE_TO_LEVEL: [number, number][] = [
-  [1, 0],
-  [3, 1],
-  [4, 2],
-  [5, 3],
-  [8, 4],
-  [10, 5],
+  [2, 0],
+  [4, 1],
+  [6, 2],
+  [8, 3],
+  [10, 4],
+  [12, 5],
+  [14, 6],
+  [16, 7],
+  [18, 8],
+  [20, 9],
 ];
 export const VALID_EFFORT: Record<string, ReadonlySet<string>> = {
   "mistral-small-2603": new Set(["none", "high"]),
@@ -158,19 +170,21 @@ export const decide = (
   llmScore?: number | null,
   priceOf?: (model: string) => Price | null,
 ): Decision => {
-  let [score, why, tokens, image] = scoreRequest(body);
+  const [heuristic, why, tokens, image] = scoreRequest(body);
+  let score = Math.min(SCORE_MAX, heuristic * 2);
   if (llmScore !== undefined && llmScore !== null) {
-    const blended = Math.round((1 - LLM_WEIGHT) * score + LLM_WEIGHT * llmScore);
+    const rated = Math.max(0, Math.min(SCORE_MAX, llmScore));
+    const blended = Math.round((1 - LLM_WEIGHT) * score + LLM_WEIGHT * rated);
     why.push(`tiny-LLM says ${llmScore}, heuristic ${score} -> ${blended}`);
     score = blended;
   }
   const hit = SCORE_TO_LEVEL.find(([b]) => score <= b);
   let level = hit ? hit[1] : TOP;
-  if (truthy(body.tools) && level < 2 && score >= 4) {
-    level = 2;
+  if (truthy(body.tools) && level < 3 && score >= 8) {
+    level = 3;
     why.push("tools+hard -> large-4");
   }
-  const drop = pressure < 0.1 ? 2 : pressure < 0.25 ? 1 : 0;
+  const drop = pressure < 0.1 ? 3 : pressure < 0.25 ? 2 : 0;
   if (drop) {
     level = Math.max(0, level - drop);
     why.push(`budget pressure ${Math.round(pressure * 100)}% -> -${drop}`);
