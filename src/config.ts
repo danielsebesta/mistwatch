@@ -109,7 +109,7 @@ const pyStr = (v: unknown): string => {
 };
 const hostList = (v: unknown): string[] => {
   if (!Array.isArray(v)) throw new TypeError(`allowed_hosts must be a list of host names, not ${describe(v)}`);
-  return v.map((h) => pyStr(h).trim().toLowerCase().replace(/.$/, "")).filter((h) => h !== "");
+  return v.map((h) => pyStr(h).trim().toLowerCase().replace(/\.$/, "")).filter((h) => h !== "");
 };
 const pick = <T>(src: Table, key: string, def: T, coerce: (v: unknown) => T): T =>
   key in src ? coerce(src[key]) : def;

@@ -71,6 +71,11 @@ describe("allowed_hosts", () => {
 allowed_hosts = [" MW.Example.com. ", ""]
 `).allowed_hosts,
     ).toEqual(["mw.example.com"]);
+    expect(
+      ok(`[server]
+allowed_hosts = ["a.trycloudflare.com"]
+`).allowed_hosts,
+    ).toEqual(["a.trycloudflare.com"]);
     expect(() =>
       ok(`[server]
 allowed_hosts = "x"
