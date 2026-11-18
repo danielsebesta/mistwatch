@@ -23,6 +23,7 @@ import { parse } from "smol-toml";
 import { ENV, merge, opencode, opencodeConfigPath, pi, TOOLS, VIBE_AUTO, vibe, vibeAutoBlock } from "./agents.ts";
 import { createBudgetEngine } from "./budget.ts";
 import { CONFIG_TEMPLATE, clientBaseUrl, configPath } from "./config.ts";
+import { builtin } from "./modelnames.ts";
 import { type App, freeVibeName, linkVibeLogin, openApp } from "./open.ts";
 import type { Store } from "./store.ts";
 import { mask, StoreError, VIBE_REF, vibeCliKeyPresent } from "./store.ts";
@@ -417,22 +418,28 @@ export const planToml = (raw: string | null, base: string): string | null => {
     return Array.isArray(again) && add.every((n) => again.includes(n)) ? next : text;
   };
   // Models that talk to Mistral directly would bypass the proxy and its budgets, so each [[models]]
-  // block on provider "mistral" moves to "mistwatch" and gets a "(Mistwatch)" mark in its display name.
+  // block on provider "mistral" moves to "mistwatch" and is named the way Mistwatch names that model.
+  const mwName = new Map<string, string>(VIBE_AUTO.map(([n, label]) => [n, label]));
   const repoint = (text: string): string => {
     const out: string[] = [];
     let seg: string[] = [];
     const flush = (): void => {
       const mine = seg.some((l) => /^\s*provider\s*=\s*(["'])(mistral|mistwatch)\1/.test(l));
       const isModel = /^\s*\[\[\s*models\s*\]\]/.test(seg[0] ?? "");
-      out.push(
-        ...(isModel && mine
-          ? seg.map((l) =>
-              l
-                .replace(/^(\s*provider\s*=\s*)(["'])mistral\2/, '$1"mistwatch"')
-                .replace(/^(\s*display_name\s*=\s*")([^"\\]*?)(\s*\(Mistwatch\))?(")/, "$1$2 (Mistwatch)$4"),
-            )
-          : seg),
-      );
+      if (!(isModel && mine)) out.push(...seg);
+      else {
+        const id = seg.map((l) => /^\s*name\s*=\s*"([^"]*)"/.exec(l)?.[1]).find((v) => v !== undefined) ?? "";
+        const label = mwName.get(id) ?? builtin(id);
+        out.push(
+          ...seg.map((l) =>
+            l
+              .replace(/^(\s*provider\s*=\s*)(["'])mistral\2/, '$1"mistwatch"')
+              .replace(/^(\s*display_name\s*=\s*)"([^"\\]*)"/, (_m, head: string, cur: string) =>
+                label ? `${head}"${label}"` : `${head}"${cur.replace(/\s*\(Mistwatch\)$/, "")}"`,
+              ),
+          ),
+        );
+      }
       seg = [];
     };
     for (const l of text.split(/\r?\n/)) {

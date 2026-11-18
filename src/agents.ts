@@ -22,6 +22,10 @@ export const models = (): ModelSpec[] => {
   }
   return out;
 };
+// The names Mistwatch itself uses for its three router models.
+export const VIBE_AUTO: readonly (readonly [name: string, label: string, ctx: number])[] = models()
+  .slice(0, 3)
+  .map(([id, name, ctx]) => [id, name, ctx] as const);
 export const pi = (base: string, env = ENV): Record<string, unknown> => ({
   providers: {
     mistwatch: {
@@ -52,11 +56,6 @@ export const opencode = (base: string, env = ENV): Record<string, unknown> => ({
     },
   },
 });
-export const VIBE_AUTO: readonly (readonly [name: string, label: string, ctx: number])[] = [
-  ["auto", "Auto (Mistwatch)", 262_144],
-  ["auto-fast", "Auto Fast (Mistwatch)", 262_144],
-  ["auto-max", "Auto Max (Mistwatch)", 1_048_576],
-];
 export const vibeAutoBlock = ([name, label, ctx]: (typeof VIBE_AUTO)[number]): string => `[[models]]
 name = "${name}"
 provider = "mistwatch"

@@ -741,14 +741,33 @@ describe("planToml repoints models", () => {
   });
 });
 describe("planToml display names", () => {
-  it("marks repointed models with (Mistwatch) once and adds all three auto models", () => {
-    const raw =
-      '[[models]]\nname = "a"\nprovider = "mistral"\ndisplay_name = "Alpha"\n\n[[models]]\nname = "b"\nprovider = "ollama"\ndisplay_name = "Beta"\n';
+  const raw = [
+    "[[models]]",
+    'name = "mistral-large-4-0"',
+    'provider = "mistral"',
+    'display_name = "Mistral Large 4 (Mistwatch)"',
+    "",
+    "[[models]]",
+    'name = "custom-x"',
+    'provider = "mistral"',
+    'display_name = "Custom X (Mistwatch)"',
+    "",
+    "[[models]]",
+    'name = "b"',
+    'provider = "ollama"',
+    'display_name = "Beta (Mistwatch)"',
+    "",
+  ].join("\n");
+  it("names models the way Mistwatch does and adds the three router models", () => {
     const out = planToml(raw, "http://h:1") ?? "";
     const models = parse(out).models as Record<string, unknown>[];
-    expect(models.find((m) => m.name === "a")?.display_name).toBe("Alpha (Mistwatch)");
-    expect(models.find((m) => m.name === "b")?.display_name).toBe("Beta");
-    expect(models.map((m) => m.name)).toEqual(["a", "b", "auto", "auto-fast", "auto-max"]);
+    const label = (n: string) => models.find((m) => m.name === n)?.display_name;
+    expect(label("mistral-large-4-0")).toBe("Mistral Large 4");
+    expect(label("custom-x")).toBe("Custom X");
+    expect(label("b")).toBe("Beta (Mistwatch)");
+    expect(label("auto")).toBe("Auto (budget-aware router)");
+    expect(label("auto-fast")).toBe("Auto, cheaper models only");
+    expect(label("auto-max")).toBe("Auto, aims for quality");
     expect(planToml(out, "http://h:1")).toBeNull();
   });
 });
