@@ -165,6 +165,20 @@ describe("checkKey", () => {
     expect(r.valid).toBe(true);
     expect(r.budgets?.vibe).toEqual({ initial: 100, used: 10, currency: "EUR" });
   });
+  it("never follows redirects and treats them as a failed check", async () => {
+    const modes: (string | undefined)[] = [];
+    const r = await checkKey(
+      fakeFetch((_url, init) => {
+        modes.push(init?.redirect);
+        return new Response(null, { status: 307, headers: { location: "http://127.0.0.1:1/x" } });
+      }),
+      "https://api.mistral.ai",
+      "k",
+    );
+    expect(r.valid).toBe(false);
+    expect(modes.length).toBeGreaterThan(0);
+    expect(modes.every((m) => m === "manual")).toBe(true);
+  });
   it("falls back to a model list when billing is off-limits", async () => {
     const r = await checkKey(
       fakeFetch((url) => (url.endsWith("/v1/billing/budget") ? json({}, 403) : json({ data: [] }))),

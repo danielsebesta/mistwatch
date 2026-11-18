@@ -51,6 +51,7 @@ const fetchBudgetKey = async (fetchFn: FetchLike, base: string, key: string): Pr
   const r = await fetchFn(`${base}/v1/billing/budget`, {
     headers: { Authorization: `Bearer ${key}`, "User-Agent": USER_AGENT },
     signal: AbortSignal.timeout(15_000),
+    redirect: "manual",
   });
   if (!r.ok) throw statusError(r.status);
   const data: unknown = await r.json();
@@ -91,6 +92,7 @@ export const checkKey = async (fetchFn: FetchLike, base: string, key: string): P
           const r = await fetchFn(`${base}/v1/models`, {
             headers: { Authorization: `Bearer ${key}`, "User-Agent": USER_AGENT },
             signal: AbortSignal.timeout(15_000),
+            redirect: "manual",
           });
           if (r.status === 200)
             return { valid: true, budgets: {}, note: "The key works, but it cannot read the budget overview." };
