@@ -21,16 +21,28 @@ import { act, badge, emptyState, errState, fold, pageHead, skel, td } from "../u
 
 type SetPref = (k: "range" | "by", v: string) => void;
 
+const foldTitle = (d: HTMLDetailsElement): string => d.querySelector("summary span")?.textContent ?? "";
 const refresh = (slot: HTMLElement, kids: HTMLElement[]): void => {
   // Keep a focused control alive; the next refresh replaces the slot.
-  if (!slot.contains(document.activeElement)) slot.replaceChildren(...kids);
+  if (slot.contains(document.activeElement)) return;
+  const open = new Set([...slot.querySelectorAll<HTMLDetailsElement>("details[open]")].map(foldTitle));
+  slot.replaceChildren(...kids);
+  for (const d of slot.querySelectorAll<HTMLDetailsElement>("details")) d.open = open.has(foldTitle(d));
 };
 
 type Controls = { head: HTMLElement; sync: (range: UsageRange, by: UsageBy) => void };
 
-const chartControls = (set: SetPref): Controls => {
+const chartControls = (set: SetPref, panel: HTMLElement): Controls => {
   const keys = keysOf(RANGES);
-  const tabs = keys.map((r) => h("button", { class: "tab", role: "tab", onclick: () => set("range", r) }, r));
+  panel.id = "chart-panel";
+  panel.setAttribute("role", "tabpanel");
+  const tabs = keys.map((r) =>
+    h(
+      "button",
+      { class: "tab", role: "tab", id: `range-${r}`, "aria-controls": panel.id, onclick: () => set("range", r) },
+      r,
+    ),
+  );
   const strip = h("div", { class: "tabs", role: "tablist", "aria-label": "Time range" }, tabs);
   strip.addEventListener("keydown", (e) => {
     const from = tabs.findIndex((t) => t === document.activeElement);
@@ -52,6 +64,7 @@ const chartControls = (set: SetPref): Controls => {
       t.setAttribute("aria-selected", String(on));
       t.tabIndex = on ? 0 : -1;
     });
+    panel.setAttribute("aria-labelledby", `range-${range}`);
     if (sel.value !== by) sel.value = by;
   };
   return {
@@ -73,24 +86,33 @@ export const viewDash = async (main: HTMLElement): Promise<void> => {
   const chartSlot = slot();
   const restSlot = slot();
   const set: SetPref = (k, v) => {
+    const prev = { range, by };
     if (k === "range") range = asRange(v);
     else by = asBy(v);
     pref.set(k, v);
     controls.sync(range, by);
-    void load();
+    void load((e) => {
+      // the new selection could not be loaded: go back to what is on screen
+      ({ range, by } = prev);
+      pref.set("range", range);
+      pref.set("by", by);
+      controls.sync(range, by);
+      toast(errMsg(e), true);
+    });
   };
-  const controls = chartControls(set);
+  const controls = chartControls(set, chartSlot);
   const chartSec = h("section", { class: "card", "aria-label": "Spending over time" }, controls.head, chartSlot);
   controls.sync(range, by);
-  const load = async (): Promise<void> => {
+  const load = async (onFail?: (e: unknown) => void): Promise<void> => {
     const ticket = guard.next();
     const [r, b] = [range, by];
     let d: StatusResponse, u: UsageResponse, led: LedgerRow[];
     try {
       [d, u, led] = await Promise.all([api.status(), api.usage(r, b), api.ledger(18)]);
     } catch (e) {
-      if (active && guard.isCurrent(ticket) && body.isConnected && !body.dataset.ok)
-        body.replaceChildren(errState(errMsg(e), load));
+      if (!active || !guard.isCurrent(ticket) || !body.isConnected) return;
+      if (body.dataset.ok) onFail?.(e);
+      else body.replaceChildren(errState(errMsg(e), () => void load()));
       return;
     }
     if (!active || !guard.isCurrent(ticket) || !body.isConnected) return;
@@ -177,7 +199,7 @@ const windowTable = (rows: [string, WindowTotal | PoolWindow][]): HTMLElement =>
           h("th", { class: "n" }, "Spent"),
           h("th", { class: "n" }, "Limit"),
           h("th", { class: "n" }, "Left"),
-          h("th", {}, ""),
+          h("th", {}, h("span", { class: "sr" }, "Details")),
         ),
       ),
       h(
@@ -209,6 +231,7 @@ const dashBody = (
   const sm = d.summary;
   const a = sm.all;
   if (!a) {
+    const off = d.pools.length > 0;
     return {
       chart: null,
       rest: [],
@@ -216,12 +239,19 @@ const dashBody = (
         h(
           "div",
           { class: "card" },
-          emptyState(
-            "key",
-            "Nothing to watch yet",
-            "Add a Mistral account and key. Mistwatch will track your budget and help you spread it out.",
-            h("a", { class: "btn pri", href: "#/accounts" }, ic("plus"), "Add an account"),
-          ),
+          off
+            ? emptyState(
+                "alert",
+                "All accounts are disabled",
+                "Turn on at least one account to see its budget here.",
+                h("a", { class: "btn pri", href: "#/accounts" }, "Open accounts"),
+              )
+            : emptyState(
+                "key",
+                "Nothing to watch yet",
+                "Add a Mistral account and key. Mistwatch will track your budget and help you spread it out.",
+                h("a", { class: "btn pri", href: "#/accounts" }, ic("plus"), "Add an account"),
+              ),
         ),
       ],
     };

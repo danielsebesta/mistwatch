@@ -1,5 +1,5 @@
 import { modal } from "./dialog.ts";
-import { h, type IconName, ic, type Kid } from "./dom.ts";
+import { h, type IconName, ic, type Kid, qs } from "./dom.ts";
 import { errMsg } from "./format.ts";
 import { toast } from "./toast.ts";
 
@@ -17,6 +17,29 @@ export const act =
       toast(errMsg(e), true);
     }
   };
+// Toasts sit behind an open modal dialog, so a failure inside one is shown in the dialog itself.
+const copyFailed = (b: HTMLElement): void => {
+  const dlg = b.closest("dialog");
+  if (!dlg) {
+    toast("Copy failed", true);
+    return;
+  }
+  const note =
+    qs(".copy-err", dlg) ?? dlg.firstElementChild?.appendChild(h("p", { class: "err sm copy-err", role: "alert" }));
+  if (note) note.textContent = "Copy failed. Select the text and copy it by hand.";
+};
+// Rebuilding a list drops focus: remember the focused control's data-fk key and refocus it afterwards.
+export const focusedKey = (root: Element): string | null => {
+  const a = document.activeElement;
+  return a instanceof HTMLElement && root.contains(a) ? (a.dataset.fk ?? "") : null;
+};
+export const restoreFocus = (root: ParentNode, key: string | null): void => {
+  if (key === null || (document.activeElement && document.activeElement !== document.body)) return;
+  const t = [...root.querySelectorAll<HTMLElement>("[data-fk]")].find((e) => e.dataset.fk === key) ?? qs("#main h1");
+  if (!t) return;
+  if (!t.matches("a,button,input,select,textarea,[tabindex]")) t.tabIndex = -1;
+  t.focus();
+};
 export const copyBtn = (text: string, label = "Copy"): HTMLButtonElement => {
   const b = h("button", { class: "btn ghost icon", type: "button", "aria-label": label, title: label });
   b.append(ic("copy"));
@@ -24,9 +47,10 @@ export const copyBtn = (text: string, label = "Copy"): HTMLButtonElement => {
     try {
       await navigator.clipboard.writeText(text);
     } catch {
-      toast("Copy failed", true);
+      copyFailed(b);
       return;
     }
+    qs(".copy-err", b.closest("dialog") ?? b)?.remove();
     b.replaceChildren(ic("check"));
     b.setAttribute("aria-label", "Copied");
     toast("Copied to clipboard");

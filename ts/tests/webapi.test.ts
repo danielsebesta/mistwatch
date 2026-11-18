@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Hono } from "hono";
 import { describe, expect, it } from "vitest";
@@ -88,6 +92,19 @@ describe("web ui and session gate", () => {
     expect(c).toContain("Path=/");
     expect(c).toContain("Max-Age=2592000");
     expect(c).not.toContain("Secure");
+  });
+  it("allows inline scripts by hash instead of unsafe-inline", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mw-web-"));
+    const body = "console.log(1)";
+    writeFileSync(join(dir, "index.html"), `<html><script type="module">${body}</script></html>`);
+    const cfg = defaultConfig();
+    cfg.db_path = ":memory:";
+    const app = createApp(createState(cfg, upstream as FetchLike), { webDir: dir });
+    const csp = (await api(app, "/")).headers.get("content-security-policy") ?? "";
+    const hash = createHash("sha256").update(body).digest("base64");
+    expect(csp).toContain(`script-src 'self' 'sha256-${hash}';`);
+    expect(csp).not.toMatch(/script-src[^;]*unsafe-inline/);
+    rmSync(dir, { recursive: true, force: true });
   });
   it("serves llms.txt publicly", async () => {
     const { app } = mkApp();
@@ -187,6 +204,8 @@ describe("security guards", () => {
     expect((await api(app, "/api/apikeys/abc", { method: "DELETE", headers: authed(cookie) })).status).toBe(400);
     expect((await api(app, "/api/usage?range=bogus", { headers: authed(cookie) })).status).toBe(400);
     expect((await api(app, "/api/usage?by=bogus", { headers: authed(cookie) })).status).toBe(400);
+    for (const range of ["constructor", "__proto__", "toString", "hasOwnProperty"])
+      expect((await api(app, `/api/usage?range=${range}`, { headers: authed(cookie) })).status).toBe(400);
     expect((await api(app, "/api/ledger?limit=abc", { headers: authed(cookie) })).status).toBe(400);
     expect((await api(app, "/api/signin/nope", { headers: authed(cookie) })).status).toBe(404);
     expect((await api(app, "/api/signin/nope", { method: "DELETE", headers: authed(cookie) })).status).toBe(404);
@@ -355,6 +374,24 @@ describe("users, accounts and keys", () => {
     ).toBe(200);
     expect((await api(app, "/api/accounts/osobni", { method: "DELETE", headers: authed(cookie) })).status).toBe(200);
   });
+  it("marks a shared budget enabled while any member is enabled", async () => {
+    const { app, st } = mkApp();
+    const { cookie } = await login(app);
+    for (const name of ["a", "b"]) {
+      await jpost(app, "/api/accounts", { name }, authed(cookie));
+      await jbody(app, "PUT", `/api/accounts/${name}/keys/api`, { key: `good-key-${name}-123456` }, authed(cookie));
+    }
+    st.db.links.set("b", "a");
+    await jbody(app, "PATCH", "/api/accounts/a", { enabled: false }, authed(cookie));
+    const enabledOf = async (): Promise<unknown> => {
+      const status: unknown = await (await api(app, "/api/status", { headers: authed(cookie) })).json();
+      const pools = isRec(status) && Array.isArray(status.pools) ? status.pools : [];
+      return pools.find((p) => isRec(p) && p.account === "a" && p.pool === "api");
+    };
+    expect(await enabledOf()).toMatchObject({ enabled: true });
+    await jbody(app, "PATCH", "/api/accounts/b", { enabled: false }, authed(cookie));
+    expect(await enabledOf()).toMatchObject({ enabled: false });
+  });
   it("checks keys against Mistral without storing", async () => {
     const { app } = mkApp();
     const { cookie } = await login(app);
@@ -442,6 +479,15 @@ describe("models, agent-config and sign-in", () => {
 });
 
 describe("proxy keys lifecycle", () => {
+  it("builds the base url from the request origin", async () => {
+    const { app } = mkApp();
+    const { cookie } = await login(app);
+    const r = await app.request("http://[::1]:8787/api/apikeys", {
+      headers: { ...authed(cookie), host: "[::1]:8787" },
+    });
+    const body: unknown = await r.json();
+    expect(isRec(body) ? body.base_url : null).toBe("http://[::1]:8787/v1");
+  });
   it("gates the proxy on created api keys", async () => {
     const { app } = mkApp();
     const { cookie } = await login(app);

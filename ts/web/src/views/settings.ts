@@ -6,7 +6,7 @@ import { errMsg, when } from "../format.ts";
 import { NAME_SRC } from "../labels.ts";
 import { session } from "../state.ts";
 import { toast } from "../toast.ts";
-import { act, pageHead, skel, td } from "../ui.ts";
+import { act, focusedKey, pageHead, restoreFocus, skel, td } from "../ui.ts";
 
 export const viewSettings = async (main: HTMLElement): Promise<void> => {
   const me = session.me;
@@ -64,10 +64,18 @@ export const viewSettings = async (main: HTMLElement): Promise<void> => {
   );
   modelNames();
   const load = act(async () => {
+    const box = qs("#ulist");
+    const fk = box ? focusedKey(box) : null;
     const us = await api.users();
-    const un = h("input", { class: "input", id: "un", autocomplete: "off", spellcheck: "false" });
+    const un = h("input", {
+      class: "input",
+      id: "un",
+      "data-fk": "new-user",
+      autocomplete: "off",
+      spellcheck: "false",
+    });
     const up = h("input", { class: "input", id: "up", type: "password", autocomplete: "new-password" });
-    qs("#ulist")?.replaceChildren(
+    box?.replaceChildren(
       h("div", { class: "card-h" }, h("h2", {}, "Users")),
       h(
         "div",
@@ -75,7 +83,17 @@ export const viewSettings = async (main: HTMLElement): Promise<void> => {
         h(
           "table",
           { class: "tbl stack" },
-          h("thead", {}, h("tr", {}, h("th", {}, "User"), h("th", { class: "n" }, "Since"), h("th", {}, ""))),
+          h(
+            "thead",
+            {},
+            h(
+              "tr",
+              {},
+              h("th", {}, "User"),
+              h("th", { class: "n" }, "Since"),
+              h("th", {}, h("span", { class: "sr" }, "Actions")),
+            ),
+          ),
           h(
             "tbody",
             {},
@@ -99,6 +117,7 @@ export const viewSettings = async (main: HTMLElement): Promise<void> => {
                         "button",
                         {
                           class: "btn ghost danger sm",
+                          "data-fk": `del-${u.id}`,
                           "aria-label": `Delete user ${u.username}`,
                           onclick: act(async () => {
                             if (
@@ -131,6 +150,7 @@ export const viewSettings = async (main: HTMLElement): Promise<void> => {
           "button",
           {
             class: "btn",
+            "data-fk": "add-user",
             onclick: act(async () => {
               await api.addUser({ username: un.value, password: up.value });
               toast("User added");
@@ -142,6 +162,7 @@ export const viewSettings = async (main: HTMLElement): Promise<void> => {
         ),
       ),
     );
+    restoreFocus(box ?? document, fk);
   });
   load();
 };
@@ -149,6 +170,7 @@ export const viewSettings = async (main: HTMLElement): Promise<void> => {
 const modelNames = async (showAll = false): Promise<void> => {
   const box = qs("#mlist");
   if (!box) return;
+  const fk = focusedKey(box);
   let rows: ModelRow[];
   try {
     rows = await api.models(showAll);
@@ -156,7 +178,12 @@ const modelNames = async (showAll = false): Promise<void> => {
     toast(errMsg(e), true);
     return;
   }
-  const all = h("input", { type: "checkbox", checked: showAll, onchange: () => modelNames(all.checked) });
+  const all = h("input", {
+    type: "checkbox",
+    checked: showAll,
+    "data-fk": "all",
+    onchange: () => modelNames(all.checked),
+  });
   box.replaceChildren(
     h(
       "div",
@@ -168,6 +195,7 @@ const modelNames = async (showAll = false): Promise<void> => {
         "button",
         {
           class: "btn",
+          "data-fk": "refresh",
           onclick: act(async () => {
             const r = await api.refreshModels();
             toast(`Loaded ${r.models} models from Mistral`);
@@ -192,7 +220,14 @@ const modelNames = async (showAll = false): Promise<void> => {
         h(
           "thead",
           {},
-          h("tr", {}, h("th", {}, "Model ID"), h("th", {}, "Shown as"), h("th", {}, "Source"), h("th", {}, "")),
+          h(
+            "tr",
+            {},
+            h("th", {}, "Model ID"),
+            h("th", {}, "Shown as"),
+            h("th", {}, "Source"),
+            h("th", {}, h("span", { class: "sr" }, "Actions")),
+          ),
         ),
         h(
           "tbody",
@@ -201,6 +236,7 @@ const modelNames = async (showAll = false): Promise<void> => {
             const inp = h("input", {
               class: "input",
               value: r.display,
+              "data-fk": `name-${r.key}`,
               "aria-label": `Display name for ${r.ids[0] ?? ""}`,
             });
             const save = act(async () => {
@@ -234,6 +270,7 @@ const modelNames = async (showAll = false): Promise<void> => {
                       "button",
                       {
                         class: "btn ghost sm",
+                        "data-fk": `reset-${r.key}`,
                         onclick: act(async () => {
                           await api.resetModel(r.key);
                           modelNames(showAll);
@@ -249,4 +286,5 @@ const modelNames = async (showAll = false): Promise<void> => {
       ),
     ),
   );
+  restoreFocus(box, fk);
 };

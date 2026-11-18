@@ -5,7 +5,7 @@ import { entriesOf, h, ic } from "../dom.ts";
 import { errMsg, eur } from "../format.ts";
 import { POOL, poolLabel, SRC } from "../labels.ts";
 import { toast } from "../toast.ts";
-import { act, badge, emptyState, errState, pageHead, skel } from "../ui.ts";
+import { act, badge, emptyState, errState, focusedKey, pageHead, restoreFocus, skel } from "../ui.ts";
 
 export const viewAccounts = async (main: HTMLElement): Promise<void> => {
   const list = h(
@@ -21,6 +21,7 @@ export const viewAccounts = async (main: HTMLElement): Promise<void> => {
     list,
   );
   const load = async () => {
+    const fk = focusedKey(list);
     let d: AccountsResponse;
     try {
       d = await api.accounts();
@@ -31,6 +32,7 @@ export const viewAccounts = async (main: HTMLElement): Promise<void> => {
     const nameIn = h("input", {
       class: "input",
       id: "an",
+      "data-fk": "add-name",
       placeholder: "name or e-mail",
       autocomplete: "off",
       spellcheck: "false",
@@ -52,7 +54,7 @@ export const viewAccounts = async (main: HTMLElement): Promise<void> => {
         "div",
         { class: "field-row" },
         h("label", { class: "f", for: "an" }, "Name", nameIn),
-        h("button", { class: "btn pri", onclick: add }, ic("plus"), "Add account"),
+        h("button", { class: "btn pri", "data-fk": "add", onclick: add }, ic("plus"), "Add account"),
       ),
       h("p", { class: "xs mut", style: "margin-top:var(--sp-2)" }, "1–80 characters: letters, digits and . _ + @ -"),
     );
@@ -73,23 +75,35 @@ export const viewAccounts = async (main: HTMLElement): Promise<void> => {
         ),
       );
     }
+    restoreFocus(list, fk);
   };
   load();
 };
 
 const accountCard = (a: AccountView, vibeCli: boolean, reload: () => void): HTMLElement => {
+  const fk = (s: string): string => `${a.name}:${s}`;
   const prio = h("input", {
     class: "input short",
     type: "number",
     inputmode: "numeric",
     value: a.priority,
     id: `pr-${a.name}`,
+    "data-fk": fk("priority"),
     title: "Lower number is used first",
   });
+  let savedPrio = String(a.priority);
   prio.addEventListener(
     "change",
     act(async () => {
-      await api.patchAccount(a.name, { priority: +prio.value });
+      const v = prio.value.trim();
+      try {
+        if (!/^-?\d+$/.test(v)) throw new Error("Priority must be a whole number.");
+        await api.patchAccount(a.name, { priority: Number(v) });
+      } catch (e) {
+        prio.value = savedPrio;
+        throw e;
+      }
+      savedPrio = v;
       toast("Priority saved");
     }),
   );
@@ -99,6 +113,7 @@ const accountCard = (a: AccountView, vibeCli: boolean, reload: () => void): HTML
     type: "button",
     "aria-checked": String(!!a.enabled),
     "aria-label": "Enabled",
+    "data-fk": fk("enabled"),
     onclick: act(async () => {
       await api.patchAccount(a.name, { enabled: !a.enabled });
       reload();
@@ -128,7 +143,7 @@ const accountCard = (a: AccountView, vibeCli: boolean, reload: () => void): HTML
       btns.push(
         h(
           "button",
-          { class: "btn", onclick: () => signIn(a.name, reload) },
+          { class: "btn", "data-fk": fk(`${pool}-signin`), onclick: () => signIn(a.name, reload) },
           k ? "Sign in again" : "Sign in with Mistral",
         ),
       );
@@ -138,6 +153,7 @@ const accountCard = (a: AccountView, vibeCli: boolean, reload: () => void): HTML
           "button",
           {
             class: "btn",
+            "data-fk": fk("vibe-cli"),
             onclick: act(async () => {
               const r = await api.putKey(a.name, "vibe", { source: "vibe-cli" });
               toast(`Connected to Vibe CLI${syncNote(r)}`);
@@ -149,7 +165,11 @@ const accountCard = (a: AccountView, vibeCli: boolean, reload: () => void): HTML
       );
     }
     btns.push(
-      h("button", { class: "btn", onclick: () => pasteKey(a.name, pool, reload) }, k ? "Change key" : "Paste key"),
+      h(
+        "button",
+        { class: "btn", "data-fk": fk(`${pool}-paste`), onclick: () => pasteKey(a.name, pool, reload) },
+        k ? "Change key" : "Paste key",
+      ),
     );
     if (k) {
       btns.push(
@@ -157,6 +177,7 @@ const accountCard = (a: AccountView, vibeCli: boolean, reload: () => void): HTML
           "button",
           {
             class: "btn ghost danger",
+            "data-fk": fk(`${pool}-remove`),
             "aria-label": `Remove ${POOL[pool]} key`,
             onclick: act(async () => {
               if (
@@ -200,6 +221,7 @@ const accountCard = (a: AccountView, vibeCli: boolean, reload: () => void): HTML
         "button",
         {
           class: "btn ghost danger icon",
+          "data-fk": fk("delete"),
           "aria-label": `Delete account ${a.name}`,
           title: "Delete account",
           onclick: act(async () => {
@@ -241,9 +263,14 @@ const signIn = async (name: string, reload: () => void): Promise<void> => {
     toast(errMsg(e), true);
     return;
   }
-  if (tab) tab.location.href = att.sign_in_url;
+  if (tab) {
+    // the Mistral page must not reach back into this one
+    tab.opener = null;
+    tab.location.href = att.sign_in_url;
+  }
   const msg = h("p", { class: "mut sm", role: "status" }, "Waiting for sign-in in the browser…");
   let stopped = false;
+  let settled = false;
   const m = modal([
     h("h2", {}, "Sign in with Mistral"),
     h(
@@ -260,18 +287,16 @@ const signIn = async (name: string, reload: () => void): Promise<void> => {
         "button",
         {
           class: "btn",
-          onclick: () => {
-            stopped = true;
-            api.signinCancel(att.id).catch(() => null);
-            m.remove();
-          },
+          onclick: () => m.remove(),
         },
         "Cancel",
       ),
     ),
   ]);
+  // closing by any route (Cancel, Escape, backdrop) abandons the attempt
   m.addEventListener("close", () => {
     stopped = true;
+    if (!settled) api.signinCancel(att.id).catch(() => null);
   });
   while (!stopped && document.body.contains(m)) {
     await new Promise((r) => setTimeout(r, 2000));
@@ -286,6 +311,7 @@ const signIn = async (name: string, reload: () => void): Promise<void> => {
     }
     if (s.status === "done") {
       stopped = true;
+      settled = true;
       m.remove();
       toast(`Signed in${syncNote(s)}`);
       reload();

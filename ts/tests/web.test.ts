@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { attrValue } from "../web/src/attr.ts";
 import { latest, stepTab } from "../web/src/flow.ts";
+import { pref } from "../web/src/state.ts";
 
 describe("attrValue", () => {
   it("serialises ARIA booleans as strings", () => {
@@ -36,5 +37,22 @@ describe("stepTab", () => {
   it("ignores other keys", () => {
     expect(stepTab(3, 1, "Enter")).toBeNull();
     expect(stepTab(0, 0, "ArrowRight")).toBeNull();
+  });
+});
+
+describe("pref", () => {
+  it("falls back to the default when storage throws", () => {
+    const blocked = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("blocked");
+      },
+    };
+    vi.stubGlobal("localStorage", blocked);
+    expect(pref.get("range", "7d")).toBe("7d");
+    expect(() => pref.set("range", "30d")).not.toThrow();
+    vi.unstubAllGlobals();
   });
 });

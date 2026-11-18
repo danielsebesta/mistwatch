@@ -3,7 +3,18 @@ import { api } from "../api.ts";
 import { confirmDlg } from "../dialog.ts";
 import { h, ic } from "../dom.ts";
 import { ago, errMsg, when } from "../format.ts";
-import { act, codeBlock, emptyState, errState, pageHead, showNewKey, skel, td } from "../ui.ts";
+import {
+  act,
+  codeBlock,
+  emptyState,
+  errState,
+  focusedKey,
+  pageHead,
+  restoreFocus,
+  showNewKey,
+  skel,
+  td,
+} from "../ui.ts";
 
 export const viewKeys = async (main: HTMLElement): Promise<void> => {
   const list = h(
@@ -19,6 +30,7 @@ export const viewKeys = async (main: HTMLElement): Promise<void> => {
     list,
   );
   const load = async () => {
+    const fk = focusedKey(list);
     let d: ApiKeysResponse;
     let cfgs: AgentConfig[] = [];
     try {
@@ -35,6 +47,7 @@ export const viewKeys = async (main: HTMLElement): Promise<void> => {
     const nameIn = h("input", {
       class: "input",
       id: "kn",
+      "data-fk": "new-name",
       placeholder: "e.g. vibe-cli",
       autocomplete: "off",
       spellcheck: "false",
@@ -51,7 +64,7 @@ export const viewKeys = async (main: HTMLElement): Promise<void> => {
       "div",
       { class: "field-row" },
       h("label", { class: "f", for: "kn" }, "New key name", nameIn),
-      h("button", { class: "btn pri", onclick: create }, ic("plus"), "Create key"),
+      h("button", { class: "btn pri", "data-fk": "create", onclick: create }, ic("plus"), "Create key"),
     );
     list.replaceChildren(
       h(
@@ -74,7 +87,7 @@ export const viewKeys = async (main: HTMLElement): Promise<void> => {
                     h("th", {}, "Key"),
                     h("th", { class: "n" }, "Created"),
                     h("th", { class: "n" }, "Last used"),
-                    h("th", {}, ""),
+                    h("th", {}, h("span", { class: "sr" }, "Actions")),
                   ),
                 ),
                 h(
@@ -95,6 +108,7 @@ export const viewKeys = async (main: HTMLElement): Promise<void> => {
                           "button",
                           {
                             class: "btn ghost danger sm",
+                            "data-fk": `revoke-${k.id}`,
                             "aria-label": `Revoke key ${k.name}`,
                             onclick: act(async () => {
                               if (
@@ -132,13 +146,14 @@ export const viewKeys = async (main: HTMLElement): Promise<void> => {
       ),
       toolsCard(cfgs, d.base_url),
     );
+    restoreFocus(list, fk);
   };
   load();
 };
 
 const toolsCard = (cfgs: AgentConfig[], baseUrl: string): HTMLElement => {
   let cur = 0;
-  const panel = h("div", { class: "stack", style: "gap:var(--sp-3)" });
+  const panel = h("div", { class: "stack", role: "tabpanel", id: "tool-panel", style: "gap:var(--sp-3)" });
   const tabs = h("div", { class: "tabs", role: "tablist", "aria-label": "Tool" });
   const show = (i: number) => {
     cur = i;
@@ -148,6 +163,7 @@ const toolsCard = (cfgs: AgentConfig[], baseUrl: string): HTMLElement => {
       t.setAttribute("aria-selected", String(j === i));
       t.tabIndex = j === i ? 0 : -1;
     });
+    panel.setAttribute("aria-labelledby", `tool-tab-${i}`);
     const dl = () => {
       const a = h("a", {
         href: URL.createObjectURL(new Blob([c.content], { type: "text/plain" })),
@@ -180,7 +196,13 @@ const toolsCard = (cfgs: AgentConfig[], baseUrl: string): HTMLElement => {
     );
   };
   cfgs.forEach((c, i) => {
-    tabs.append(h("button", { class: "tab", role: "tab", onclick: () => show(i) }, c.label));
+    tabs.append(
+      h(
+        "button",
+        { class: "tab", role: "tab", id: `tool-tab-${i}`, "aria-controls": "tool-panel", onclick: () => show(i) },
+        c.label,
+      ),
+    );
   });
   tabs.addEventListener("keydown", (e) => {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;

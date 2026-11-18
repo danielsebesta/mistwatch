@@ -1,7 +1,13 @@
 import { h, type Kid } from "./dom.ts";
 
+let seq = 0;
 export const modal = (content: Kid): HTMLDialogElement => {
   const d = h("dialog", { class: "dlg" }, h("div", {}, content));
+  const title = d.querySelector("h2");
+  if (title) {
+    title.id = `dlg-title-${++seq}`;
+    d.setAttribute("aria-labelledby", title.id);
+  }
   d.addEventListener("close", () => d.remove());
   d.addEventListener("click", (e) => {
     if (e.target === d) d.close();

@@ -1,10 +1,10 @@
 import type { SessionResponse, SummaryResponse } from "../../shared/api.ts";
 import { api, signOut } from "./api.ts";
 import { entriesOf, h, type IconName, ic, logoMark, qs } from "./dom.ts";
-import { eur, pct100 } from "./format.ts";
+import { errMsg, eur, pct100 } from "./format.ts";
 import { legal, POOL } from "./labels.ts";
 import { disposeView, handlers, session } from "./state.ts";
-import { act, badge } from "./ui.ts";
+import { act, badge, errState } from "./ui.ts";
 import { viewAccounts } from "./views/accounts.ts";
 import { viewAuth } from "./views/auth.ts";
 import { viewDash } from "./views/dashboard.ts";
@@ -19,7 +19,7 @@ const ROUTES: { "": RouteDef; "#/accounts": RouteDef; "#/keys": RouteDef; "#/set
   "#/settings": ["Settings", "settings", viewSettings],
 };
 type RouteKey = keyof typeof ROUTES;
-const isRoute = (x: string): x is RouteKey => x in ROUTES;
+const isRoute = (x: string): x is RouteKey => Object.hasOwn(ROUTES, x);
 
 const loadSummary = async (): Promise<void> => {
   const els = document.querySelectorAll<HTMLElement>(".sumv");
@@ -34,7 +34,7 @@ const loadSummary = async (): Promise<void> => {
   els.forEach((el) => {
     el.replaceChildren();
     if (!a) {
-      el.append(h("span", { class: "mut sm" }, "No budget yet"));
+      el.append(h("span", { class: "mut sm" }, "No active budget"));
       return;
     }
     const used = a.initial_eur ? pct100((a.used_eur / a.initial_eur) * 100) : 0;
@@ -76,6 +76,7 @@ const render = (): void => {
         cls ? h("span", {}, label) : label,
       ),
     );
+  document.title = `${ROUTES[route][0]} · Mistwatch`;
   const main = h("main", { class: "page", id: "main", tabindex: "-1" });
   app.replaceChildren(
     h(
@@ -118,19 +119,36 @@ const render = (): void => {
   if (!document.hidden) session.sumTimer = setInterval(loadSummary, 15000);
 };
 
-const boot = async (): Promise<void> => {
+const boot = async (): Promise<string | null> => {
   disposeView();
   clearInterval(session.sumTimer);
   let s: SessionResponse;
   try {
     s = await api.session();
-  } catch {
-    return;
+  } catch (e) {
+    const msg = errMsg(e);
+    // a sign-in form on screen reports the error itself
+    if (!qs(".auth form")) {
+      document.title = "Mistwatch";
+      qs("#app")?.replaceChildren(
+        h(
+          "div",
+          { class: "auth" },
+          h(
+            "div",
+            { class: "box" },
+            errState(msg, () => void boot()),
+          ),
+        ),
+      );
+    }
+    return msg;
   }
   session.me = s.user;
-  if (s.setup_needed) return viewAuth("setup");
-  if (!session.me) return viewAuth("login");
-  render();
+  if (s.setup_needed) viewAuth("setup");
+  else if (!session.me) viewAuth("login");
+  else render();
+  return null;
 };
 handlers.boot = boot;
 
@@ -138,6 +156,7 @@ window.addEventListener("hashchange", () => {
   if (session.me) {
     render();
     scrollTo(0, 0);
+    qs("#main")?.focus({ preventScroll: true });
   }
 });
 document.addEventListener("visibilitychange", () => {

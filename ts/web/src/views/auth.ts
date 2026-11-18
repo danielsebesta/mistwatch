@@ -63,8 +63,13 @@ export const viewAuth = (mode: "setup" | "login"): void => {
       const r = setup
         ? await api.setup({ username: u.value, password: p.value })
         : await api.login({ username: u.value, password: p.value });
-      await handlers.boot();
+      const bootErr = await handlers.boot();
+      // the key is shown once, so never drop it
       if ("api_key" in r && r.api_key) showNewKey(r.api_key.name, r.api_key.secret, true);
+      if (bootErr !== null && btn.isConnected) {
+        err.textContent = bootErr;
+        btn.disabled = false;
+      }
     } catch (ex) {
       const m = ex instanceof ApiError && ex.status === 429 ? /(\d+)\s*s/.exec(ex.message) : null;
       const secs = m?.[1];

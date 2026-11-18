@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,8 +30,16 @@ const ASSETS: Record<string, string> = {
   "mark.svg": "image/svg+xml",
   "site.webmanifest": "application/manifest+json",
 };
-const CSP =
-  "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+const csp = (scriptSrc: string): string =>
+  `default-src 'none'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`;
+// Inline scripts are allowed by hash, not by 'unsafe-inline'.
+const scriptHashes = (html: string): string[] =>
+  [...html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map(
+    (m) =>
+      `'sha256-${createHash("sha256")
+        .update(m[1] ?? "", "utf8")
+        .digest("base64")}'`,
+  );
 export const createApp = (st: State, opts: AppOpts = {}): Hono => {
   const proxy = opts.proxy ?? createProxy(st);
   const webDir = opts.webDir ?? WEB_DIR;
@@ -68,7 +77,7 @@ export const createApp = (st: State, opts: AppOpts = {}): Hono => {
     return c.body(html, 200, {
       "content-type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
-      "Content-Security-Policy": CSP,
+      "Content-Security-Policy": csp(["'self'", ...scriptHashes(html)].join(" ")),
     });
   });
   for (const [name, type] of Object.entries(ASSETS)) {

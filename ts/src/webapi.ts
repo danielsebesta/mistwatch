@@ -54,15 +54,17 @@ const isPool = (s: string): s is Pool => s === "vibe" || s === "api";
 const clip = (s: string): string => Array.from(s).slice(0, 256).join("");
 const statusPayload = (st: State, now: number): StatusResponse => {
   const pools: StatusResponse["pools"] = [];
+  const enabledByName = new Map(st.cfg.accounts.map((a) => [a.name, a.enabled]));
   for (const a of st.cfg.accounts) {
     for (const pool of ["vibe", "api"] as const) {
       const s = st.engine.status(a.name, pool, now);
       if (!s) continue;
+      const row = poolStatusDict(s);
       pools.push({
-        ...poolStatusDict(s),
+        ...row,
         pool,
         blocked_temporarily: (st.blockedUntil.get(blockKey(a.name, pool)) ?? 0) > now,
-        enabled: a.enabled,
+        enabled: [a.name, ...row.members].some((m) => enabledByName.get(m) === true),
       });
     }
   }
@@ -229,7 +231,7 @@ export const createWebApi = (st: State, opts: WebApiOpts = {}): Hono => {
     requireUser(c);
     const range = c.req.query("range") ?? "7d";
     const by = c.req.query("by") ?? "model";
-    if (!(range in RANGES) || !DIMENSIONS.includes(by)) throw apiError(400, "Unknown range or grouping.");
+    if (!Object.hasOwn(RANGES, range) || !DIMENSIONS.includes(by)) throw apiError(400, "Unknown range or grouping.");
     return c.json(usage(st.db, range, by, Date.now() / 1000, st.names));
   });
   api.get("/ledger", (c) => {
@@ -404,7 +406,7 @@ export const createWebApi = (st: State, opts: WebApiOpts = {}): Hono => {
   // ---------- proxy API keys ----------
   api.get("/apikeys", (c) => {
     requireUser(c);
-    return c.json({ keys: st.store.listApiKeys(), base_url: `http://${st.cfg.host}:${st.cfg.port}/v1` });
+    return c.json({ keys: st.store.listApiKeys(), base_url: `${new URL(c.req.url).origin}/v1` });
   });
   api.post("/apikeys", async (c) => {
     requireUser(c);
