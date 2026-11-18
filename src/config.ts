@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { isIPv6 } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parse, TomlError } from "smol-toml";
@@ -113,6 +114,8 @@ const hostList = (v: unknown): string[] => {
     .map((h) => pyStr(h).trim().toLowerCase().replace(/\.$/, ""))
     .filter((h) => h !== "")
     .map((h) => {
+      const bare = h.replace(/^\[|\]$/g, "");
+      if (isIPv6(bare)) return bare;
       if (/[:/[\]\s]/.test(h))
         throw new TypeError(
           `allowed_hosts entries are bare host names without port, scheme or path, not ${JSON.stringify(h)}`,

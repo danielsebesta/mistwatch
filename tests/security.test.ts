@@ -86,6 +86,12 @@ describe("configured extra hosts", () => {
     expect(originAllowed("https://mw.example.com", { port: 8787 })).toBe(false);
     expect(originAllowed("http://127.0.0.1:9999", extra)).toBe(false);
   });
+  it("matches a listed IPv6 literal", () => {
+    const v6 = { port: 8787, extraHosts: ["fd00::5"] };
+    expect(hostAllowed("[fd00::5]:8787", v6)).toBe(true);
+    expect(originAllowed("http://[fd00::5]:8787", v6)).toBe(true);
+    expect(hostAllowed("[fd00::6]:8787", v6)).toBe(false);
+  });
   it("lets a listed local name through on a forwarded port", () => {
     const fwd = { port: 8787, extraHosts: ["localhost"] };
     expect(hostAllowed("localhost:9000", fwd)).toBe(true);
