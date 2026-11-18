@@ -40,15 +40,35 @@ export const restoreFocus = (root: ParentNode, key: string | null): void => {
   if (!t.matches("a,button,input,select,textarea,[tabindex]")) t.tabIndex = -1;
   t.focus();
 };
+// navigator.clipboard needs a secure context; over plain http (a Tailscale IP) fall back to execCommand.
+// The textarea goes inside the open dialog, because the rest of the page is inert while one is modal.
+const legacyCopy = (text: string, host: HTMLElement): boolean => {
+  const t = document.createElement("textarea");
+  t.value = text;
+  t.setAttribute("readonly", "");
+  t.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+  host.appendChild(t);
+  t.select();
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    t.remove();
+  }
+};
 export const copyBtn = (text: string, label = "Copy"): HTMLButtonElement => {
   const b = h("button", { class: "btn ghost icon", type: "button", "aria-label": label, title: label });
   b.append(ic("copy"));
   b.addEventListener("click", async () => {
     try {
+      if (!navigator.clipboard) throw new Error("no clipboard api");
       await navigator.clipboard.writeText(text);
     } catch {
-      copyFailed(b);
-      return;
+      if (!legacyCopy(text, b.closest("dialog") ?? document.body)) {
+        copyFailed(b);
+        return;
+      }
     }
     qs(".copy-err", b.closest("dialog") ?? b)?.remove();
     b.replaceChildren(ic("check"));
