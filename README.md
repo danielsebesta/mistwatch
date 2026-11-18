@@ -88,6 +88,7 @@ Agents and integrators can read `/llms.txt` on a running proxy (no sign-in neede
 | `serve` | Run the proxy and web UI (`--port`) |
 | `status` | Show the budget of every account |
 | `sync` | Pull budget usage from Mistral now |
+| `set-token` | Store a Mistwatch key as `MISTWATCH_TOKEN` (hidden input, checked against the server) |
 | `route "prompt"` | Show which model `auto` would pick |
 | `import-vibe` | Add the Vibe CLI login as an account |
 | `passwd <user>` | Create a user or reset a password |
@@ -99,7 +100,7 @@ Settings live in `~/.mistwatch/config.toml` (server address and port, limits, pr
 
 To reach the UI under another host name, for example through a tunnel, add it to `allowed_hosts` under `[server]`. In Docker, set `MISTWATCH_ALLOWED_HOSTS` instead (comma separated, for example `mw.tailnet.ts.net,100.64.0.1`); it is added to the list from the file.
 
-`mistwatch setup` asks whether Mistwatch runs on this computer or on another machine/hosted instance (or pass `--url http://HOST:8787`). For a hosted one it only writes the tool configs and checks that the server answers. It also says which of Vibe, OpenCode and Pi are not installed and how to install them.
+`mistwatch setup` asks whether Mistwatch runs on this computer or on another machine/hosted instance (or pass `--url http://HOST:8787`). For a hosted one it only writes the tool configs and checks that the server answers. It also says which of Vibe, OpenCode and Pi are not installed and how to install them, and offers to store your Mistwatch key as `MISTWATCH_TOKEN` (typing is hidden, the key is checked against the server first; on Windows it goes to your user environment, on macOS/Linux to your zsh or bash profile after you confirm). `mistwatch set-token [--url URL]` does only that step.
 
 ## Security
 

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { dumpJson, opencode, opencodeConfigPath, pi } from "./agents.ts";
 import { clientBaseUrl } from "./config.ts";
+import { readSecret as readPassword, readStdinAll } from "./secret.ts";
 import type { PoolStatusDict } from "./types.ts";
 
 const USAGE = `usage: mistwatch <command> [options]
@@ -19,47 +20,12 @@ commands:
   serve          run the proxy and web UI (--port)
   route          dry-run the auto router on a prompt (--tools --llm --pressure)
   passwd         create a user / reset a password
+  set-token      store a Mistwatch key as MISTWATCH_TOKEN (--url, --no-check)
   vibe-config    print the Vibe CLI provider block
   agent-config   provider config for pi|opencode (--write, --env)`;
 const openApp = async () => (await import("./open.ts")).openApp();
 const serverUrl = (cfg: { host: string; port: number }): string => clientBaseUrl(cfg);
-let stdinQueue: string[] | null = null;
-const stdinLines = async (): Promise<string[]> => {
-  if (stdinQueue === null) {
-    let all = "";
-    process.stdin.setEncoding("utf8");
-    for await (const c of process.stdin) all += c;
-    stdinQueue = all.split("\n");
-  }
-  return stdinQueue;
-};
-const readStdinAll = async (): Promise<string> => (await stdinLines()).join("\n").replace(/\r/g, "");
-const readPassword = async (prompt: string): Promise<string> => {
-  process.stderr.write(prompt);
-  const stdin = process.stdin;
-  if (!stdin.isTTY) return ((await stdinLines()).shift() ?? "").replace(/\r$/, "");
-  return new Promise((res) => {
-    stdin.setRawMode(true);
-    stdin.resume();
-    let pw = "";
-    const done = (): void => {
-      stdin.removeAllListeners("data");
-      stdin.setRawMode(false);
-      stdin.pause();
-      process.stderr.write("\n");
-      res(pw);
-    };
-    stdin.on("data", (c: Buffer) => {
-      for (const b of c.toString("utf8")) {
-        if (b === "\r" || b === "\n" || b === "\u0004" || b === "\u001a") return done();
-        if (b === "\u0003") process.exit(130);
-        else if (b === "\b" || b === "\u007f") pw = pw.slice(0, -1);
-        else pw += b;
-      }
-      return;
-    });
-  });
-};
+
 const fmtTs = (ts: number | null | undefined): string => {
   if (!ts) return "-";
   const d = new Date(ts * 1000);
@@ -174,6 +140,72 @@ const cmdImportVibe = async (args: string[]): Promise<number> => {
 const cmdSetup = async (args: string[]): Promise<number> => {
   const { runSetup, defaultSetupDeps } = await import("./setup.ts");
   return runSetup(args, defaultSetupDeps());
+};
+// Asks for a Mistwatch key (typing hidden), checks it against the server and stores it as MISTWATCH_TOKEN.
+const cmdSetToken = async (args: string[]): Promise<number> => {
+  const { values } = opts({
+    args,
+    options: { url: { type: "string" }, "no-check": { type: "boolean", default: false } },
+    strict: true,
+  });
+  const { parseUrl, backupFile, createAsk } = await import("./setup.ts");
+  const { checkKey, persistToken, TOKEN_ENV } = await import("./envtoken.ts");
+  let url: string;
+  try {
+    const given = parseUrl(values.url);
+    if (given) url = given;
+    else {
+      const { loadConfig } = await import("./config.ts");
+      url = (() => {
+        try {
+          return serverUrl(loadConfig());
+        } catch {
+          return "http://127.0.0.1:8787";
+        }
+      })();
+    }
+  } catch (e) {
+    console.error(`mistwatch: ${e instanceof Error ? e.message : String(e)}`);
+    return 2;
+  }
+  const key = (await readPassword("Mistwatch key (typing is hidden): ")).trim();
+  if (!key.startsWith("mw-")) {
+    console.error(
+      'mistwatch: that does not look like a Mistwatch key (it starts with "mw-"). Create one under "API keys" in the web UI.',
+    );
+    return 1;
+  }
+  if (!values["no-check"]) {
+    const verdict = await checkKey(url, key);
+    if (verdict === "rejected") {
+      console.error(`mistwatch: ${url} rejected this key, nothing saved`);
+      return 1;
+    }
+    if (verdict === "unreachable")
+      console.error(`mistwatch: could not reach ${url} to check the key, saving it anyway`);
+  }
+  const line = createAsk();
+  try {
+    const r = await persistToken(key, {
+      platform: process.platform,
+      home: homedir(),
+      shell: process.env.SHELL,
+      now: () => new Date(),
+      backup: backupFile,
+      confirm: async (q) => {
+        const a = ((await line.ask(`${q} [Y/n] `)) ?? "n").trim().toLowerCase();
+        return a === "" || a === "y" || a === "yes";
+      },
+    });
+    if (r.saved) {
+      console.log(`Stored as ${TOKEN_ENV} in ${r.where}; ${r.note}.`);
+      return 0;
+    }
+    console.error(`mistwatch: ${r.reason}. To do it by hand: ${r.manual.replace("<key>", "<your key>")}`);
+    return 1;
+  } finally {
+    line.close();
+  }
 };
 const cmdPasswd = async (args: string[]): Promise<number> => {
   const { positionals } = opts({ args, allowPositionals: true, strict: true });
@@ -372,6 +404,7 @@ export const main = async (argv: string[]): Promise<number> => {
     if (cmd === "init") return await cmdInit(rest);
     if (cmd === "import-vibe") return await cmdImportVibe(rest);
     if (cmd === "passwd") return await cmdPasswd(rest);
+    if (cmd === "set-token") return await cmdSetToken(rest);
     if (cmd === "status") return await cmdStatus(rest);
     if (cmd === "sync") return await cmdSync();
     if (cmd === "serve") return await cmdServe(rest);

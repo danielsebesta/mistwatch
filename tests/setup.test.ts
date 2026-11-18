@@ -74,6 +74,9 @@ const make = (
     platform?: NodeJS.Platform;
     installed?: string[];
     fetch?: SetupDeps["fetch"];
+    secret?: SetupDeps["secret"];
+    setx?: SetupDeps["setx"];
+    env?: NodeJS.ProcessEnv;
   } = {},
 ): Harnessed => {
   const out: string[] = [];
@@ -103,6 +106,9 @@ const make = (
     },
     which: (c) => (opts.installed ?? ["vibe", "opencode", "pi"]).includes(c),
     ...(opts.fetch ? { fetch: opts.fetch } : {}),
+    ...(opts.secret ? { secret: opts.secret } : {}),
+    ...(opts.setx ? { setx: opts.setx } : {}),
+    ...(opts.env ? { env: opts.env } : {}),
   };
   return { deps, out, err, asked, started };
 };
@@ -510,9 +516,9 @@ describe("harness planners", () => {
 
 describe("setup prompts", () => {
   it("asks about the Vibe login, the tools and whether to start", async () => {
-    const h = make({ interactive: true, answers: ["", "", "2,3", "n"] });
+    const h = make({ interactive: true, answers: ["", "", "2,3", "n", "n"] });
     expect(await runSetup([], h.deps)).toBe(0);
-    expect(h.asked).toHaveLength(4);
+    expect(h.asked).toHaveLength(5);
     expect(text(h)).toContain("Where does Mistwatch run?");
     expect(h.asked[1]).toContain("Import it as an account?");
     expect(existsSync(paths().vibe)).toBe(false);
@@ -522,9 +528,9 @@ describe("setup prompts", () => {
     expect(text(h)).toContain("1  Vibe CLI");
   });
   it("starts the server when the user agrees and skips the tool question with --harness", async () => {
-    const h = make({ interactive: true, answers: ["", "y", "y"] });
+    const h = make({ interactive: true, answers: ["", "y", "n", "y"] });
     expect(await runSetup(["--harness", "vibe"], h.deps)).toBe(0);
-    expect(h.asked).toHaveLength(3);
+    expect(h.asked).toHaveLength(4);
     expect(h.started).toHaveLength(1);
   });
   it("can decline the Vibe import and re-asks on unclear answers", async () => {
@@ -823,5 +829,107 @@ describe("setup where and installed tools", () => {
     const h = make({ installed: [] });
     await runSetup(["--yes", "--harness", "vibe", "--no-banner"], h.deps);
     expect(text(h)).toContain("uv tool install mistral-vibe");
+  });
+});
+
+describe("setup stores the key", () => {
+  const ok = async () => new Response("{}", { status: 200 });
+  const bad = async () => new Response("{}", { status: 401 });
+  const remote = ["--harness", "vibe", "--no-banner", "--url", "http://h:1"];
+  it("asks for the key hidden, checks it and stores it with setx on Windows", async () => {
+    const saved: [string, string][] = [];
+    const h = make({
+      interactive: true,
+      platform: "win32",
+      answers: ["y"],
+      fetch: ok,
+      secret: async () => "mw-abc123",
+      setx: async (n, v) => {
+        saved.push([n, v]);
+      },
+    });
+    expect(await runSetup(remote, h.deps)).toBe(0);
+    expect(saved).toEqual([["MISTWATCH_TOKEN", "mw-abc123"]]);
+    expect(text(h)).toContain("stored as MISTWATCH_TOKEN in your user environment");
+    expect(text(h)).not.toContain("mw-abc123");
+  });
+  it("does not store a key the server rejects or one without the mw- prefix", async () => {
+    for (const [fetcher, key, expected] of [
+      [bad, "mw-nope", "rejected this key"],
+      [ok, "sk-other", "does not look like a Mistwatch key"],
+    ] as const) {
+      const saved: string[] = [];
+      const h = make({
+        interactive: true,
+        platform: "win32",
+        answers: ["y"],
+        fetch: fetcher,
+        secret: async () => key,
+        setx: async (_n, v) => {
+          saved.push(v);
+        },
+      });
+      await runSetup(remote, h.deps);
+      expect(saved).toEqual([]);
+      expect(text(h)).toContain(expected);
+    }
+  });
+  it("adds an export line to the zsh profile after asking, keeping a backup", async () => {
+    const profile = join(home, ".zshrc");
+    put(profile, "alias x=y\n");
+    const h = make({
+      interactive: true,
+      answers: ["y", "y"],
+      fetch: ok,
+      secret: async () => "mw-zsh1",
+      env: { SHELL: "/bin/zsh" },
+    });
+    expect(await runSetup(remote, h.deps)).toBe(0);
+    const body = readFileSync(profile, "utf8");
+    expect(body).toContain('export MISTWATCH_TOKEN="mw-zsh1"');
+    expect(body).toContain("alias x=y");
+    expect(backups(profile)).toHaveLength(1);
+  });
+  it("leaves the profile alone when declined and for shells it does not know", async () => {
+    const profile = join(home, ".zshrc");
+    put(profile, "alias x=y\n");
+    const declined = make({
+      interactive: true,
+      answers: ["y", "n"],
+      fetch: ok,
+      secret: async () => "mw-no",
+      env: { SHELL: "/bin/zsh" },
+    });
+    await runSetup(remote, declined.deps);
+    expect(readFileSync(profile, "utf8")).toBe("alias x=y\n");
+    const fish = make({
+      interactive: true,
+      answers: ["y"],
+      fetch: ok,
+      secret: async () => "mw-fish",
+      env: { SHELL: "/usr/bin/fish" },
+    });
+    await runSetup(remote, fish.deps);
+    expect(text(fish)).toContain("no known shell profile");
+    expect(text(fish)).toContain("MISTWATCH_TOKEN");
+  });
+  it("offers to save the key it just created without asking for one", async () => {
+    const saved: string[] = [];
+    const h = make({
+      interactive: true,
+      platform: "win32",
+      answers: ["", "n", "1", "y"],
+      setx: async (_n, v) => {
+        saved.push(v);
+      },
+    });
+    expect(await runSetup(["--no-banner"], h.deps)).toBe(0);
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatch(/^mw-/);
+  });
+  it("is silent without a terminal", async () => {
+    const h = make({ platform: "win32" });
+    await runSetup(["--yes", "--no-banner"], h.deps);
+    expect(text(h)).not.toContain("Key ");
   });
 });

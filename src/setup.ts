@@ -23,6 +23,7 @@ import { parse } from "smol-toml";
 import { ENV, merge, opencode, opencodeConfigPath, pi, TOOLS, VIBE_AUTO, vibe, vibeAutoBlock } from "./agents.ts";
 import { createBudgetEngine } from "./budget.ts";
 import { CONFIG_TEMPLATE, clientBaseUrl, configPath } from "./config.ts";
+import { checkKey, persistToken, TOKEN_ENV } from "./envtoken.ts";
 import { builtin } from "./modelnames.ts";
 import { type App, freeVibeName, linkVibeLogin, openApp } from "./open.ts";
 import type { Store } from "./store.ts";
@@ -64,6 +65,10 @@ export type SetupDeps = {
   // Optional so older callers keep working: is this command on PATH, and a fetch for reaching a remote Mistwatch.
   which?: (command: string) => boolean;
   fetch?: typeof fetch;
+  // Reads one line without echo; Windows setx; the environment (SHELL, MISTWATCH_TOKEN).
+  secret?: (prompt: string) => Promise<string | null>;
+  setx?: (name: string, value: string) => Promise<void>;
+  env?: NodeJS.ProcessEnv;
 };
 export class SetupArgError extends Error {}
 export class SetupError extends Error {}
@@ -531,7 +536,14 @@ type Report = {
   };
   remote_url: string | null;
   vibe_login: "imported" | "linked" | "missing" | "failed";
-  client_token: { created: boolean; existing_keys: number; masked: string | null; token?: string; hint?: string };
+  client_token: {
+    created: boolean;
+    existing_keys: number;
+    masked: string | null;
+    token?: string;
+    hint?: string;
+    saved?: boolean;
+  };
   harnesses: HarnessResult[];
   status: { ok: boolean; accounts: number; pools_with_budget: number } | null;
   started: boolean;
@@ -730,6 +742,40 @@ const stepHarness = (ctx: Ctx, h: Harness, cfg: Config | null): void => {
   }
   if (!installed) note(ctx, "warn", label, `not installed on this computer. Install it with: ${INSTALL[h].cmd}`);
 };
+// Offers to store the Mistwatch key as MISTWATCH_TOKEN: the key setup just created, or one typed here (hidden).
+const stepKey = async (ctx: Ctx, url: string): Promise<void> => {
+  if (ctx.auto) return;
+  const env = ctx.deps.env ?? process.env;
+  let token = ctx.newToken;
+  if (token) {
+    if (!(await confirm(ctx, `Save the new key as ${TOKEN_ENV} for you?`, true))) return;
+  } else {
+    if (env[TOKEN_ENV] && !(await confirm(ctx, `${TOKEN_ENV} is already set. Replace it with another key?`, false)))
+      return;
+    if (!(await confirm(ctx, `Enter a Mistwatch key now to store it as ${TOKEN_ENV}?`, true))) return;
+    const typed = (await ctx.deps.secret?.("    Mistwatch key (typing is hidden): "))?.trim() ?? "";
+    if (typed === "") return note(ctx, "skip", "Key", "no key entered");
+    if (!typed.startsWith("mw-"))
+      return note(ctx, "warn", "Key", 'that does not look like a Mistwatch key (it starts with "mw-"), not saved');
+    const verdict = await checkKey(url, typed, ctx.deps.fetch ?? fetch);
+    if (verdict === "rejected") return note(ctx, "warn", "Key", `${url} rejected this key, not saved`);
+    if (verdict === "unreachable") note(ctx, "warn", "Key", `could not check the key against ${url}, saving it anyway`);
+    token = typed;
+  }
+  const r = await persistToken(token, {
+    platform: ctx.deps.platform,
+    home: ctx.deps.home,
+    shell: env.SHELL,
+    now: ctx.deps.now,
+    confirm: (q) => confirm(ctx, q, true),
+    backup: backupFile,
+    ...(ctx.deps.setx ? { setx: ctx.deps.setx } : {}),
+  });
+  if (r.saved) {
+    ctx.report.client_token.saved = true;
+    note(ctx, "ok", "Key", `stored as ${TOKEN_ENV} in ${r.where}; ${r.note}`);
+  } else note(ctx, "warn", "Key", `${r.reason}. To do it by hand: ${r.manual.replace("<key>", "<your key>")}`);
+};
 const stepVerify = (ctx: Ctx, app: App): void => {
   const eng = createBudgetEngine(app.db, app.cfg.limits);
   const list = app.store.listAccounts();
@@ -870,6 +916,7 @@ export const runSetup = async (args: string[], deps: SetupDeps): Promise<number>
     if (opts.url) {
       await stepRemote(ctx, opts.url);
       for (const h of await pickHarnesses(ctx)) stepHarness(ctx, h, null);
+      await stepKey(ctx, opts.url);
     } else {
       stepConfig(ctx);
       app = openApp();
@@ -878,6 +925,7 @@ export const runSetup = async (args: string[], deps: SetupDeps): Promise<number>
       const picked = await pickHarnesses(ctx);
       stepToken(ctx, app.store);
       for (const h of picked) stepHarness(ctx, h, app.cfg);
+      await stepKey(ctx, clientBaseUrl(app.cfg));
       stepVerify(ctx, app);
     }
   } catch (e) {
@@ -938,14 +986,15 @@ export const defaultSetupDeps = (): SetupDeps => {
   const home = homedir();
   const probe = (env: NodeJS.ProcessEnv): number =>
     process.stdout instanceof WriteStream ? process.stdout.getColorDepth(env) : 1;
+  const io: SetupIo = {
+    out: (text) => process.stdout.write(`${text}\n`),
+    err: (text) => process.stderr.write(`${text}\n`),
+    ...createAsk(),
+    interactive: Boolean(process.stdin.isTTY) && tty,
+    depth: detectDepth(process.env, tty, probe),
+  };
   return {
-    io: {
-      out: (text) => process.stdout.write(`${text}\n`),
-      err: (text) => process.stderr.write(`${text}\n`),
-      ...createAsk(),
-      interactive: Boolean(process.stdin.isTTY) && tty,
-      depth: detectDepth(process.env, tty, probe),
-    },
+    io,
     home,
     vibeHome: process.env.VIBE_HOME || join(home, ".vibe"),
     platform: process.platform,
@@ -954,5 +1003,11 @@ export const defaultSetupDeps = (): SetupDeps => {
     start: async (cfg) => (await import("./app.ts")).startServer(cfg),
     which: (command) => onPath(command, process.env, process.platform),
     fetch: (input, init) => fetch(input, init),
+    secret: async (prompt) => {
+      // the line reader owns stdin until it is closed; it opens again on the next question
+      io.close();
+      return (await import("./secret.ts")).readSecret(prompt);
+    },
+    env: process.env,
   };
 };
