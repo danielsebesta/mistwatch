@@ -150,37 +150,45 @@ const syncAccount = async (fetchFn: FetchLike, cfg: Config, db: DB, acct: Accoun
     for (const [fname, pool] of Object.entries(BUDGET_POOLS)) {
       const b = data[fname];
       if (!isRec(b) || Object.keys(b).length === 0) continue;
-      const initial = asFloat(b.initial_budget);
-      const used = (asFloat(b.usage_percentage) / 100) * initial;
-      const resetAt = typeof b.reset_at === "string" && b.reset_at ? parseIso(b.reset_at) : nextReset(1, now);
-      recordSnapshot(
-        db,
-        acct.name,
-        pool,
-        used,
-        initial,
-        resetAt,
-        typeof b.currency === "string" ? b.currency : null,
-        now,
-      );
-      out[pool] = { used, initial, source: "mistral" };
+      try {
+        const initial = asFloat(b.initial_budget);
+        const used = (asFloat(b.usage_percentage) / 100) * initial;
+        const resetAt = typeof b.reset_at === "string" && b.reset_at ? parseIso(b.reset_at) : nextReset(1, now);
+        recordSnapshot(
+          db,
+          acct.name,
+          pool,
+          used,
+          initial,
+          resetAt,
+          typeof b.currency === "string" ? b.currency : null,
+          now,
+        );
+        out[pool] = { used, initial, source: "mistral" };
+      } catch (e) {
+        console.warn(`bad budget payload for ${acct.name}/${pool}:`, e instanceof Error ? e.message : e);
+      }
     }
   } else {
     for (const [pool, m] of Object.entries(acct.manual)) {
-      const initial = asFloat(m.initial_eur);
-      const resetDay = Math.trunc(asFloat(m.reset_day ?? 1));
-      const resetAt = nextReset(resetDay, now);
-      const used = db.costBetween(acct.name, pool, prevReset(resetDay, resetAt), { inclusive: true, upto: now });
-      db.addSnapshot({
-        ts: now,
-        account: acct.name,
-        pool,
-        used_eur: used,
-        initial_eur: initial,
-        reset_at: resetAt,
-        currency: "EUR",
-      });
-      out[pool] = { used, initial, source: "manual" };
+      try {
+        const initial = asFloat(m.initial_eur);
+        const resetDay = Math.trunc(asFloat(m.reset_day ?? 1));
+        const resetAt = nextReset(resetDay, now);
+        const used = db.costBetween(acct.name, pool, prevReset(resetDay, resetAt), { inclusive: true, upto: now });
+        db.addSnapshot({
+          ts: now,
+          account: acct.name,
+          pool,
+          used_eur: used,
+          initial_eur: initial,
+          reset_at: resetAt,
+          currency: "EUR",
+        });
+        out[pool] = { used, initial, source: "manual" };
+      } catch (e) {
+        console.warn(`bad manual budget for ${acct.name}/${pool}:`, e instanceof Error ? e.message : e);
+      }
     }
   }
   return out;

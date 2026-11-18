@@ -277,7 +277,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
           return a === undefined ? [] : [{ account: a, pool: Object.keys(a.keys)[0] ?? cls, status: null }];
         })();
     if (cands.length === 0) {
-      const info = exhaustedInfo(st, now);
+      const info = exhaustedInfo(st, now, cls);
       throw asException(errors.budget(info.retry_after, info.pools));
     }
     let routed: Decision | null = null;
@@ -618,7 +618,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
       return respond(lastResp.body, lastResp.status, h);
     }
     if (roomSkips === cands.length) {
-      const info = exhaustedInfo(st, Date.now() / 1000);
+      const info = exhaustedInfo(st, Date.now() / 1000, cls);
       throw asException(errors.budget(info.retry_after, info.pools));
     }
     throw asException(errors.upstream());

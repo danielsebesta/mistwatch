@@ -22,7 +22,7 @@ import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import { parse } from "smol-toml";
 import { ENV, merge, opencode, opencodeConfigPath, pi, TOOLS, vibe } from "./agents.ts";
 import { createBudgetEngine } from "./budget.ts";
-import { CONFIG_TEMPLATE, configPath } from "./config.ts";
+import { CONFIG_TEMPLATE, clientBaseUrl, configPath } from "./config.ts";
 import { type App, freeVibeName, linkVibeLogin, openApp } from "./open.ts";
 import type { Store } from "./store.ts";
 import { mask, StoreError, VIBE_REF, vibeCliKeyPresent } from "./store.ts";
@@ -577,7 +577,7 @@ const HARNESS_PATHS = (deps: SetupDeps): Record<Harness, string> => ({
 });
 const stepHarness = (ctx: Ctx, h: Harness, cfg: Config): void => {
   const path = HARNESS_PATHS(ctx.deps)[h];
-  const base = `http://${cfg.host}:${cfg.port}`;
+  const base = clientBaseUrl(cfg);
   const label = TOOLS[h].label;
   const shown = pretty(path, ctx.deps.home);
   const result: HarnessResult = { harness: h, path, action: "failed", backup: null };
@@ -634,7 +634,7 @@ const summary = (ctx: Ctx, cfg: Config | null): string[] => {
     out.push("", `  Use one of your existing keys as ${ENV}, or create another under "API keys" in the web UI.`);
   }
   out.push("", `  ${style.accent("Next steps")}`);
-  const url = cfg ? `http://${cfg.host}:${cfg.port}/` : "http://127.0.0.1:8787/";
+  const url = cfg ? clientBaseUrl(cfg, "/") : "http://127.0.0.1:8787/";
   if (report.vibe_login === "missing")
     out.push("    - Run `vibe --setup`, then `mistwatch import-vibe` (or add a key in the web UI).");
   out.push(`    - Start the proxy: mistwatch serve   (web UI: ${url})`);

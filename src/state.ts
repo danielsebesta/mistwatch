@@ -93,18 +93,23 @@ export const candidates = (st: State, cls: "vibe" | "api", now: number): Candida
   return out.map(({ account, pool, status }) => ({ account, pool, status }));
 };
 
-export const exhaustedInfo = (st: State, now: number): ExhaustedInfo => {
+export const exhaustedInfo = (st: State, now: number, cls?: "vibe" | "api"): ExhaustedInfo => {
+  const order = cls === undefined || st.cfg.limits.fallback_to_other_pool ? ["vibe", "api"] : [cls];
   const pools: ExhaustedInfo["pools"] = [];
   const retry: number[] = [];
   for (const account of st.cfg.accounts) {
-    for (const pool of ["vibe", "api"]) {
+    if (!account.enabled) continue;
+    for (const pool of order) {
+      if (!(pool in account.keys)) continue;
       const status = st.engine.status(account.name, pool, now);
       if (!status) continue;
-      const retryAt = poolRetryAt(status);
+      const until = st.blockedUntil.get(blockKey(account.name, pool)) ?? 0;
+      const blocked = until > now;
+      const retryAt = blocked ? until : poolRetryAt(status);
       pools.push({
         account: account.name,
         pool,
-        blocked_by: poolBlockedBy(status) ?? "temporarily-blocked",
+        blocked_by: blocked ? "temporarily-blocked" : (poolBlockedBy(status) ?? "temporarily-blocked"),
         retry_at: retryAt,
       });
       if (retryAt) retry.push(retryAt);

@@ -56,6 +56,23 @@ describe("sync", () => {
     expect(snap.used_eur).toBe(5);
     expect(snap.initial_eur).toBe(10);
   });
+  it("skips a pool with a bad budget payload and keeps syncing", async () => {
+    const db = openDb(":memory:");
+    const cfg = defaultConfig();
+    cfg.accounts.push(acct("a", { vibe: "k" }), acct("b", { vibe: "k" }));
+    let n = 0;
+    const res = await syncAll(
+      fakeFetch((url) => {
+        if (!url.endsWith("/v1/billing/budget")) return json({}, 404);
+        n += 1;
+        return n === 1 ? json({ vibe_budget: { initial_budget: null, usage_percentage: "x" } }) : json(BUDGET);
+      }),
+      cfg,
+      db,
+    );
+    expect(res.a?.vibe).toBeUndefined();
+    expect(res.b?.vibe).toEqual({ used: 10, initial: 100, source: "mistral" });
+  });
   it("tries account keys vibe-first and falls through on errors", async () => {
     const db = openDb(":memory:");
     const cfg = defaultConfig();

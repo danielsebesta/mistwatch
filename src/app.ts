@@ -6,6 +6,7 @@ import type { ServerType } from "@hono/node-server";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { llmsTxt } from "./agents.ts";
+import { clientBaseUrl } from "./config.ts";
 import { apiErrorBody, errorHeaders, errors, isAppError, proxyErrorBody, toAppError } from "./errors.ts";
 import { createProxy } from "./proxy.ts";
 import { localRequestAllowed, safePathSegment } from "./security.ts";
@@ -122,7 +123,7 @@ export const startServer = async (
   });
   const addr = server.address();
   const port = typeof addr === "object" && addr !== null ? addr.port : cfg.port;
-  console.log(`mistwatch: open http://${cfg.host}:${port}/ in your browser`);
+  console.log(`mistwatch: open ${clientBaseUrl({ host: cfg.host, port }, "/")} in your browser`);
   let closing: Promise<void> | null = null;
   const close = (): Promise<void> => {
     closing ??= (async () => {

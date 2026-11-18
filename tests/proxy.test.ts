@@ -695,6 +695,16 @@ describe("proxy accounting hardening", () => {
     expect(r.status).toBe(429);
     expect(Number(r.headers.get("retry-after"))).toBeGreaterThan(0);
   });
+  it("Retry-After follows a temporary block, not an unrelated month reset", async () => {
+    const st = baseState(() => okJson());
+    st.blockedUntil.set(blockKey("a", "api"), Date.now() / 1000 + 30);
+    st.cfg.limits.fallback_to_other_pool = false;
+    const r = await createProxy(st).handle(jreq("/v1/chat/completions", { model: "mistral-large-4-0" }, AUTH));
+    expect(r.status).toBe(429);
+    const ra = Number(r.headers.get("retry-after"));
+    expect(ra).toBeGreaterThan(0);
+    expect(ra).toBeLessThanOrEqual(30);
+  });
   it("counts tool call chunks and code points in the stream fallback", async () => {
     const e = "😀".repeat(8);
     const chunk = (delta: unknown): string => `data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`;

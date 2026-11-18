@@ -2,7 +2,16 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { anyKey, configPath, defaultConfig, homeDir, keyFor, loadConfig, resolveSecret } from "../src/config.ts";
+import {
+  anyKey,
+  clientBaseUrl,
+  configPath,
+  defaultConfig,
+  homeDir,
+  keyFor,
+  loadConfig,
+  resolveSecret,
+} from "../src/config.ts";
 import type { Account } from "../src/types.ts";
 
 const acct = (over: Partial<Account> = {}): Account => ({
@@ -55,6 +64,15 @@ describe("loadConfig floats", () => {
   });
   it("accepts numeric strings", () => {
     expect(load('[pricing]\nusd_to_eur = " 0.5e0 "\n')().usd_to_eur).toBe(0.5);
+  });
+});
+describe("clientBaseUrl", () => {
+  it("maps wildcard hosts to loopback and brackets IPv6", () => {
+    expect(clientBaseUrl({ host: "127.0.0.1", port: 8787 })).toBe("http://127.0.0.1:8787");
+    expect(clientBaseUrl({ host: "0.0.0.0", port: 1 }, "/")).toBe("http://127.0.0.1:1/");
+    expect(clientBaseUrl({ host: "::", port: 1 })).toBe("http://127.0.0.1:1");
+    expect(clientBaseUrl({ host: "::1", port: 2 })).toBe("http://[::1]:2");
+    expect(clientBaseUrl({ host: "mw.lan", port: 3 })).toBe("http://mw.lan:3");
   });
 });
 describe("allowed_hosts", () => {

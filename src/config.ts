@@ -8,6 +8,10 @@ import type { Account, Client, Config, Limits, ManualPool, PriceOverride, Router
 
 declare const __USD_TO_EUR__: number | undefined;
 export const DEFAULT_USD_TO_EUR = typeof __USD_TO_EUR__ === "number" ? __USD_TO_EUR__ : 0.86;
+export const clientBaseUrl = (cfg: { host: string; port: number }, path = ""): string => {
+  const h = cfg.host === "0.0.0.0" || cfg.host === "::" || cfg.host === "" ? "127.0.0.1" : cfg.host;
+  return `http://${isIPv6(h) ? `[${h}]` : h}:${cfg.port}${path}`;
+};
 export const homeDir = (): string => process.env.MISTWATCH_HOME || join(homedir(), ".mistwatch");
 export const configPath = (): string => process.env.MISTWATCH_CONFIG || join(homeDir(), "config.toml");
 export const CONFIG_TEMPLATE = `# mistwatch config (server, limits, pricing). Accounts, keys and logins are managed in the web UI.

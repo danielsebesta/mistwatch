@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { dumpJson, opencode, opencodeConfigPath, pi } from "./agents.ts";
+import { clientBaseUrl } from "./config.ts";
 import type { PoolStatusDict } from "./types.ts";
 
 const USAGE = `usage: mistwatch <command> [options]
@@ -21,7 +22,7 @@ commands:
   vibe-config    print the Vibe CLI provider block
   agent-config   provider config for pi|opencode (--write, --env)`;
 const openApp = async () => (await import("./open.ts")).openApp();
-const serverUrl = (cfg: { host: string; port: number }): string => `http://${cfg.host}:${cfg.port}`;
+const serverUrl = (cfg: { host: string; port: number }): string => clientBaseUrl(cfg);
 let stdinQueue: string[] | null = null;
 const stdinLines = async (): Promise<string[]> => {
   if (stdinQueue === null) {
