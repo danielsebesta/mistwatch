@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/danielsebesta/mistwatch/master/web/public/logo-dark.svg">
-    <img src="https://raw.githubusercontent.com/danielsebesta/mistwatch/master/web/public/logo.svg" alt="Mistwatch" height="48">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/danielsebesta/mistwatch/main/web/public/logo-dark.svg">
+    <img src="https://raw.githubusercontent.com/danielsebesta/mistwatch/main/web/public/logo.svg" alt="Mistwatch" height="48">
   </picture>
 </p>
 
@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/mistwatch"><img alt="npm" src="https://img.shields.io/npm/v/mistwatch?color=ff8204&logo=npm"></a>
   <a href="https://www.npmjs.com/package/mistwatch"><img alt="downloads" src="https://img.shields.io/npm/dm/mistwatch?color=ff8204"></a>
-  <a href="https://github.com/danielsebesta/mistwatch/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/danielsebesta/mistwatch/ci.yml?branch=master&label=CI"></a>
+  <a href="https://github.com/danielsebesta/mistwatch/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/danielsebesta/mistwatch/ci.yml?branch=main&label=CI"></a>
   <a href="https://github.com/danielsebesta/mistwatch/pkgs/container/mistwatch"><img alt="Docker" src="https://img.shields.io/badge/docker-ghcr.io-2496ed?logo=docker&logoColor=white"></a>
   <img alt="Node 24+" src="https://img.shields.io/node/v/mistwatch?color=339933&logo=node.js&logoColor=white">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/npm/l/mistwatch?color=blue"></a>
