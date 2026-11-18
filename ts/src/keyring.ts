@@ -1,4 +1,19 @@
-import { Entry, findCredentials } from "@napi-rs/keyring";
+import { createRequire } from "node:module";
+
+type Napi = typeof import("@napi-rs/keyring");
+let loaded: Napi | null | undefined;
+// the native module is optional: platforms without a prebuilt binary must still run the app
+const native = (): Napi => {
+  if (loaded === undefined) {
+    try {
+      loaded = createRequire(import.meta.url)("@napi-rs/keyring") as Napi;
+    } catch {
+      loaded = null;
+    }
+  }
+  if (!loaded) throw new Error("the OS keyring is not available on this system");
+  return loaded;
+};
 export type RawCred = { account: string; password: string };
 export type CredStore = {
   read: (service: string, target: string) => RawCred | null;
@@ -7,10 +22,11 @@ export type CredStore = {
 };
 // Entry(service, user) would address `user.service` targets Python cannot see, so explicit targets are used.
 const napiStore: CredStore = {
-  read: (service, target) => findCredentials(service, target)[0] ?? null,
-  write: (service, target, username, password) => Entry.withTarget(target, service, username).setPassword(password),
+  read: (service, target) => native().findCredentials(service, target)[0] ?? null,
+  write: (service, target, username, password) =>
+    native().Entry.withTarget(target, service, username).setPassword(password),
   remove: (service, target) => {
-    Entry.withTarget(target, service, "").deletePassword();
+    native().Entry.withTarget(target, service, "").deletePassword();
   },
 };
 const compound = (user: string, service: string): string => `${user}@${service}`;
@@ -59,12 +75,12 @@ export const createAccountKeyring = (store: AccountStore): Keyring => ({
 });
 const napiAccountStore: AccountStore = {
   read: (service, user) => {
-    const password = new Entry(service, user).getPassword();
+    const password = new (native().Entry)(service, user).getPassword();
     return password === null ? null : { account: user, password };
   },
-  write: (service, user, password) => new Entry(service, user).setPassword(password),
+  write: (service, user, password) => new (native().Entry)(service, user).setPassword(password),
   remove: (service, user) => {
-    new Entry(service, user).deletePassword();
+    new (native().Entry)(service, user).deletePassword();
   },
 };
 export const keyring: Keyring =

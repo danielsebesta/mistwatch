@@ -46,7 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-24.04-arm]
+        os: [macos-latest, macos-15-intel, ubuntu-24.04-arm]
     defaults:
       run:
         working-directory: ts
@@ -61,3 +61,21 @@ jobs:
       - run: npm run check
       - run: npm run build
       - run: node dist/cli.js --help
+  # Biome ships no FreeBSD binary, so lint runs on the other platforms only
+  freebsd:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: vmactions/freebsd-vm@v1
+        with:
+          release: "15.0"
+          usesh: true
+          prepare: pkg install -y node24 npm-node24
+          run: |
+            cd ts
+            npm ci
+            npm run typecheck
+            npm test
+            npm run build
+            node dist/cli.js --help
