@@ -2,7 +2,7 @@
 
 Glyphs of Tiny5 are sets of 128-unit squares, so letters are read as pixel grids and drawn as plain
 rectangles: the output SVGs need no font. Run:  uv run --no-project --with fonttools --with pillow python brand/build.py
-Then optimise:  npx svgo -f src/mistwatch/web --config brand/svgo.config.mjs
+Then optimise:  npx svgo -f web/public --config brand/svgo.config.mjs
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from fontTools.ttLib import TTFont
 from PIL import Image, ImageDraw
 
 HERE = Path(__file__).parent
-OUT = HERE.parent / "src" / "mistwatch" / "web"
+OUT = HERE.parent / "web" / "public"
 FONT = TTFont(HERE / "Tiny5-Regular.ttf")
 CMAP, GLYF = FONT.getBestCmap(), FONT["glyf"]
 

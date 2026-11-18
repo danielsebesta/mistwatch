@@ -13,16 +13,13 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-    defaults:
-      run:
-        working-directory: ts
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: ts/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npm run check
       - run: npm run build
@@ -30,9 +27,6 @@ jobs:
   alpine:
     runs-on: ubuntu-latest
     container: node:24-alpine
-    defaults:
-      run:
-        working-directory: ts
     steps:
       - uses: actions/checkout@v4
       - run: npm ci
@@ -47,16 +41,13 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, macos-15-intel, ubuntu-24.04-arm]
-    defaults:
-      run:
-        working-directory: ts
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: ts/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npm run check
       - run: npm run build
@@ -73,7 +64,6 @@ jobs:
           usesh: true
           prepare: pkg install -y node24 npm-node24
           run: |
-            cd ts
             npm ci
             npm run typecheck
             npm test

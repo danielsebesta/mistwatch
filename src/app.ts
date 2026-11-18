@@ -72,7 +72,7 @@ export const createApp = (st: State, opts: AppOpts = {}): Hono => {
     try {
       html = readFileSync(join(webDir, "index.html"), "utf8");
     } catch {
-      return c.text("Mistwatch web UI is not built (run `npm run build` in ts/).", 503);
+      return c.text("Mistwatch web UI is not built (run `npm run build`).", 503);
     }
     return c.body(html, 200, {
       "content-type": "text/html; charset=utf-8",

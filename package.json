@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Budget-aware proxy for Mistral Pro/Education: pools Vibe + API allowances and enforces pacing limits",
   "type": "module",
+  "license": "MIT",
   "keywords": [
     "mistral",
     "proxy",
@@ -12,8 +13,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/danielsebesta/mistwatch.git",
-    "directory": "ts"
+    "url": "git+https://github.com/danielsebesta/mistwatch.git"
   },
   "bin": {
     "mistwatch": "dist/cli.js"

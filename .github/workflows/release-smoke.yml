@@ -15,7 +15,6 @@ jobs:
         with:
           node-version: 24
       - name: Pack
-        working-directory: ts
         shell: bash
         run: |
           npm ci
@@ -45,8 +44,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - working-directory: ts
-        run: |
+      - run: |
           npm ci
           npm run build
           npm publish --dry-run
@@ -81,8 +79,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - working-directory: ts
-        run: |
+      - run: |
           npm ci
           npm run build
       - name: Check 390px overflow
@@ -92,8 +89,8 @@ jobs:
         run: |
           export MISTWATCH_HOME="$RUNNER_TEMP/mw" HOME="$RUNNER_TEMP/home"
           mkdir -p "$HOME"
-          node ts/dist/cli.js init
-          node ts/dist/cli.js serve --port 18787 &
+          node dist/cli.js init
+          node dist/cli.js serve --port 18787 &
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18787/ >/dev/null && break; sleep 1; done
           mkdir "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y >/dev/null && npm i playwright >/dev/null
           npx playwright install --with-deps "$BROWSER"

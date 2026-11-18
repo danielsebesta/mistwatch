@@ -1,6 +1,6 @@
 # Instructions for AI agents
 
-Mistwatch is a local proxy in front of Mistral AI. It tracks the Vibe Code and Studio (API) budgets and offers an `auto` model. When the user says **"set this up"**, follow this file. The TypeScript app lives in `ts/`; the same text is served by a running proxy at `/llms.txt`.
+Mistwatch is a local proxy in front of Mistral AI. It tracks the Vibe Code and Studio (API) budgets and offers an `auto` model. When the user says **"set this up"**, follow this file. The same text is served by a running proxy at `/llms.txt`.
 
 ## Prerequisites
 
@@ -15,7 +15,7 @@ Run one command. It never prompts, and you can run it again safely.
 npx mistwatch setup --yes --harness vibe
 ```
 
-Other tools: `--harness opencode`, `--harness pi`, or a list such as `--harness vibe,opencode`. Add `--port N` if the default port 8787 is taken. From a git checkout use `cd ts && npm install && npm run build && node dist/cli.js setup --yes --harness vibe`.
+Other tools: `--harness opencode`, `--harness pi`, or a list such as `--harness vibe,opencode`. Add `--port N` if the default port 8787 is taken. From a git checkout use `npm install && npm run build && node dist/cli.js setup --yes --harness vibe`.
 
 Setup does this, in order:
 

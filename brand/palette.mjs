@@ -40,8 +40,8 @@ const css = Object.entries(T).map(([k, v]) => `  --${k}:${v};`).join("\n") +
   "\n  --accent-soft:var(--accent-container);--ok-soft:var(--ok-container);--warn-soft:var(--warn-container);--bad-soft:var(--bad-container);";
 
 const root = join(here, "..");
-const cssFile = join(root, "ts", "web", "styles.css");
-const htmlFile = join(root, "ts", "web", "index.html");
+const cssFile = join(root, "web", "styles.css");
+const htmlFile = join(root, "web", "index.html");
 let cssSrc = readFileSync(cssFile, "utf8");
 const nl = cssSrc.includes("\r\n") ? "\r\n" : "\n";
 cssSrc = cssSrc.replace(/(\/\* TOKENS:BEGIN[^\r\n]*\*\/\r?\n)[\s\S]*?(\s*\/\* TOKENS:END \*\/)/, (_, a, b) => a + css.replace(/\n/g, nl) + nl + b);
