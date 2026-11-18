@@ -10,7 +10,15 @@ let home: string;
 let logs: string[];
 let errs: string[];
 const saved: Record<string, string | undefined> = {};
-const ENV_KEYS = ["MISTWATCH_HOME", "MISTWATCH_CONFIG", "HOME", "USERPROFILE"] as const;
+const ENV_KEYS = [
+  "MISTWATCH_HOME",
+  "MISTWATCH_CONFIG",
+  "HOME",
+  "USERPROFILE",
+  "XDG_CONFIG_HOME",
+  "APPDATA",
+  "VIBE_HOME",
+] as const;
 const setEnv = (k: string, v: string | undefined): void => {
   if (v === undefined) delete process.env[k];
   else process.env[k] = v;
@@ -23,6 +31,9 @@ beforeEach(() => {
   setEnv("MISTWATCH_CONFIG", undefined);
   setEnv("HOME", home);
   setEnv("USERPROFILE", home);
+  setEnv("XDG_CONFIG_HOME", undefined);
+  setEnv("APPDATA", undefined);
+  setEnv("VIBE_HOME", undefined);
   logs = [];
   errs = [];
   vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => logs.push(a.map(String).join(" ")));
