@@ -35,7 +35,7 @@ jobs:
           npx mistwatch status
           npx mistwatch serve --port 18787 &
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18787/ >/dev/null && break; sleep 1; done
-          curl -fsS http://127.0.0.1:18787/ | grep -qi "<html"
+          curl -fsS -o page.html http://127.0.0.1:18787/ && grep -qi "<html" page.html
           kill %1 || true
   publish-dry-run:
     runs-on: ubuntu-latest
