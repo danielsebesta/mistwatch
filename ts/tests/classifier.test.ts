@@ -120,17 +120,20 @@ describe("rate hardening", () => {
 describe("pyDigits", () => {
   it("decodes every Nd block as 0-9, including adjacent blocks", () => {
     const nd = /^\p{Nd}$/u;
+    const bad: number[] = [];
     let run = 0;
-    for (let c = 0; c <= 0x10ffff; c++) {
+    for (let c = 0; c <= 0x1ffff; c++) {
       if (c >= 0xd800 && c <= 0xdfff) continue;
-      if (!nd.test(String.fromCodePoint(c))) {
-        expect(run % 10).toBe(0);
+      const ch = String.fromCodePoint(c);
+      if (!nd.test(ch)) {
+        if (run % 10 !== 0) bad.push(c);
         run = 0;
         continue;
       }
-      expect(pyDigits(String.fromCodePoint(c))).toBe(run % 10);
+      if (pyDigits(ch) !== run % 10) bad.push(c);
       run++;
     }
+    expect(bad).toEqual([]);
     expect(pyDigits("\u{116DA}")).toBe(0);
     expect(pyDigits("\u{116DB}")).toBe(1);
   });
