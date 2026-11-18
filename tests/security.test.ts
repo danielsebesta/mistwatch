@@ -86,6 +86,12 @@ describe("configured extra hosts", () => {
     expect(originAllowed("https://mw.example.com", { port: 8787 })).toBe(false);
     expect(originAllowed("http://127.0.0.1:9999", extra)).toBe(false);
   });
+  it("lets a listed local name through on a forwarded port", () => {
+    const fwd = { port: 8787, extraHosts: ["localhost"] };
+    expect(hostAllowed("localhost:9000", fwd)).toBe(true);
+    expect(originAllowed("http://localhost:9000", fwd)).toBe(true);
+    expect(hostAllowed("localhost:9000", { port: 8787 })).toBe(false);
+  });
 });
 describe("constant-time equality and tokens", () => {
   it("safeEqual compares without length leaks", () => {

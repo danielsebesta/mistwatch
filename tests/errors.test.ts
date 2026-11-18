@@ -66,7 +66,7 @@ describe("bodies and headers", () => {
       error: {
         type: "mistwatch_upstream",
         message:
-          "Mistral did not accept the request on any account. Check the account keys in the web UI and try again.",
+          "Could not get a usable answer from Mistral on any account (network error or rejected key). Check the connection and the account keys in the web UI, then try again.",
       },
     });
     const b = proxyErrorBody(errors.budget(42, [{ account: "a" }]));

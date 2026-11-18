@@ -59,7 +59,7 @@ export const errors = {
     appError(
       "mistwatch_upstream",
       502,
-      "Mistral did not accept the request on any account. Check the account keys in the web UI and try again.",
+      "Could not get a usable answer from Mistral on any account (network error or rejected key). Check the connection and the account keys in the web UI, then try again.",
     ),
   upstreamTimeout: (): AppError =>
     appError("mistwatch_upstream_timeout", 504, "Mistral did not answer in time. Try again.", { retryAfter: 1 }),
@@ -89,6 +89,8 @@ export const errors = {
       `This address is not allowed. Open Mistwatch at http://127.0.0.1:${port}/ or add this host to allowed_hosts under [server] in config.toml.`,
     ),
   forbidden: (message: string): AppError => appError("mistwatch_forbidden", 403, message),
+  shuttingDown: (): AppError =>
+    appError("mistwatch_shutting_down", 503, "Mistwatch is shutting down. Retry in a moment.", { retryAfter: 1 }),
   internal: (): AppError =>
     appError("mistwatch_internal", 500, "Something went wrong inside Mistwatch. Check the server log."),
 };

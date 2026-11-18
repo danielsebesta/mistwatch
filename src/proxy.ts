@@ -633,7 +633,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
   const drain = async (graceMs = 5000): Promise<void> => {
     const until = Date.now() + graceMs;
     while ((queue.active > 0 || queue.pending > 0) && Date.now() < until) await new Promise((r) => setTimeout(r, 25));
-    drainCtrl.abort(asException(errors.internal()));
+    drainCtrl.abort(asException(errors.shuttingDown()));
     const end = Date.now() + 1000;
     while (queue.active > 0 && Date.now() < end) await new Promise((r) => setTimeout(r, 25));
   };

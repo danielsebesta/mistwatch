@@ -76,6 +76,12 @@ allowed_hosts = [" MW.Example.com. ", ""]
 allowed_hosts = ["a.trycloudflare.com"]
 `).allowed_hosts,
     ).toEqual(["a.trycloudflare.com"]);
+    for (const bad of ["mw.example.com:8443", "https://mw.example.com", "[fe80::1]", "a/b"])
+      expect(() =>
+        ok(`[server]
+allowed_hosts = ["${bad}"]
+`),
+      ).toThrow(/bare host names/);
     expect(() =>
       ok(`[server]
 allowed_hosts = "x"
