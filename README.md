@@ -57,6 +57,8 @@ docker run -d --name mistwatch -p 127.0.0.1:8787:8787 -v mistwatch:/data ghcr.io
 
 Publish the port on `127.0.0.1` as shown, so the UI is not exposed to your network. The container keeps its config and database in the `mistwatch` volume. Open <http://127.0.0.1:8787/>, create your login and add your keys there.
 
+With Docker Compose (`docker-compose.yml` in this repo), set `MISTWATCH_BIND` to the address to publish on (for example your Tailscale IP; default `127.0.0.1`) and `MISTWATCH_ALLOWED_HOSTS` to the host names you open it under, then run `docker compose up -d --build`.
+
 ## Web UI
 
 - **Overview**: Vibe and Studio budgets, limits per period, a spending chart and recent requests.

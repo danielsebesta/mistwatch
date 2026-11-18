@@ -1,0 +1,15 @@
+services:
+  mistwatch:
+    build: .
+    restart: unless-stopped
+    environment:
+      # comma separated host names the UI and API answer to, e.g. mw.tailnet.ts.net,100.64.0.1
+      MISTWATCH_ALLOWED_HOSTS: ${MISTWATCH_ALLOWED_HOSTS:-}
+    ports:
+      # MISTWATCH_BIND is the address to publish on, e.g. your Tailscale IP; loopback by default
+      - "${MISTWATCH_BIND:-127.0.0.1}:8787:8787"
+    volumes:
+      - mistwatch-data:/data
+
+volumes:
+  mistwatch-data:
