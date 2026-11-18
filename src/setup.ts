@@ -20,7 +20,7 @@ import type { Interface } from "node:readline/promises";
 import { WriteStream } from "node:tty";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import { parse } from "smol-toml";
-import { ENV, merge, opencode, opencodeConfigPath, pi, TOOLS, vibe } from "./agents.ts";
+import { ENV, merge, opencode, opencodeConfigPath, pi, TOOLS, VIBE_AUTO, vibe, vibeAutoBlock } from "./agents.ts";
 import { createBudgetEngine } from "./budget.ts";
 import { CONFIG_TEMPLATE, clientBaseUrl, configPath } from "./config.ts";
 import { type App, freeVibeName, linkVibeLogin, openApp } from "./open.ts";
@@ -387,32 +387,60 @@ export const planToml = (raw: string | null, base: string): string | null => {
     throw new SetupError("not valid TOML, left untouched; add the provider block by hand");
   }
   const eol = raw.includes("\r\n") ? "\r\n" : "\n";
-  const hasAuto = (text: string): boolean => {
+  const autoNames = VIBE_AUTO.map(([n]) => n);
+  const missingAuto = (text: string): string[] => {
     const m = parse(text).models;
-    return Array.isArray(m) && m.some((x) => isRec(x) && (x.name === "auto" || x.alias === "auto"));
+    const have = new Set(Array.isArray(m) ? m.flatMap((x) => (isRec(x) ? [x.name, x.alias] : [])) : []);
+    return autoNames.filter((n) => !have.has(n));
   };
-  const withAuto = (text: string): string =>
-    hasAuto(text) ? text : `${text.trimEnd()}${eol}${eol}${AUTO_MODEL.replace(/\n/g, eol)}`;
+  const withAuto = (text: string): string => {
+    const miss = missingAuto(text);
+    const add = VIBE_AUTO.filter(([n]) => miss.includes(n));
+    return add.length === 0
+      ? text
+      : `${text.trimEnd()}${eol}${eol}${add.map(vibeAutoBlock).join("\n").replace(/\n/g, eol)}`;
+  };
   // Vibe hides every model that is not in a non-empty allowed_models list
   const allowAuto = (text: string): string => {
     const list = parse(text).allowed_models;
-    if (!Array.isArray(list) || list.length === 0 || list.includes("auto")) return text;
+    if (!Array.isArray(list) || list.length === 0) return text;
+    const add = autoNames.filter((n) => !list.includes(n));
+    if (add.length === 0) return text;
     const next = text.replace(
       /^(allowed_models\s*=\s*\[)([ \t]*\r?\n[ \t]*|[ \t]*)/m,
-      (_m, head: string, gap: string) => (gap.includes("\n") ? `${head}${gap}"auto",${gap}` : `${head}"auto", `),
+      (_m, head: string, gap: string) =>
+        gap.includes("\n")
+          ? `${head}${gap}${add.map((n) => `"${n}",`).join(gap)}${gap}`
+          : `${head}${add.map((n) => `"${n}", `).join("")}`,
     );
     const again = parse(next).allowed_models;
-    return Array.isArray(again) && again.includes("auto") ? next : text;
+    return Array.isArray(again) && add.every((n) => again.includes(n)) ? next : text;
   };
-  // models that talk to Mistral directly would bypass the proxy and its budgets
+  // Models that talk to Mistral directly would bypass the proxy and its budgets, so each [[models]]
+  // block on provider "mistral" moves to "mistwatch" and gets a "(Mistwatch)" mark in its display name.
   const repoint = (text: string): string => {
-    let inModels = false;
-    const lines = text.split(/\r?\n/).map((l) => {
-      const head = /^\s*(\[\[?)\s*([A-Za-z0-9_.-]+)\s*\]\]?/.exec(l);
-      if (head) inModels = head[1] === "[[" && head[2] === "models";
-      return inModels ? l.replace(/^(\s*provider\s*=\s*)(["'])mistral\2/, '$1"mistwatch"') : l;
-    });
-    const next = lines.join(eol);
+    const out: string[] = [];
+    let seg: string[] = [];
+    const flush = (): void => {
+      const mine = seg.some((l) => /^\s*provider\s*=\s*(["'])(mistral|mistwatch)\1/.test(l));
+      const isModel = /^\s*\[\[\s*models\s*\]\]/.test(seg[0] ?? "");
+      out.push(
+        ...(isModel && mine
+          ? seg.map((l) =>
+              l
+                .replace(/^(\s*provider\s*=\s*)(["'])mistral\2/, '$1"mistwatch"')
+                .replace(/^(\s*display_name\s*=\s*")([^"\\]*?)(\s*\(Mistwatch\))?(")/, "$1$2 (Mistwatch)$4"),
+            )
+          : seg),
+      );
+      seg = [];
+    };
+    for (const l of text.split(/\r?\n/)) {
+      if (/^\s*\[/.test(l)) flush();
+      seg.push(l);
+    }
+    flush();
+    const next = out.join(eol);
     return parse(next) ? next : text;
   };
   const finish = (text: string): string => repoint(allowAuto(withAuto(text)));
@@ -427,14 +455,6 @@ export const planToml = (raw: string | null, base: string): string | null => {
     throw new SetupError("could not edit the existing mistwatch provider; edit it by hand");
   return next;
 };
-const AUTO_MODEL = `[[models]]
-name = "auto"
-provider = "mistwatch"
-alias = "auto"
-display_name = "Auto (Mistwatch)"
-max_context_length = 256000
-supports_images = true
-`;
 const SERVER_HEAD = /^\s*\[\s*server\s*\]\s*(#.*)?$/;
 const PORT_LINE = /^(\s*port\s*=\s*)\d+(\s*(?:#.*)?)$/;
 const serverPort = (text: string): unknown => {

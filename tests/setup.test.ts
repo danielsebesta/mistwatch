@@ -470,7 +470,7 @@ describe("harness planners", () => {
     const list = Array.isArray(doc.providers) ? doc.providers : [];
     expect(list).toHaveLength(2);
     expect(list[1]).toMatchObject({ name: "mistwatch", api_base: `${BASE}/v1` });
-    expect(Array.isArray(doc.models) ? doc.models : []).toHaveLength(2);
+    expect(Array.isArray(doc.models) ? doc.models : []).toHaveLength(4);
   });
   it("replaces every stale mistwatch block and keeps the custom fields of the first", () => {
     const old =
@@ -487,7 +487,7 @@ describe("harness planners", () => {
         extra: "keep",
       },
     ]);
-    expect(Array.isArray(doc.models) ? doc.models : []).toHaveLength(2);
+    expect(Array.isArray(doc.models) ? doc.models : []).toHaveLength(4);
   });
   it("does not report ok while a second mistwatch block is stale", () => {
     const stale = `${vibe(BASE)}\n[[providers]]\nname = "mistwatch"\napi_base = "http://127.0.0.1:1/v1"\n`;
@@ -716,11 +716,16 @@ describe("planToml allowed_models", () => {
   it("adds auto to a multi-line allowlist, once", () => {
     const raw = 'allowed_models = [\n    "a",\n    "b",\n]\n';
     const out = planToml(raw, "http://h:1") ?? "";
-    expect(list(out)).toEqual(["auto", "a", "b"]);
+    expect(list(out)).toEqual(["auto", "auto-fast", "auto-max", "a", "b"]);
     expect(planToml(out, "http://h:1")).toBeNull();
   });
   it("adds auto to a one-line allowlist and leaves a missing one alone", () => {
-    expect(list(planToml('allowed_models = ["a"]\n', "http://h:1") ?? "")).toEqual(["auto", "a"]);
+    expect(list(planToml('allowed_models = ["a"]\n', "http://h:1") ?? "")).toEqual([
+      "auto",
+      "auto-fast",
+      "auto-max",
+      "a",
+    ]);
     expect(list(planToml("x = 1\n", "http://h:1") ?? "")).toBeUndefined();
   });
 });
@@ -733,5 +738,17 @@ describe("planToml repoints models", () => {
     expect(models.find((m) => m.name === "a")?.provider).toBe("mistwatch");
     expect(models.find((m) => m.name === "b")?.provider).toBe("ollama");
     expect((out.providers as Record<string, unknown>[]).find((p) => p.name === "mistral")?.provider).toBe("mistral");
+  });
+});
+describe("planToml display names", () => {
+  it("marks repointed models with (Mistwatch) once and adds all three auto models", () => {
+    const raw =
+      '[[models]]\nname = "a"\nprovider = "mistral"\ndisplay_name = "Alpha"\n\n[[models]]\nname = "b"\nprovider = "ollama"\ndisplay_name = "Beta"\n';
+    const out = planToml(raw, "http://h:1") ?? "";
+    const models = parse(out).models as Record<string, unknown>[];
+    expect(models.find((m) => m.name === "a")?.display_name).toBe("Alpha (Mistwatch)");
+    expect(models.find((m) => m.name === "b")?.display_name).toBe("Beta");
+    expect(models.map((m) => m.name)).toEqual(["a", "b", "auto", "auto-fast", "auto-max"]);
+    expect(planToml(out, "http://h:1")).toBeNull();
   });
 });

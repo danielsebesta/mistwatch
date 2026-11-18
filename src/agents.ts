@@ -52,21 +52,27 @@ export const opencode = (base: string, env = ENV): Record<string, unknown> => ({
     },
   },
 });
+export const VIBE_AUTO: readonly (readonly [name: string, label: string, ctx: number])[] = [
+  ["auto", "Auto (Mistwatch)", 262_144],
+  ["auto-fast", "Auto Fast (Mistwatch)", 262_144],
+  ["auto-max", "Auto Max (Mistwatch)", 1_048_576],
+];
+export const vibeAutoBlock = ([name, label, ctx]: (typeof VIBE_AUTO)[number]): string => `[[models]]
+name = "${name}"
+provider = "mistwatch"
+alias = "${name}"
+display_name = "${label}"
+max_context_length = ${ctx}
+supports_images = true
+`;
 export const vibe = (base: string, env = ENV): string => `[[providers]]
 name = "mistwatch"
 api_base = "${base}/v1"
 api_key_env_var = "${env}"
 backend = "mistral"
 
-# Pick this in Vibe to let Mistwatch choose the model.
-[[models]]
-name = "auto"
-provider = "mistwatch"
-alias = "auto"
-display_name = "Auto (Mistwatch)"
-max_context_length = 256000
-supports_images = true
-
+# Pick these in Vibe to let Mistwatch choose the model.
+${VIBE_AUTO.map(vibeAutoBlock).join("\n")}
 # Or set provider = "mistwatch" on the models you already use.
 `;
 export const merge = (dst: Record<string, unknown>, src: Record<string, unknown>): Record<string, unknown> => {
