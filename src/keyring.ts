@@ -20,7 +20,7 @@ export type CredStore = {
   write: (service: string, target: string, username: string, password: string) => void;
   remove: (service: string, target: string) => void;
 };
-// Entry(service, user) would address `user.service` targets Python cannot see, so explicit targets are used.
+// Entry(service, user) would address `user.service` targets the Vibe CLI cannot see, so explicit targets are used.
 const napiStore: CredStore = {
   read: (service, target) => native().findCredentials(service, target)[0] ?? null,
   write: (service, target, username, password) =>
@@ -35,7 +35,7 @@ export type Keyring = {
   set: (service: string, user: string, password: string) => void;
   drop: (service: string, user: string) => void;
 };
-// Reproduces Python keyring's WinVaultKeyring (service, username) semantics on
+// Reproduces the (service, username) layout the Vibe CLI keyring uses on
 // Windows Credential Manager targets: newest write lives at the bare service
 // target, earlier colliding usernames move to `username@service`.
 export const createKeyring = (store: CredStore): Keyring => ({

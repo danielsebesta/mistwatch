@@ -100,7 +100,7 @@ describe("cli init and quick commands", () => {
     expect(out).toContain("mistral-small-2603");
     expect(out).toContain("level=0/6");
   });
-  it("reports missing config like python", async () => {
+  it("reports a missing config", async () => {
     await expect(main(["status"])).rejects.toThrow("not found - run `mistwatch init` first");
   });
 });

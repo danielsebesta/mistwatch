@@ -51,7 +51,7 @@ const CONNECT_CODES = new Set([
   "UND_ERR_CONNECT_TIMEOUT",
 ]);
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-const pyInt = (v: unknown): number => {
+const asInt = (v: unknown): number => {
   if (v === undefined || v === null) return 0;
   if (typeof v === "number") return Math.trunc(v);
   if (typeof v === "boolean") return v ? 1 : 0;
@@ -67,8 +67,8 @@ const extractUsage = (obj: Record<string, unknown>): [number, number, number] | 
   const u = obj.usage;
   if (!isRec(u) || (!("prompt_tokens" in u) && !("completion_tokens" in u))) return null;
   const det = isRec(u.prompt_tokens_details) ? u.prompt_tokens_details : {};
-  const cached = pyInt(pickTruthy([u.num_cached_tokens, det.cached_tokens]));
-  return [pyInt(pickTruthy([u.prompt_tokens])), pyInt(pickTruthy([u.completion_tokens])), cached];
+  const cached = asInt(pickTruthy([u.num_cached_tokens, det.cached_tokens]));
+  return [asInt(pickTruthy([u.prompt_tokens])), asInt(pickTruthy([u.completion_tokens])), cached];
 };
 const retryable = (e: unknown): boolean =>
   e instanceof TypeError && isRec(e.cause) && typeof e.cause.code === "string" && CONNECT_CODES.has(e.cause.code);
@@ -264,7 +264,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
         const j: unknown = JSON.parse(new TextDecoder().decode(body));
         if (isRec(j)) parsed = j;
       } catch {
-        // python tolerates a non-json body here and forwards it unchanged
+        // a non-JSON body is tolerated here and forwards it unchanged
       }
     }
     let model = typeof parsed.model === "string" ? parsed.model : null;
@@ -367,7 +367,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
     }
     const [price] = st.prices.lookup(model);
     const estIn = estimateTokens(sendBody.length);
-    const wantedOut = pyInt(pickTruthy([parsed.max_tokens, 1024]));
+    const wantedOut = asInt(pickTruthy([parsed.max_tokens, 1024]));
     const estOut = Number.isFinite(wantedOut) && wantedOut > 0 ? wantedOut : 1024;
     const est = ((estIn * price.input + estOut * price.output) / 1e6) * cfg.usd_to_eur;
     const fwdPairs = filterRequestHeaders(req.headers);

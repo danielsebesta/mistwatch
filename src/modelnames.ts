@@ -43,7 +43,7 @@ const word = (tok: string): string => {
   return tok.charAt(0).toUpperCase() + tok.slice(1).toLowerCase();
 };
 export const autoname = (modelId: string): string => {
-  const toks = pyStrip(modelId)
+  const toks = trimUnicode(modelId)
     .toLowerCase()
     .split(/[-_ ]+/)
     .filter((t) => t);
@@ -79,9 +79,9 @@ export const autoname = (modelId: string): string => {
   }
   return out.join(" ") + suffix || modelId;
 };
-const PY_SPACE = "\t\n\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000";
-const PY_STRIP = new RegExp(`^[${PY_SPACE}]+|[${PY_SPACE}]+$`, "g");
-const pyStrip = (s: string): string => s.replace(PY_STRIP, "");
+const UNICODE_SPACE = "\t\n\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000";
+const UNICODE_TRIM = new RegExp(`^[${UNICODE_SPACE}]+|[${UNICODE_SPACE}]+$`, "g");
+const trimUnicode = (s: string): string => s.replace(UNICODE_TRIM, "");
 const cmpCodePoints = (a: string, b: string): number => {
   const x = Array.from(a, (c) => c.codePointAt(0) ?? 0);
   const y = Array.from(b, (c) => c.codePointAt(0) ?? 0);
@@ -135,7 +135,7 @@ export const createModelNames = (db: DB) => {
     return c?.name || modelId;
   };
   const resolve = (modelId: string | null | undefined): [string, NameSource] => {
-    const m = pyStrip(modelId ?? "");
+    const m = trimUnicode(modelId ?? "");
     if (!m) return ["(unknown)", "auto"];
     const key = groupKey(m);
     for (const k of [m, key]) {
@@ -182,7 +182,7 @@ export const createModelNames = (db: DB) => {
     reload,
     groupKey,
     setOverride: (modelId: string, display: string): void => {
-      const d = pyStrip(display);
+      const d = trimUnicode(display);
       if (!d || Array.from(d).length > 80 || [...d].some((c) => c.charCodeAt(0) < 32))
         throw new Error("Name must be 1-80 printable characters.");
       db.stmt(

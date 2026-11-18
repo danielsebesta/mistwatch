@@ -75,7 +75,7 @@ const isTable = (v: unknown): v is Table => {
   return p === Object.prototype || p === null;
 };
 const describe = (v: unknown): string => (Array.isArray(v) ? "array" : v === null ? "null" : typeof v);
-const pyBool = (v: unknown): boolean => {
+const asBool = (v: unknown): boolean => {
   if (typeof v === "boolean") return v;
   if (typeof v === "number" || typeof v === "bigint") return v !== 0;
   if (typeof v === "string") return v.length > 0;
@@ -83,7 +83,7 @@ const pyBool = (v: unknown): boolean => {
   if (isTable(v)) return Object.keys(v).length > 0;
   return false;
 };
-const pyInt = (v: unknown): number => {
+const asInt = (v: unknown): number => {
   if (typeof v === "boolean") return v ? 1 : 0;
   if (typeof v === "number") return Math.trunc(v);
   if (typeof v === "bigint") return Number(v);
@@ -92,10 +92,10 @@ const pyInt = (v: unknown): number => {
 };
 const finiteInt = (v: unknown): number => {
   if (typeof v === "number" && !Number.isFinite(v)) throw new TypeError(`cannot convert ${v} to int`);
-  return pyInt(v);
+  return asInt(v);
 };
 const FLOAT_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$|^[+-]?infinity$/i;
-const pyFloat = (v: unknown): number => {
+const asFloat = (v: unknown): number => {
   if (typeof v === "boolean") return v ? 1 : 0;
   if (typeof v === "number") return v;
   if (typeof v === "bigint") return Number(v);
@@ -106,7 +106,7 @@ const pyFloat = (v: unknown): number => {
   }
   throw new TypeError(`float() argument must be a string or a number, not ${describe(v)}`);
 };
-const pyStr = (v: unknown): string => {
+const asStr = (v: unknown): string => {
   if (typeof v === "string") return v;
   if (typeof v === "number" || typeof v === "bigint") return String(v);
   if (typeof v === "boolean") return v ? "True" : "False";
@@ -115,7 +115,7 @@ const pyStr = (v: unknown): string => {
 const hostList = (v: unknown): string[] => {
   if (!Array.isArray(v)) throw new TypeError(`allowed_hosts must be a list of host names, not ${describe(v)}`);
   return v
-    .map((h) => pyStr(h).trim().toLowerCase().replace(/\.$/, ""))
+    .map((h) => asStr(h).trim().toLowerCase().replace(/\.$/, ""))
     .filter((h) => h !== "")
     .map((h) => {
       const bare = h.replace(/^\[|\]$/g, "");
@@ -140,7 +140,7 @@ const reqArray = (v: unknown, what: string): unknown[] => {
   return v;
 };
 const parseKeys = (v: unknown): Record<string, string> => {
-  return Object.fromEntries(Object.entries(optTable(v, "account.keys")).map(([k, x]) => [k, pyStr(x)]));
+  return Object.fromEntries(Object.entries(optTable(v, "account.keys")).map(([k, x]) => [k, asStr(x)]));
 };
 const parseManual = (v: unknown): Record<string, ManualPool> => {
   return Object.fromEntries(
@@ -163,9 +163,9 @@ const parseOverrides = (v: unknown): Record<string, PriceOverride> => {
       return [
         model,
         {
-          input: pyFloat(t.input),
-          output: pyFloat(t.output),
-          cached: t.cached === undefined ? undefined : pyFloat(t.cached),
+          input: asFloat(t.input),
+          output: asFloat(t.output),
+          cached: t.cached === undefined ? undefined : asFloat(t.cached),
         },
       ];
     }),
@@ -185,45 +185,45 @@ export const loadConfig = (path?: string): Config => {
   const cfg = defaultConfig();
   const server = optTable(raw.server, "server");
   // MISTWATCH_HOST exists for the Docker image, where the server must listen on 0.0.0.0
-  cfg.host = process.env.MISTWATCH_HOST || pick(server, "host", cfg.host, pyStr);
-  cfg.port = pick(server, "port", cfg.port, pyInt);
+  cfg.host = process.env.MISTWATCH_HOST || pick(server, "host", cfg.host, asStr);
+  cfg.port = pick(server, "port", cfg.port, asInt);
   cfg.allowed_hosts = pick(server, "allowed_hosts", cfg.allowed_hosts, hostList);
-  cfg.upstream = pick(optTable(raw.upstream, "upstream"), "base_url", cfg.upstream, pyStr).replace(/\/+$/, "");
+  cfg.upstream = pick(optTable(raw.upstream, "upstream"), "base_url", cfg.upstream, asStr).replace(/\/+$/, "");
   const pricing = optTable(raw.pricing, "pricing");
-  cfg.usd_to_eur = pick(pricing, "usd_to_eur", cfg.usd_to_eur, pyFloat);
+  cfg.usd_to_eur = pick(pricing, "usd_to_eur", cfg.usd_to_eur, asFloat);
   cfg.price_overrides = parseOverrides(pricing.models);
   const storage = optTable(raw.storage, "storage");
-  if ("db_path" in storage) cfg.db_path = pyStr(storage.db_path);
+  if ("db_path" in storage) cfg.db_path = asStr(storage.db_path);
   const lim = optTable(raw.limits, "limits");
   cfg.limits = {
-    reserve_pct: pick(lim, "reserve_pct", cfg.limits.reserve_pct, pyFloat),
-    burst_5h: pick(lim, "burst_5h", cfg.limits.burst_5h, pyFloat),
-    burst_day: pick(lim, "burst_day", cfg.limits.burst_day, pyFloat),
-    burst_week: pick(lim, "burst_week", cfg.limits.burst_week, pyFloat),
+    reserve_pct: pick(lim, "reserve_pct", cfg.limits.reserve_pct, asFloat),
+    burst_5h: pick(lim, "burst_5h", cfg.limits.burst_5h, asFloat),
+    burst_day: pick(lim, "burst_day", cfg.limits.burst_day, asFloat),
+    burst_week: pick(lim, "burst_week", cfg.limits.burst_week, asFloat),
     sync_interval_s: pick(lim, "sync_interval_s", cfg.limits.sync_interval_s, finiteInt),
-    strategy: pick(lim, "strategy", cfg.limits.strategy, pyStr),
-    fallback_to_other_pool: pick(lim, "fallback_to_other_pool", cfg.limits.fallback_to_other_pool, pyBool),
-    vibe_user_agent_regex: pick(lim, "vibe_user_agent_regex", cfg.limits.vibe_user_agent_regex, pyStr),
+    strategy: pick(lim, "strategy", cfg.limits.strategy, asStr),
+    fallback_to_other_pool: pick(lim, "fallback_to_other_pool", cfg.limits.fallback_to_other_pool, asBool),
+    vibe_user_agent_regex: pick(lim, "vibe_user_agent_regex", cfg.limits.vibe_user_agent_regex, asStr),
   };
   const rou = optTable(raw.router, "router");
   cfg.router = {
-    llm_classifier: pick(rou, "llm_classifier", cfg.router.llm_classifier, pyBool),
-    classifier_model: pick(rou, "classifier_model", cfg.router.classifier_model, pyStr),
-    classifier_timeout_s: pick(rou, "classifier_timeout_s", cfg.router.classifier_timeout_s, pyFloat),
+    llm_classifier: pick(rou, "llm_classifier", cfg.router.llm_classifier, asBool),
+    classifier_model: pick(rou, "classifier_model", cfg.router.classifier_model, asStr),
+    classifier_timeout_s: pick(rou, "classifier_timeout_s", cfg.router.classifier_timeout_s, asFloat),
   };
   for (const a of reqArray(raw.accounts, "accounts")) {
     const t = reqTable(a, "account entry");
     cfg.accounts.push({
-      name: pyStr(t.name),
+      name: asStr(t.name),
       keys: parseKeys(t.keys),
-      priority: t.priority === undefined ? 100 : pyInt(t.priority),
-      enabled: t.enabled === undefined ? true : pyBool(t.enabled),
+      priority: t.priority === undefined ? 100 : asInt(t.priority),
+      enabled: t.enabled === undefined ? true : asBool(t.enabled),
       manual: parseManual(t.manual),
     });
   }
   for (const c of reqArray(raw.clients, "clients")) {
     const t = reqTable(c, "client entry");
-    cfg.clients.push({ name: pyStr(t.name), token: pyStr(t.token) } satisfies Client);
+    cfg.clients.push({ name: asStr(t.name), token: asStr(t.token) } satisfies Client);
   }
   return cfg;
 };

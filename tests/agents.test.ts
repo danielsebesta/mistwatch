@@ -109,7 +109,7 @@ describe("agents.render", () => {
 });
 
 describe("agents.dumpJson", () => {
-  it("matches python json.dumps: indent 2 and ascii escaping", () => {
+  it("writes JSON with indent 2 and ASCII escaping", () => {
     expect(dumpJson({ a: 1, b: [true, null] })).toBe(JSON.stringify({ a: 1, b: [true, null] }, null, 2));
     expect(dumpJson({ č: "ď" })).toBe('{\n  "\\u010d": "\\u010f"\n}');
   });

@@ -30,8 +30,8 @@ export const poolRetryAt = (st: PoolStatus): number | null => {
   return st.windows[b]?.retry_at ?? null;
 };
 const f64 = new DataView(new ArrayBuffer(8));
-// CPython round(): half-even on the exact binary value, then the nearest double of the decimal result
-export const pyRound = (x: number, digits: number): number => {
+// Round half to even on the exact binary value, then the nearest double of the decimal result
+export const roundTo = (x: number, digits: number): number => {
   if (!Number.isFinite(x) || x === 0) return x;
   f64.setFloat64(0, Math.abs(x));
   const bits = f64.getBigUint64(0);
@@ -55,22 +55,22 @@ export const poolStatusDict = (st: PoolStatus): PoolStatusDict => ({
   pool: st.pool,
   group: st.group,
   members: st.members,
-  initial_eur: pyRound(st.initial, 4),
-  used_eur: pyRound(st.used, 4),
-  remaining_eur: pyRound(st.remaining, 4),
-  reserve_eur: pyRound(st.reserve, 4),
+  initial_eur: roundTo(st.initial, 4),
+  used_eur: roundTo(st.used, 4),
+  remaining_eur: roundTo(st.remaining, 4),
+  reserve_eur: roundTo(st.reserve, 4),
   reset_at: st.reset_at,
-  days_left: pyRound(st.days_left, 3),
-  snapshot_age_s: pyRound(st.snapshot_age_s, 1),
-  daily_fair_share_eur: pyRound(Math.max(st.remaining - st.reserve, 0) / st.days_left, 4),
-  room_eur: pyRound(poolRoom(st), 4),
+  days_left: roundTo(st.days_left, 3),
+  snapshot_age_s: roundTo(st.snapshot_age_s, 1),
+  daily_fair_share_eur: roundTo(Math.max(st.remaining - st.reserve, 0) / st.days_left, 4),
+  room_eur: roundTo(poolRoom(st), 4),
   blocked_by: poolBlockedBy(st),
   retry_at: poolRetryAt(st),
-  month: { cap: pyRound(st.initial - st.reserve, 4), spent: pyRound(st.used, 4), room: pyRound(st.month_room, 4) },
+  month: { cap: roundTo(st.initial - st.reserve, 4), spent: roundTo(st.used, 4), room: roundTo(st.month_room, 4) },
   windows: Object.fromEntries(
     Object.entries(st.windows).map(([n, w]) => [
       n,
-      { cap: pyRound(w.cap, 4), spent: pyRound(w.spent, 4), room: pyRound(w.room, 4), retry_at: w.retry_at },
+      { cap: roundTo(w.cap, 4), spent: roundTo(w.spent, 4), room: roundTo(w.room, 4), retry_at: w.retry_at },
     ]),
   ),
 });

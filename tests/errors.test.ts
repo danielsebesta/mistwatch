@@ -54,7 +54,7 @@ describe("AppError", () => {
   });
 });
 describe("bodies and headers", () => {
-  it("proxyErrorBody matches the Python {error:{type,message,...}} shape", () => {
+  it("proxyErrorBody has the {error:{type,message,...}} shape", () => {
     expect(proxyErrorBody(errors.auth())).toEqual({
       error: {
         type: "mistwatch_auth",

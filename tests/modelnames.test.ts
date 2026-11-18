@@ -116,8 +116,8 @@ describe("charts and listing", () => {
     expect(calls).toBe(1);
   });
 });
-describe("python string semantics", () => {
-  it("strips the python whitespace set but keeps BOM", () => {
+describe("string semantics", () => {
+  it("strips the Unicode whitespace set but keeps BOM", () => {
     const n = createModelNames(openDb(":memory:"));
     expect(n.resolve("\x1cmistral-large-latest\x85")[0]).toBe("Mistral Large 4");
     n.setOverride("m", "\x1fName\x1c");

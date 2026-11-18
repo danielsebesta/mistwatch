@@ -6,7 +6,7 @@ import {
   poolBlockedBy,
   poolRetryAt,
   poolRoom,
-  pyRound,
+  roundTo,
 } from "../src/budget.ts";
 import { defaultLimits } from "../src/config.ts";
 import { type DB, openDb } from "../src/db.ts";
@@ -90,17 +90,17 @@ describe("pricing", () => {
     const [, exact3] = pb.costEur("something-new", 10, 10);
     expect(exact3).toBe(false);
   });
-  it("pyRound matches CPython round() on the exact binary value", () => {
-    expect(pyRound(5e-5, 4)).toBe(0.0001);
-    expect(pyRound(0.00025, 4)).toBe(0.0003);
-    expect(pyRound(0.015, 2)).toBe(0.01);
-    expect(pyRound(0.5, 0)).toBe(0);
-    expect(pyRound(2.5, 0)).toBe(2);
-    expect(pyRound(1.5, 0)).toBe(2);
-    expect(pyRound(-2.675, 2)).toBe(-2.67);
-    expect(pyRound(1234.56789, 4)).toBe(1234.5679);
-    expect(Object.is(pyRound(-0.00001, 4), -0)).toBe(true);
-    expect(Object.is(pyRound(-0, 4), -0)).toBe(true);
-    expect(pyRound(Number.POSITIVE_INFINITY, 4)).toBe(Number.POSITIVE_INFINITY);
+  it("roundTo rounds half to even on the exact binary value", () => {
+    expect(roundTo(5e-5, 4)).toBe(0.0001);
+    expect(roundTo(0.00025, 4)).toBe(0.0003);
+    expect(roundTo(0.015, 2)).toBe(0.01);
+    expect(roundTo(0.5, 0)).toBe(0);
+    expect(roundTo(2.5, 0)).toBe(2);
+    expect(roundTo(1.5, 0)).toBe(2);
+    expect(roundTo(-2.675, 2)).toBe(-2.67);
+    expect(roundTo(1234.56789, 4)).toBe(1234.5679);
+    expect(Object.is(roundTo(-0.00001, 4), -0)).toBe(true);
+    expect(Object.is(roundTo(-0, 4), -0)).toBe(true);
+    expect(roundTo(Number.POSITIVE_INFINITY, 4)).toBe(Number.POSITIVE_INFINITY);
   });
 });

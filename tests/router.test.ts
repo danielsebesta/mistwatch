@@ -5,7 +5,7 @@ import type { ChatBody } from "../src/types.ts";
 const d = (text: string, kw: Record<string, unknown> = {}) =>
   decide({ messages: [{ role: "user", content: text }], ...kw });
 describe("router", () => {
-  it("counts code points like Python", () => {
+  it("counts code points", () => {
     const r = d(`debug ${"😀".repeat(751)}`, { tools: [{}] });
     expect(r.score).toBe(4);
     expect(r.reason).toContain("long prompt");
@@ -72,7 +72,7 @@ describe("router", () => {
     expect(decide(body, "auto", 1.0, 0).level).toBeLessThanOrEqual(base.level);
   });
 });
-describe("python parity", () => {
+describe("parity", () => {
   it("sorts hard keywords by code point", () => {
     const hi = String.fromCodePoint(0x1d41a);
     const lo = String.fromCodePoint(0xfb01);

@@ -57,7 +57,7 @@ describe("loadConfig floats", () => {
     writeFileSync(p, body);
     return () => loadConfig(p);
   };
-  it("rejects strings Python float() rejects", () => {
+  it("rejects strings that are not valid floats", () => {
     for (const s of ['""', '"0x10"', '"0b1"', '"abc"']) {
       expect(load(`[pricing]\nusd_to_eur = ${s}\n`)).toThrow();
     }

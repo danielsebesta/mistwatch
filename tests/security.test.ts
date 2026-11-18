@@ -187,7 +187,7 @@ describe("body size guard", () => {
 });
 describe("scrypt password hashing", () => {
   const PY = "scrypt$15$8$1$MDEyMzQ1Njc4OWFiY2RlZg==$w9y9AHNnRyPSo3L1zpEwRMSl1/otj3VqtyHUKgZVG6E=";
-  it("verifies a hash produced by Python hashlib.scrypt", async () => {
+  it("verifies a hash produced by a reference scrypt implementation", async () => {
     expect(await verifyPasswordAsync("correct-horse", PY)).toBe(true);
     expect(await verifyPasswordAsync("wrong-horse", PY)).toBe(false);
   });

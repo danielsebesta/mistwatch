@@ -16,7 +16,7 @@ const digitValue = (c: number): number => {
   while (ND.test(String.fromCodePoint(c - v - 1))) v++;
   return v % 10;
 };
-export const pyDigits = (s: string): number => {
+export const parseDigits = (s: string): number => {
   let n = 0;
   for (const ch of s) n = Math.min(n * 10 + digitValue(ch.codePointAt(0) ?? 0), 1e6);
   return n;
@@ -100,7 +100,7 @@ export const rate = async (
     const content = isRec(c0) && isRec(c0.message) && typeof c0.message.content === "string" ? c0.message.content : "";
     const m = NUM.exec(content);
     if (!m || m[1] === undefined) return null;
-    score = Math.max(0, Math.min(10, pyDigits(m[1])));
+    score = Math.max(0, Math.min(10, parseDigits(m[1])));
     const u = isRec(data) && isRec(data.usage) ? data.usage : {};
     promptT = toInt(u.prompt_tokens);
     completionT = toInt(u.completion_tokens);

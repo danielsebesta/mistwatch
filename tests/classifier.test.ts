@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { promptView, pyDigits, rate } from "../src/classifier.ts";
+import { parseDigits, promptView, rate } from "../src/classifier.ts";
 import type { ChatBody } from "../src/types.ts";
 
 const body = (text: string, extra: Record<string, unknown> = {}): ChatBody => ({
@@ -93,7 +93,7 @@ describe("rate", () => {
   });
 });
 describe("rate hardening", () => {
-  it("parses non-ascii decimal digits like Python int()", async () => {
+  it("parses non-ascii decimal digits as integer digits", async () => {
     const reply =
       (s: string): typeof fetch =>
       async () =>
@@ -117,7 +117,7 @@ describe("rate hardening", () => {
     expect(init?.redirect).toBe("manual");
   });
 });
-describe("pyDigits", () => {
+describe("parseDigits", () => {
   it("decodes every Nd block as 0-9, including adjacent blocks", () => {
     const nd = /^\p{Nd}$/u;
     const bad: number[] = [];
@@ -130,19 +130,19 @@ describe("pyDigits", () => {
         run = 0;
         continue;
       }
-      if (pyDigits(ch) !== run % 10) bad.push(c);
+      if (parseDigits(ch) !== run % 10) bad.push(c);
       run++;
     }
     expect(bad).toEqual([]);
-    expect(pyDigits("\u{116DA}")).toBe(0);
-    expect(pyDigits("\u{116DB}")).toBe(1);
+    expect(parseDigits("\u{116DA}")).toBe(0);
+    expect(parseDigits("\u{116DB}")).toBe(1);
   });
   it("agrees with Intl numbering systems", () => {
     for (const sys of Intl.supportedValuesOf("numberingSystem")) {
       const f = new Intl.NumberFormat(`en-u-nu-${sys}`, { useGrouping: false });
       const digits = Array.from({ length: 10 }, (_, i) => f.format(i));
       if (!digits.every((d) => /^\p{Nd}$/u.test(d))) continue;
-      expect(digits.map((d) => pyDigits(d))).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+      expect(digits.map((d) => parseDigits(d))).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     }
   });
 });

@@ -50,7 +50,7 @@ const boolOf = (v: unknown): boolean | null => {
 const truthyQuery = (v: string | undefined): boolean =>
   v !== undefined && ["1", "true", "yes", "on"].includes(v.toLowerCase());
 const isPool = (s: string): s is Pool => s === "vibe" || s === "api";
-// Same cap as Python: count code points, not UTF-16 units.
+// Count code points, not UTF-16 units.
 const clip = (s: string): string => Array.from(s).slice(0, 256).join("");
 const statusPayload = (st: State, now: number): StatusResponse => {
   const pools: StatusResponse["pools"] = [];
