@@ -18,6 +18,7 @@ import { PassThrough } from "node:stream";
 import { parse } from "smol-toml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { vibe } from "../src/agents.ts";
+import { linkVibeLogin, openApp } from "../src/open.ts";
 import {
   banner,
   type ColorDepth,
@@ -34,6 +35,7 @@ import {
   SetupArgError,
   type SetupDeps,
 } from "../src/setup.ts";
+import { VIBE_REF } from "../src/store.ts";
 import type { Config } from "../src/types.ts";
 
 vi.mock("node:fs", async (importOriginal) => {
@@ -252,6 +254,23 @@ describe("setup non-interactive flow", () => {
     expect(text(h)).toContain("export MISTWATCH_TOKEN=<token>");
     expect(text(h)).toContain("imported as account 'vibe-login'");
   });
+  it("never overwrites an existing vibe-login account with its own key", async () => {
+    expect(await runSetup(["--yes", "--no-banner"], make({ vibeKey: false }).deps)).toBe(0);
+    const app = openApp();
+    app.store.createAccount("vibe-login");
+    app.store.setKey("vibe-login", "vibe", { value: "own-secret-key" });
+    const own = app.store.getAccount("vibe-login")?.keys.vibe;
+    app.db.close();
+    const h = make();
+    expect(await runSetup(["--yes", "--no-banner"], h.deps)).toBe(0);
+    expect(text(h)).toContain("imported as account 'vibe-login-2'");
+    const after = openApp();
+    expect(after.store.getAccount("vibe-login")?.keys.vibe).toBe(own);
+    expect(after.store.getAccount("vibe-login-2")?.keys.vibe).toBe(VIBE_REF);
+    expect(() => linkVibeLogin(after.store, "vibe-login")).toThrow("already has its own Vibe key");
+    expect(after.store.getAccount("vibe-login")?.keys.vibe).toBe(own);
+    after.db.close();
+  });
   it("shows the Windows variable command on win32", async () => {
     const h = make({ platform: "win32" });
     await runSetup(["--yes", "--no-banner"], h.deps);
@@ -450,6 +469,30 @@ describe("harness planners", () => {
     expect(list).toHaveLength(2);
     expect(list[1]).toMatchObject({ name: "mistwatch", api_base: `${BASE}/v1` });
     expect(Array.isArray(doc.models) ? doc.models : []).toHaveLength(1);
+  });
+  it("replaces every stale mistwatch block and keeps the custom fields of the first", () => {
+    const old =
+      '[[providers]]\nname = "mistwatch"\napi_base = "http://127.0.0.1:1/v1"\nextra = "keep"\n\n' +
+      '[[providers]] # second\nname = "mistwatch"\napi_base = "http://127.0.0.1:2/v1"\n\n[[models]]\nname = "m"\n';
+    const doc = parse(planToml(old, BASE) ?? "");
+    const list = Array.isArray(doc.providers) ? doc.providers : [];
+    expect(list).toEqual([
+      {
+        name: "mistwatch",
+        api_base: `${BASE}/v1`,
+        api_key_env_var: "MISTWATCH_TOKEN",
+        backend: "mistral",
+        extra: "keep",
+      },
+    ]);
+    expect(Array.isArray(doc.models) ? doc.models : []).toHaveLength(1);
+  });
+  it("does not report ok while a second mistwatch block is stale", () => {
+    const stale = `${vibe(BASE)}\n[[providers]]\nname = "mistwatch"\napi_base = "http://127.0.0.1:1/v1"\n`;
+    const next = planToml(stale, BASE) ?? "";
+    const list = parse(next).providers;
+    expect(Array.isArray(list) ? list : []).toHaveLength(1);
+    expect(planToml(next, BASE)).toBeNull();
   });
   it("keeps CRLF line endings and rejects broken toml", () => {
     const next = planToml('[[providers]]\r\nname = "a"\r\n', BASE) ?? "";

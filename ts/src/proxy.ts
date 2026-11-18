@@ -288,8 +288,15 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
       let llm: number | null = null;
       if (cfg.router.llm_classifier) {
         const h = scoreRequest(parsed)[0];
-        const key0 = keyFor(c0.account, c0.pool);
-        if (worthAsking(parsed, h) && key0) {
+        let key0: string | null = null;
+        if (worthAsking(parsed, h)) {
+          try {
+            key0 = keyFor(c0.account, c0.pool);
+          } catch (e) {
+            console.error(`cannot resolve classifier key for ${c0.account.name}:`, e);
+          }
+        }
+        if (key0) {
           const [cp] = st.prices.lookup(cfg.router.classifier_model);
           const cEst =
             (((estimateTokens(cpLen(promptView(parsed)) + cpLen(SYSTEM)) + 1) * cp.input + 24 * cp.output) / 1e6) *

@@ -23,7 +23,7 @@ import { parse } from "smol-toml";
 import { ENV, merge, opencode, opencodeConfigPath, pi, TOOLS, vibe } from "./agents.ts";
 import { createBudgetEngine } from "./budget.ts";
 import { CONFIG_TEMPLATE, configPath } from "./config.ts";
-import { type App, linkVibeLogin, openApp } from "./open.ts";
+import { type App, freeVibeName, linkVibeLogin, openApp } from "./open.ts";
 import type { Store } from "./store.ts";
 import { mask, StoreError, VIBE_REF, vibeCliKeyPresent } from "./store.ts";
 import type { Config } from "./types.ts";
@@ -308,29 +308,57 @@ export const planJson = (raw: string | null, data: Record<string, unknown>): str
   return raw !== null && JSON.stringify(next) === JSON.stringify(cur) ? null : `${JSON.stringify(next, null, 2)}\n`;
 };
 const MW_NAME = /^\s*name\s*=\s*(["'])mistwatch\1\s*(#.*)?$/;
-const providerOf = (doc: Record<string, unknown>): Record<string, unknown> | null => {
+const PROVIDERS_HEAD = /^\s*\[\[\s*providers\s*\]\]\s*(#.*)?$/;
+const providersOf = (doc: Record<string, unknown>): Record<string, unknown>[] => {
   const list = doc.providers;
   return Array.isArray(list)
-    ? (list.find((p): p is Record<string, unknown> => isRec(p) && p.name === "mistwatch") ?? null)
-    : null;
+    ? list.filter((p): p is Record<string, unknown> => isRec(p) && p.name === "mistwatch")
+    : [];
 };
 const providerMatches = (text: string, base: string): boolean => {
   try {
-    const p = providerOf(parse(text));
-    return p?.api_base === `${base}/v1` && p.api_key_env_var === ENV && p.backend === "mistral";
+    const found = providersOf(parse(text));
+    return (
+      found.length > 0 &&
+      found.every((p) => p.api_base === `${base}/v1` && p.api_key_env_var === ENV && p.backend === "mistral")
+    );
   } catch {
     return false;
   }
 };
-const replaceProvider = (lines: string[], head: string[]): string[] | null => {
+const mistwatchBlocks = (lines: string[]): [number, number][] => {
+  const out: [number, number][] = [];
   for (const [s, line] of lines.entries()) {
-    if (line.trim() !== "[[providers]]") continue;
+    if (!PROVIDERS_HEAD.test(line)) continue;
     let e = s + 1;
     while (e < lines.length && !/^\s*\[/.test(lines[e] ?? "")) e++;
-    if (lines.slice(s + 1, e).some((l) => MW_NAME.test(l)))
-      return [...lines.slice(0, s), ...head, ...(e < lines.length ? [""] : []), ...lines.slice(e)];
+    if (lines.slice(s + 1, e).some((l) => MW_NAME.test(l))) out.push([s, e]);
   }
-  return null;
+  return out;
+};
+const patchBlock = (body: string[], want: Record<string, string>): string[] => {
+  const left = new Map(Object.entries(want));
+  const out = body.map((l) => {
+    const m = /^(\s*)([A-Za-z_]+)\s*=/.exec(l);
+    const key = m?.[2] ?? "";
+    const v = left.get(key);
+    if (v === undefined) return l;
+    left.delete(key);
+    return `${m?.[1] ?? ""}${key} = ${JSON.stringify(v)}`;
+  });
+  out.splice(out.findIndex((l) => MW_NAME.test(l)) + 1, 0, ...[...left].map(([k, v]) => `${k} = ${JSON.stringify(v)}`));
+  return out;
+};
+const replaceProviders = (lines: string[], want: Record<string, string>): string[] | null => {
+  const [first, ...extra] = mistwatchBlocks(lines);
+  if (!first) return null;
+  let out = lines;
+  for (const [s, e] of extra.reverse()) out = [...out.slice(0, s), ...out.slice(e)];
+  return [
+    ...out.slice(0, first[0] + 1),
+    ...patchBlock(out.slice(first[0] + 1, first[1]), want),
+    ...out.slice(first[1]),
+  ];
 };
 export const planToml = (raw: string | null, base: string): string | null => {
   const block = vibe(base);
@@ -342,9 +370,8 @@ export const planToml = (raw: string | null, base: string): string | null => {
   }
   if (providerMatches(raw, base)) return null;
   const eol = raw.includes("\r\n") ? "\r\n" : "\n";
-  const existing = providerOf(parse(raw));
-  const head = (block.split("\n\n")[0] ?? "").split("\n");
-  const replaced = existing ? replaceProvider(raw.split(/\r?\n/), head) : null;
+  const want = { api_base: `${base}/v1`, api_key_env_var: ENV, backend: "mistral" };
+  const replaced = providersOf(parse(raw)).length > 0 ? replaceProviders(raw.split(/\r?\n/), want) : null;
   const next = replaced ? replaced.join(eol) : `${raw.trimEnd()}${eol}${eol}${block.replace(/\n/g, eol)}`;
   if (!providerMatches(next, base))
     throw new SetupError("could not edit the existing mistwatch provider; edit it by hand");
@@ -475,8 +502,9 @@ const stepVibe = async (ctx: Ctx, store: Store): Promise<void> => {
     note(ctx, "skip", "Vibe login", "not imported (run `mistwatch import-vibe` later)");
     return;
   }
+  const name = freeVibeName(store);
   try {
-    linkVibeLogin(store, "vibe-login");
+    linkVibeLogin(store, name);
   } catch (e) {
     if (!(e instanceof StoreError)) throw e;
     ctx.report.vibe_login = "failed";
@@ -484,7 +512,7 @@ const stepVibe = async (ctx: Ctx, store: Store): Promise<void> => {
     return;
   }
   ctx.report.vibe_login = "imported";
-  note(ctx, "ok", "Vibe login", "imported as account 'vibe-login'");
+  note(ctx, "ok", "Vibe login", `imported as account '${name}'`);
 };
 const stepToken = (ctx: Ctx, store: Store): void => {
   const existing = store.listApiKeys().length;

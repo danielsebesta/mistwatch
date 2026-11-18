@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { createPriceBook, FALLBACK } from "../src/pricing.ts";
 
+describe("price overrides", () => {
+  it("an override for an alias name wins over the alias target", () => {
+    const pb = createPriceBook(1, { "mistral-small-latest": { input: 9, output: 10 } });
+    expect(pb.lookup("mistral-small-latest")).toEqual([{ input: 9, output: 10, cached: null }, true]);
+    expect(pb.lookup("Mistral-Small-4")[0].input).toBe(0.15);
+  });
+  it("aliases still resolve without an override", () => {
+    expect(createPriceBook(1).lookup("mistral-small-latest")[0].input).toBe(0.15);
+  });
+});
+
 describe("price lookup with prototype-named models", () => {
   it.each(["constructor", "__proto__", "toString", "hasOwnProperty"])("%s falls back as an unknown model", (name) => {
     const pb = createPriceBook(1);

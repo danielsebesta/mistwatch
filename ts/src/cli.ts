@@ -224,13 +224,16 @@ const cmdStatus = async (args: string[]): Promise<number> => {
       if (s) d.pools.push(poolStatusDict(s));
     }
   }
+  db.close();
   console.log(values.json ? dumpJson(d) : fmtStatus(d));
   return 0;
 };
 const cmdSync = async (): Promise<number> => {
   const { syncAll } = await import("./sync.ts");
   const { cfg, db } = await openApp();
-  console.log(dumpJson(await syncAll(fetch, cfg, db)));
+  const res = await syncAll(fetch, cfg, db);
+  db.close();
+  console.log(dumpJson(res));
   return 0;
 };
 const cmdServe = async (args: string[]): Promise<number> => {

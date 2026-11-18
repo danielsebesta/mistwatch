@@ -41,11 +41,11 @@ export const nextReset = (resetDay: number, now: number): number => {
   }
   return cand;
 };
-const prevMonth = (ts: number): number => {
-  const d = new Date(ts * 1000);
+export const prevReset = (resetDay: number, resetAt: number): number => {
+  const d = new Date(resetAt * 1000);
   const y = d.getUTCMonth() === 0 ? d.getUTCFullYear() - 1 : d.getUTCFullYear();
   const m = d.getUTCMonth() === 0 ? 11 : d.getUTCMonth() - 1;
-  return Date.UTC(y, m, Math.min(d.getUTCDate(), daysInMonth(y, m))) / 1000;
+  return Date.UTC(y, m, Math.min(resetDay, daysInMonth(y, m))) / 1000;
 };
 const fetchBudgetKey = async (fetchFn: FetchLike, base: string, key: string): Promise<Record<string, unknown>> => {
   const r = await fetchFn(`${base}/v1/billing/budget`, {
@@ -168,8 +168,9 @@ const syncAccount = async (fetchFn: FetchLike, cfg: Config, db: DB, acct: Accoun
   } else {
     for (const [pool, m] of Object.entries(acct.manual)) {
       const initial = asFloat(m.initial_eur);
-      const resetAt = nextReset(Math.trunc(asFloat(m.reset_day ?? 1)), now);
-      const used = db.costBetween(acct.name, pool, prevMonth(resetAt), { inclusive: true, upto: now });
+      const resetDay = Math.trunc(asFloat(m.reset_day ?? 1));
+      const resetAt = nextReset(resetDay, now);
+      const used = db.costBetween(acct.name, pool, prevReset(resetDay, resetAt), { inclusive: true, upto: now });
       db.addSnapshot({
         ts: now,
         account: acct.name,

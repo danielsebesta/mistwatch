@@ -581,6 +581,32 @@ describe("proxy accounting hardening", () => {
     expect(st.db.recent().some((r) => r.endpoint === "router")).toBe(true);
     expect(must(st.engine.status("a", "api")).inflight).toBe(0);
   });
+  it("skips the classifier when the first account key cannot be resolved and forwards via the next account", async () => {
+    calls.length = 0;
+    delete process.env.MW_TEST_UNSET_KEY;
+    const first = { ...acct("a", { vibe: "env:MW_TEST_UNSET_KEY", api: "env:MW_TEST_UNSET_KEY" }), priority: 1 };
+    const cfg = mkCfg([first, acct("b", { vibe: "b-vibe", api: "b-api" })]);
+    cfg.router.llm_classifier = true;
+    const st = createState(
+      cfg,
+      fakeFetch(() => okJson()),
+    );
+    for (const name of ["a", "b"]) {
+      seedPool(st, name, "api", 0, 12.75);
+      seedPool(st, name, "vibe", 127.5, 127.5);
+    }
+    const r = await createProxy(st).handle(
+      jreq(
+        "/v1/chat/completions",
+        { model: "auto", messages: [{ role: "user", content: "please explain this topic in some detail" }] },
+        AUTH,
+      ),
+    );
+    await r.text();
+    expect(r.status).toBe(200);
+    expect(calls.length).toBe(1);
+    expect(new Headers(calls[0]?.init?.headers).get("authorization")).toMatch(/^Bearer b-/);
+  });
   it("aborts the classifier fetch on client abort and holds the reservation until it ends", async () => {
     calls.length = 0;
     const cfg = mkCfg([acct()]);

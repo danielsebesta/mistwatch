@@ -49,12 +49,15 @@ export type PriceBook = {
 export const createPriceBook = (usdToEur: number, overrides?: Record<string, PriceOverride>): PriceBook => {
   const prices = new Map(Object.entries(PRICES_USD));
   const aliases = new Map(Object.entries(ALIASES));
-  for (const [model, p] of Object.entries(overrides ?? {}))
+  const overridden = new Set<string>();
+  for (const [model, p] of Object.entries(overrides ?? {})) {
     prices.set(model, { input: p.input, output: p.output, cached: p.cached ?? null });
+    overridden.add(model);
+  }
   const sortedKeys = [...prices.keys()].sort((a, b) => b.length - a.length);
   const lookup = (model: string | null | undefined): [Price, boolean] => {
     const m0 = (model ?? "").toLowerCase();
-    const m = aliases.get(m0) ?? m0;
+    const m = overridden.has(m0) ? m0 : (aliases.get(m0) ?? m0);
     const hit = prices.get(m);
     if (hit) return [hit, true];
     for (const key of sortedKeys) {

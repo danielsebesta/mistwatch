@@ -105,6 +105,37 @@ describe("cli init and quick commands", () => {
   });
 });
 
+describe("cli status", () => {
+  it("loads the persisted shared-budget links like the web API", async () => {
+    await main(["init"]);
+    const { openApp } = await import("../src/open.ts");
+    const app = openApp();
+    const now = Date.now() / 1000;
+    for (const name of ["a", "b"]) {
+      app.store.createAccount(name);
+      app.db.addSnapshot({
+        ts: now,
+        account: name,
+        pool: "api",
+        used_eur: 5,
+        initial_eur: 10,
+        reset_at: now + 86400,
+        currency: "EUR",
+      });
+    }
+    app.db.setMeta("links", JSON.stringify({ b: { canonical: "a", confidence: "sure" } }));
+    app.db.close();
+    logs.length = 0;
+    expect(await main(["status", "--json"])).toBe(0);
+    const out: unknown = JSON.parse(logs.join("\n"));
+    const pools = isRec(out) && Array.isArray(out.pools) ? out.pools : [];
+    expect(pools.map((p) => (isRec(p) ? [p.account, p.group, p.members] : null))).toEqual([
+      ["a", "a", ["a", "b"]],
+      ["b", "a", ["a", "b"]],
+    ]);
+  });
+});
+
 describe("cli agent-config", () => {
   it("prints the pi provider without --write", async () => {
     await main(["init"]);

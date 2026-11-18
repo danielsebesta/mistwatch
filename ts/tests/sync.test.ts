@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBudgetEngine } from "../src/budget.ts";
 import { defaultConfig } from "../src/config.ts";
 import { openDb } from "../src/db.ts";
 import { createState } from "../src/state.ts";
-import { checkKey, nextReset, parseIso, startSyncLoop, syncAll } from "../src/sync.ts";
+import { checkKey, nextReset, parseIso, prevReset, startSyncLoop, syncAll } from "../src/sync.ts";
 import type { Account, FetchLike } from "../src/types.ts";
 import { must } from "./helpers.ts";
 
@@ -219,6 +219,27 @@ describe("checkKey", () => {
   });
 });
 
+describe("manual budget window", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  it("reset day 31 on Feb 3 counts spending since Jan 31 only", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(Date.UTC(2030, 1, 3, 12)));
+    const db = openDb(":memory:");
+    const cfg = defaultConfig();
+    cfg.accounts.push(acct("a", {}, { vibe: { initial_eur: 50, reset_day: 31 } }));
+    db.addLedger({ ts: Date.UTC(2030, 0, 29, 12) / 1000, account: "a", pool: "vibe", cost_eur: 4, source: "proxy" });
+    db.addLedger({ ts: Date.UTC(2030, 0, 31, 12) / 1000, account: "a", pool: "vibe", cost_eur: 1, source: "proxy" });
+    const res = await syncAll(
+      fakeFetch(() => json({}, 404)),
+      cfg,
+      db,
+    );
+    expect(res.a?.vibe?.used).toBe(1);
+  });
+});
+
 describe("reset math and the loop", () => {
   it("nextReset clamps the day and rolls the month", () => {
     const feb10 = Date.UTC(2030, 1, 10) / 1000;
@@ -226,6 +247,11 @@ describe("reset math and the loop", () => {
     expect(nextReset(5, feb10)).toBe(Date.UTC(2030, 2, 5) / 1000);
     expect(nextReset(31, feb10)).toBe(Date.UTC(2030, 1, 28) / 1000);
     expect(nextReset(31, Date.UTC(2030, 11, 31, 12) / 1000)).toBe(Date.UTC(2031, 0, 31) / 1000);
+  });
+  it("prevReset clamps the configured day to the previous month, not the clamped reset date", () => {
+    expect(prevReset(31, Date.UTC(2030, 1, 28) / 1000)).toBe(Date.UTC(2030, 0, 31) / 1000);
+    expect(prevReset(31, Date.UTC(2030, 2, 31) / 1000)).toBe(Date.UTC(2030, 1, 28) / 1000);
+    expect(prevReset(15, Date.UTC(2030, 0, 15) / 1000)).toBe(Date.UTC(2029, 11, 15) / 1000);
   });
   it("parseIso handles Z and offsets", () => {
     expect(parseIso("2099-01-01T00:00:00Z")).toBe(Date.UTC(2099, 0, 1) / 1000);
