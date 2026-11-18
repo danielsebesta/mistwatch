@@ -22,7 +22,7 @@
 
 - **Tracks your budgets.** It shows how much of your Vibe Code and Studio (API) allowance you have used, per 5 hours, day, week and month.
 - **Spreads usage over time.** It paces requests so you do not burn a whole month's allowance in one afternoon. When nothing is left it answers `429` with a `Retry-After` header.
-- **Offers an `auto` model.** It picks a suitable Mistral model for each request.
+- **Offers one `auto` model.** A small model rates each request from the prompt, the project instructions (AGENTS.md) and what the agent has done; the router then picks the model and reasoning effort, preferring the cheaper choice among similar ones. The client cannot set the effort.
 - **Pools several accounts.** Requests go to whichever account still has room.
 - **Works with your tools.** OpenCode, Pi and the Vibe CLI, or anything that speaks the OpenAI chat API.
 
@@ -78,7 +78,7 @@ mistwatch vibe-config
 
 Claude Code and current Codex CLI do not work directly, because they need the Anthropic Messages or OpenAI Responses format and Mistral offers neither. Put a translating proxy such as LiteLLM in front of Mistwatch if you need them.
 
-Agents and integrators can read `/llms.txt` on a running proxy (no sign-in needed). It describes the address, authentication, the `auto` models and the `401` and `429` errors.
+Agents and integrators can read `/llms.txt` on a running proxy (no sign-in needed). It describes the address, authentication, the `auto` model and the `401` and `429` errors.
 
 ## Commands
 

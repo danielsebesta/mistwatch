@@ -5,11 +5,11 @@ const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object
 const BASE = "http://127.0.0.1:8787";
 
 describe("agents.models", () => {
-  it("starts with the auto family and lists unique ladder models", () => {
+  it("starts with auto, the only router model, and lists unique ladder models", () => {
     const m = models();
     expect(m[0]?.[0]).toBe("auto");
-    expect(m[1]?.[0]).toBe("auto-fast");
-    expect(m[2]?.[0]).toBe("auto-max");
+    expect(m.map(([id]) => id)).not.toContain("auto-fast");
+    expect(m.map(([id]) => id)).not.toContain("auto-max");
     expect(m[0]?.[1]).toBe("Auto (budget-aware router)");
     const ids = m.map(([id]) => id);
     expect(new Set(ids).size).toBe(ids.length);

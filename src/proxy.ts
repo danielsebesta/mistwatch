@@ -15,7 +15,7 @@ import {
 import type { Reservation } from "./queue.ts";
 import { createQueue } from "./queue.ts";
 import { createRateLimiter } from "./ratelimit.ts";
-import { AUTO_MODELS, apply, cpLen, decide, decisionHeader, scoreRequest, truthy, worthAsking } from "./router.ts";
+import { AUTO_MODELS, apply, cpLen, decide, decisionHeader, truthy, worthAsking } from "./router.ts";
 import {
   bodyWithinLimit,
   filterRequestHeaders,
@@ -292,9 +292,8 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
       if (c0 === undefined) throw asException(errors.internal());
       let llm: number | null = null;
       if (cfg.router.llm_classifier) {
-        const h = scoreRequest(parsed)[0];
         let key0: string | null = null;
-        if (worthAsking(parsed, h)) {
+        if (worthAsking(parsed)) {
           try {
             key0 = keyFor(c0.account, c0.pool);
           } catch (e) {
@@ -359,7 +358,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
           }
         }
       }
-      routed = decide(parsed, model, c0.status === null ? 1.0 : poolPressure(c0.status), llm);
+      routed = decide(parsed, c0.status === null ? 1.0 : poolPressure(c0.status), llm, (m) => st.prices.lookup(m)[0]);
       parsed = apply(parsed, routed);
       sendBody = new TextEncoder().encode(JSON.stringify(parsed));
       model = routed.model;

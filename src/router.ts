@@ -9,7 +9,8 @@ export const LADDER: Step[] = [
   { model: "zai-glm-5-3", effort: "max", vision: false, ctx: 1_048_576, label: "glm-5.3/max" },
 ];
 export const TOP = LADDER.length - 1;
-export const LLM_WEIGHT = 0.8;
+// The tiny model judges the request; the heuristic score only stands in when it cannot answer.
+export const LLM_WEIGHT = 1;
 export const SCORE_TO_LEVEL: [number, number][] = [
   [1, 0],
   [3, 1],
@@ -26,11 +27,14 @@ export const VALID_EFFORT: Record<string, ReadonlySet<string>> = {
   "zai-glm-5-3": new Set(["low", "high", "max"]),
   "zai-glm-5-3-flash": new Set(["low", "high", "max"]),
 };
-export const AUTO_MODELS = new Map<string, [number, number]>([
-  ["auto", [0, TOP]],
-  ["auto-fast", [0, 2]],
-  ["auto-max", [4, TOP]],
-]);
+// `auto` is the only router model. The two older names stay accepted so existing client configs keep working.
+export const AUTO_MODELS: ReadonlySet<string> = new Set(["auto", "auto-fast", "auto-max"]);
+export type Price = { input: number; output: number };
+// Reasoning effort makes a model write more before it answers; this scales the output estimate.
+const EFFORT_OUT: Record<string, number> = { none: 1, low: 1.5, medium: 2.5, high: 4, xhigh: 6, max: 6 };
+const BASE_OUT_TOKENS = 1500;
+const stepCost = (step: Step, inTokens: number, price: Price): number =>
+  inTokens * price.input + BASE_OUT_TOKENS * (EFFORT_OUT[step.effort ?? "none"] ?? 1) * price.output;
 const W = "\\p{L}\\p{N}_";
 const HARD = new RegExp(
   `(?<![${W}])(debug[${W}]*|bug|refactor[${W}]*|architect[${W}]*|design|optimi[sz][${W}]*|prove|proof|algorithm[${W}]*|race condition|deadlock|security|vulnerab[${W}]*|migrat[${W}]*|implement[${W}]*|rewrite|analy[sz][${W}]*|investigat[${W}]*|root cause|concurren[${W}]*|performance|benchmark[${W}]*|navrhni|architektur[${W}]*|refaktor[${W}]*|oprav[${W}]*|optimaliz[${W}]*|analyz[${W}]*|implementuj|zjisti|přepiš|migrac[${W}]*|bezpečnost[${W}]*|chyb[${W}]*)(?![${W}])`,
@@ -142,17 +146,20 @@ export const scoreRequest = (body: ChatBody): [number, string[], number, boolean
   if (n < 40 && hard.size === 0) add(-1, "tiny prompt");
   return [Math.max(0, Math.min(10, s)), why, estTokens, hasImage(msgs)];
 };
-export const worthAsking = (body: ChatBody, score: number): boolean => {
-  const last = lastUserText(userMsgs(body));
-  return cpLen(trimUnicode(last)) >= 30 && score < 8;
-};
+// The tiny model judges every request that has any user text, however short: a few words can be a
+// hard job in a large project.
+export const worthAsking = (body: ChatBody): boolean => cpLen(trimUnicode(lastUserText(userMsgs(body)))) > 0;
 const ladderAt = (i: number): Step => {
   const s = LADDER[((i % LADDER.length) + LADDER.length) % LADDER.length];
   if (!s) throw new RangeError("ladder index out of range");
   return s;
 };
-export const decide = (body: ChatBody, name = "auto", pressure = 1.0, llmScore?: number | null): Decision => {
-  const [lo, hi] = AUTO_MODELS.get(name) ?? [0, TOP];
+export const decide = (
+  body: ChatBody,
+  pressure = 1.0,
+  llmScore?: number | null,
+  priceOf?: (model: string) => Price | null,
+): Decision => {
   let [score, why, tokens, image] = scoreRequest(body);
   if (llmScore !== undefined && llmScore !== null) {
     const blended = Math.round((1 - LLM_WEIGHT) * score + LLM_WEIGHT * llmScore);
@@ -161,14 +168,13 @@ export const decide = (body: ChatBody, name = "auto", pressure = 1.0, llmScore?:
   }
   const hit = SCORE_TO_LEVEL.find(([b]) => score <= b);
   let level = hit ? hit[1] : TOP;
-  level = Math.max(lo, Math.min(hi, level));
   if (truthy(body.tools) && level < 2 && score >= 4) {
     level = 2;
     why.push("tools+hard -> large-4");
   }
   const drop = pressure < 0.1 ? 2 : pressure < 0.25 ? 1 : 0;
   if (drop) {
-    level = Math.max(Math.min(lo, 1), level - drop);
+    level = Math.max(0, level - drop);
     why.push(`budget pressure ${Math.round(pressure * 100)}% -> -${drop}`);
   }
   let step = ladderAt(level);
@@ -182,13 +188,22 @@ export const decide = (body: ChatBody, name = "auto", pressure = 1.0, llmScore?:
     step = ladderAt(level);
     why.push("long context -> 1M model");
   }
-  let effort = step.effort;
-  const asked = body.reasoning_effort;
-  const valid = VALID_EFFORT[step.model];
-  if (typeof asked === "string" && asked && valid?.has(asked)) {
-    effort = asked;
-    why.push(`client effort ${asked} kept`);
+  // The step one level up is stronger on the ladder. Take it when it costs less than the planned one
+  // (a cheaper model at a stronger rung), but never while the budget is under pressure.
+  const next = LADDER[level + 1];
+  const price = priceOf?.(step.model);
+  const nextPrice = next ? priceOf?.(next.model) : null;
+  if (!drop && next && price && nextPrice && (!image || next.vision) && !(tokens > 200_000 && next.ctx < 400_000)) {
+    const here = stepCost(step, tokens, price);
+    const up = stepCost(next, tokens, nextPrice);
+    if (up < here) {
+      why.push(`${next.label} is stronger and cheaper than ${step.label}`);
+      level += 1;
+      step = next;
+    }
   }
+  // The client cannot choose the reasoning effort: it follows from the step the router picked.
+  const effort = step.effort;
   return { model: step.model, effort, level, score, reason: why.join("; ") || "default", llm_score: llmScore ?? null };
 };
 export const apply = (body: ChatBody, d: Decision): ChatBody => {

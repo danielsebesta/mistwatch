@@ -146,3 +146,36 @@ describe("parseDigits", () => {
     }
   });
 });
+describe("promptView project context", () => {
+  it("shows the project instructions, tool names and recent tool calls to the tiny model", () => {
+    const b: ChatBody = {
+      tools: [
+        { type: "function", function: { name: "read_file" } },
+        { type: "function", function: { name: "bash" } },
+      ],
+      messages: [
+        {
+          role: "system",
+          content: `You are an agent.\n\nContents of AGENTS.md:\nUse pnpm. The monorepo has 40 packages.`,
+        },
+        { role: "user", content: "fix it" },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [{ id: "1", type: "function", function: { name: "read_file" } }],
+        },
+        { role: "tool", content: "x".repeat(500) },
+      ],
+    };
+    const v = promptView(b);
+    expect(v).toContain("fix it");
+    expect(v).toContain("tools available (read_file, bash)");
+    expect(v).toContain("recent tool calls: read_file");
+    expect(v).toContain("about 500 characters of tool output");
+    expect(v).toContain("[project instructions]");
+    expect(v).toContain("The monorepo has 40 packages.");
+  });
+  it("adds nothing without a system prompt", () => {
+    expect(promptView(body("hello"))).toBe("hello");
+  });
+});

@@ -9,11 +9,7 @@ const NON_ASCII = /[\u0080-\uffff]/g;
 export const dumpJson = (v: unknown): string =>
   JSON.stringify(v, null, 2).replace(NON_ASCII, (c) => `\\u${(c.codePointAt(0) ?? 0).toString(16).padStart(4, "0")}`);
 export const models = (): ModelSpec[] => {
-  const out: ModelSpec[] = [
-    ["auto", "Auto (budget-aware router)", 262_144, true],
-    ["auto-fast", "Auto, cheaper models only", 262_144, true],
-    ["auto-max", "Auto, aims for quality", 1_048_576, true],
-  ];
+  const out: ModelSpec[] = [["auto", "Auto (budget-aware router)", 262_144, true]];
   const seen = new Set<string>();
   for (const st of LADDER) {
     if (seen.has(st.model)) continue;
@@ -24,7 +20,7 @@ export const models = (): ModelSpec[] => {
 };
 // The names Mistwatch itself uses for its three router models.
 export const VIBE_AUTO: readonly (readonly [name: string, label: string, ctx: number])[] = models()
-  .slice(0, 3)
+  .slice(0, 1)
   .map(([id, name, ctx]) => [id, name, ctx] as const);
 export const pi = (base: string, env = ENV): Record<string, unknown> => ({
   providers: {
@@ -138,8 +134,7 @@ export const llmsTxt = (base: string): string => `# Mistwatch
 
 ## Models
 
-- \`auto\` picks a model and reasoning effort from how hard the request is and how much budget is left.
-- \`auto-fast\` stays with cheaper models, \`auto-max\` aims higher.
+- \`auto\` picks the model and the reasoning effort for each request; you cannot set the effort. A small model rates how hard the request is from the prompt, the project instructions (such as AGENTS.md) and what the agent has done so far. Price and the budget that is left then decide between choices of similar strength.
 - Any Mistral model id is forwarded unchanged. \`GET /v1/models\` lists the upstream models.
 
 ## What a client should handle

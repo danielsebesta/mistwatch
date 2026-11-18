@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { apply, decide, decisionHeader, scoreRequest, worthAsking } from "../src/router.ts";
+import { apply, decide, decisionHeader, LADDER, scoreRequest, worthAsking } from "../src/router.ts";
 import type { ChatBody } from "../src/types.ts";
 
 const d = (text: string, kw: Record<string, unknown> = {}) =>
@@ -49,15 +49,15 @@ describe("router", () => {
     const body: ChatBody = {
       messages: [{ role: "user", content: "Implement and optimize and debug this algorithm carefully ".repeat(20) }],
     };
-    expect(decide(body, "auto", 0.05).level).toBeLessThan(decide(body, "auto", 1.0).level);
+    expect(decide(body, 0.05).level).toBeLessThan(decide(body, 1.0).level);
   });
-  it("auto-fast caps the ladder and apply rewrites the body", () => {
+  it("apply rewrites the body and the client cannot set the effort", () => {
     const body: ChatBody = {
       messages: [{ role: "user", content: "debug refactor optimize analyze architecture ".repeat(80) }],
       reasoning_effort: "xx",
     };
-    const r = decide(body, "auto-fast");
-    expect(r.level).toBeLessThanOrEqual(2);
+    const r = decide(body);
+    expect(r.reason).not.toContain("client effort");
     const out = apply(body, r);
     expect(out.model).toBe(r.model);
     expect(out.reasoning_effort).toBe(r.effort);
@@ -65,11 +65,11 @@ describe("router", () => {
   it("llm score blends and can raise the level", () => {
     const body: ChatBody = { messages: [{ role: "user", content: "Proč mi padá vlákno?" }] };
     const base = decide(body);
-    const raised = decide(body, "auto", 1.0, 9);
+    const raised = decide(body, 1.0, 9);
     expect(raised.llm_score).toBe(9);
     expect(raised.level).toBeGreaterThan(base.level);
     expect(decisionHeader(raised)).toContain(";llm=9");
-    expect(decide(body, "auto", 1.0, 0).level).toBeLessThanOrEqual(base.level);
+    expect(decide(body, 1.0, 0).level).toBeLessThanOrEqual(base.level);
   });
 });
 describe("parity", () => {
@@ -79,15 +79,41 @@ describe("parity", () => {
     const r = scoreRequest({ messages: [{ role: "user", content: `debug${lo} debug${hi} bug` }] });
     expect(r[1].join(";")).toContain(`['bug', 'debug${lo}', 'debug${hi}']`);
   });
-  it("strips like str.strip in worthAsking", () => {
-    const ask = (s: string) => worthAsking({ messages: [{ role: "user", content: s }] }, 0);
-    expect(ask("x".repeat(29) + String.fromCharCode(0x1c))).toBe(false);
-    expect(ask("x".repeat(29) + String.fromCharCode(0x85))).toBe(false);
-    expect(ask("x".repeat(29) + String.fromCharCode(0xfeff))).toBe(true);
+  it("asks the tiny model about any non-blank request", () => {
+    const ask = (s: string) => worthAsking({ messages: [{ role: "user", content: s }] });
+    expect(ask("ahoj")).toBe(true);
+    expect(ask(`  ${String.fromCharCode(0x1c)}${String.fromCharCode(0x85)} `)).toBe(false);
+    expect(ask("")).toBe(false);
   });
   it("counts non-ascii digit list markers", () => {
     const fw = (n: number) => String.fromCodePoint(0xff10 + n);
     const r = d(`${fw(1)}. a ${fw(2)}. b ${fw(3)}. c`);
     expect(r.reason).toContain("multi-part");
+  });
+});
+describe("auto routing", () => {
+  const body: ChatBody = { messages: [{ role: "user", content: "x" }] };
+  it("ignores the effort a client asks for", () => {
+    const r = decide({ ...body, reasoning_effort: "max" }, 1.0, 5);
+    expect(r.effort).toBe(LADDER[r.level]?.effort);
+  });
+  it("the tiny model alone sets the difficulty when it answers", () => {
+    const hard = "debug refactor optimize analyze architecture ".repeat(80);
+    const heavy: ChatBody = { messages: [{ role: "user", content: hard }], tools: [{}] };
+    expect(decide(heavy, 1.0, 0).score).toBe(0);
+    expect(decide(heavy).score).toBeGreaterThan(3);
+  });
+  it("takes the stronger step only when it is cheaper", () => {
+    const five: ChatBody = { messages: [{ role: "user", content: "x" }] };
+    const at3 = decide(five, 1.0, 5);
+    expect(at3.model).toBe("mistral-large-4-0");
+    const price = (m: string) =>
+      m === "deepseek-v4-1-flash-1017" ? { input: 0.1, output: 0.4 } : { input: 2, output: 6 };
+    const cheaper = decide(five, 1.0, 5, price);
+    expect(cheaper.model).toBe("deepseek-v4-1-flash-1017");
+    expect(cheaper.reason).toContain("stronger and cheaper");
+    const dear = decide(five, 1.0, 5, () => ({ input: 2, output: 6 }));
+    expect(dear.model).toBe("mistral-large-4-0");
+    expect(decide(five, 0.05, 5, price).reason).not.toContain("stronger and cheaper");
   });
 });

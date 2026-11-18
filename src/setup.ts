@@ -426,9 +426,13 @@ export const planToml = (raw: string | null, base: string): string | null => {
     const flush = (): void => {
       const mine = seg.some((l) => /^\s*provider\s*=\s*(["'])(mistral|mistwatch)\1/.test(l));
       const isModel = /^\s*\[\[\s*models\s*\]\]/.test(seg[0] ?? "");
+      const id = seg.map((l) => /^\s*name\s*=\s*"([^"]*)"/.exec(l)?.[1]).find((v) => v !== undefined) ?? "";
+      if (isModel && mine && LEGACY_AUTO.has(id)) {
+        seg = [];
+        return;
+      }
       if (!(isModel && mine)) out.push(...seg);
       else {
-        const id = seg.map((l) => /^\s*name\s*=\s*"([^"]*)"/.exec(l)?.[1]).find((v) => v !== undefined) ?? "";
         const label = mwName.get(id) ?? builtin(id);
         out.push(
           ...seg.map((l) =>
@@ -450,7 +454,16 @@ export const planToml = (raw: string | null, base: string): string | null => {
     const next = out.join(eol);
     return parse(next) ? next : text;
   };
-  const finish = (text: string): string => repoint(allowAuto(withAuto(text)));
+  // auto-fast and auto-max were offered earlier and no longer exist: drop them from the allowlist too
+  const dropLegacy = (text: string): string => {
+    const next = text
+      .replace(/^[ \t]*"auto-(?:fast|max)",?[ \t]*\r?\n/gm, "")
+      .replace(/"auto-(?:fast|max)",[ \t]*/g, "")
+      .replace(/,[ \t]*"auto-(?:fast|max)"/g, "");
+    const list = parse(next).allowed_models;
+    return Array.isArray(list) && !list.some((x) => typeof x === "string" && LEGACY_AUTO.has(x)) ? next : text;
+  };
+  const finish = (text: string): string => repoint(allowAuto(withAuto(dropLegacy(text))));
   if (providerMatches(raw, base)) {
     const done = finish(raw);
     return done === raw ? null : done;
@@ -462,6 +475,7 @@ export const planToml = (raw: string | null, base: string): string | null => {
     throw new SetupError("could not edit the existing mistwatch provider; edit it by hand");
   return next;
 };
+const LEGACY_AUTO: ReadonlySet<string> = new Set(["auto-fast", "auto-max"]);
 const SERVER_HEAD = /^\s*\[\s*server\s*\]\s*(#.*)?$/;
 const PORT_LINE = /^(\s*port\s*=\s*)\d+(\s*(?:#.*)?)$/;
 const serverPort = (text: string): unknown => {

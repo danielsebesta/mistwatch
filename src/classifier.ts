@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { cpLen, messageText, truthy } from "./router.ts";
 import type { ChatBody, FetchLike } from "./types.ts";
 export const SYSTEM =
-  "Rate how hard the user's last request is for an AI assistant on a 0-10 integer scale. " +
+  "Rate how hard the user's last request is for an AI coding assistant on a 0-10 integer scale. " +
+  "Judge the whole situation, not only the wording: the request, the project instructions if shown, " +
+  "the tools available, what the assistant has already done and how much code it has read. " +
+  "A short request can be hard in a large or unusual project, and a long one can be easy. " +
   "0-1 greeting or trivial; 2-3 simple question, short edit, translation; " +
   "4-5 moderate coding or analysis; 6-7 multi-step debugging, design, long reasoning; " +
   "8-10 research-grade, hard math or proofs, large system design. " +
@@ -46,10 +49,53 @@ export const promptView = (body: ChatBody): string => {
     last = `${cps.slice(0, 1200).join("")}\n[...]\n${cps.slice(-600).join("")}`;
   }
   const notes: string[] = [];
-  if (truthy(body.tools)) notes.push("the assistant has tools available");
-  if (msgs.some((m) => m.role === "tool")) notes.push("this is mid-way through an agentic tool loop");
+  if (truthy(body.tools)) {
+    const names = toolNames(body);
+    notes.push(`the assistant has tools available${names.length ? ` (${names.join(", ")})` : ""}`);
+  }
+  if (msgs.some((m) => m.role === "tool")) {
+    const used = recentToolCalls(msgs);
+    const read = msgs.reduce((n, m) => n + (m.role === "tool" ? cpLen(messageText(m.content)) : 0), 0);
+    notes.push(
+      `this is mid-way through an agentic tool loop${used.length ? `, recent tool calls: ${used.join(", ")}` : ""}, about ${read} characters of tool output so far`,
+    );
+  }
   if (msgs.length > 10) notes.push(`long conversation (${msgs.length} messages)`);
-  return last + (notes.length ? `\n\n[context: ${notes.join("; ")}]` : "");
+  const project = projectContext(msgs);
+  return (
+    last +
+    (notes.length ? `\n\n[context: ${notes.join("; ")}]` : "") +
+    (project ? `\n\n[project instructions]\n${project}` : "")
+  );
+};
+const isNamed = (v: unknown): v is { function: { name: string } } =>
+  isRec(v) && isRec(v.function) && typeof v.function.name === "string";
+const toolNames = (body: ChatBody): string[] =>
+  (Array.isArray(body.tools) ? body.tools : [])
+    .filter(isNamed)
+    .map((t) => t.function.name)
+    .slice(0, 25);
+const recentToolCalls = (msgs: Record<string, unknown>[]): string[] =>
+  msgs
+    .slice(-12)
+    .flatMap((m) => (m.role === "assistant" && Array.isArray(m.tool_calls) ? m.tool_calls.filter(isNamed) : []))
+    .map((t) => t.function.name)
+    .slice(-6);
+const PROJECT_MARK = /AGENTS\.md|CLAUDE\.md|GEMINI\.md|project instructions|<project/i;
+// The system prompt of a coding agent carries the project's own instructions (AGENTS.md and the like).
+// Show the tiny model that part, or the opening of the prompt when no such marker is present.
+const PROJECT_CP = 1200;
+const projectContext = (msgs: Record<string, unknown>[]): string => {
+  const sys = msgs
+    .filter((m) => m.role === "system" || m.role === "developer")
+    .map((m) => messageText(m.content))
+    .join("\n");
+  if (sys.trim() === "") return "";
+  const at = PROJECT_MARK.exec(sys)?.index ?? 0;
+  return Array.from(sys.slice(Math.max(0, at - 100), at + 6000))
+    .slice(0, PROJECT_CP)
+    .join("")
+    .trim();
 };
 export const rate = async (
   fetchFn: FetchLike,

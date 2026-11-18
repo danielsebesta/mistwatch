@@ -17,7 +17,7 @@ commands:
   status         budget status of every account/pool (--json)
   sync           pull budget usage from Mistral now
   serve          run the proxy and web UI (--port)
-  route          dry-run the auto router on a prompt (--model --tools --llm --pressure)
+  route          dry-run the auto router on a prompt (--tools --llm --pressure)
   passwd         create a user / reset a password
   vibe-config    print the Vibe CLI provider block
   agent-config   provider config for pi|opencode (--write, --env)`;
@@ -261,7 +261,6 @@ const cmdRoute = async (args: string[]): Promise<number> => {
     args,
     allowPositionals: true,
     options: {
-      model: { type: "string", default: "auto" },
       tools: { type: "boolean", default: false },
       llm: { type: "boolean", default: false },
       pressure: { type: "string", default: "1.0" },
@@ -299,7 +298,7 @@ const cmdRoute = async (args: string[]): Promise<number> => {
     llm = res ? res[0] : null;
     console.log(`tiny LLM (${cfg.router.classifier_model}): ${llm ?? "None"}`);
   }
-  const d = decide(body, values.model, pressure, llm);
+  const d = decide(body, pressure, llm);
   console.log(`${d.model}  effort=${d.effort ?? "None"}  level=${d.level}/6  score=${d.score}/10`);
   console.log(`  ${d.reason}`);
   return 0;
