@@ -386,15 +386,29 @@ export const planToml = (raw: string | null, base: string): string | null => {
   } catch {
     throw new SetupError("not valid TOML, left untouched; add the provider block by hand");
   }
-  if (providerMatches(raw, base)) return null;
   const eol = raw.includes("\r\n") ? "\r\n" : "\n";
+  const hasAuto = (text: string): boolean => {
+    const m = parse(text).models;
+    return Array.isArray(m) && m.some((x) => isRec(x) && (x.name === "auto" || x.alias === "auto"));
+  };
+  const withAuto = (text: string): string =>
+    hasAuto(text) ? text : `${text.trimEnd()}${eol}${eol}${AUTO_MODEL.replace(/\n/g, eol)}`;
+  if (providerMatches(raw, base)) return hasAuto(raw) ? null : withAuto(raw);
   const want = { api_base: `${base}/v1`, api_key_env_var: ENV, backend: "mistral" };
   const replaced = providersOf(parse(raw)).length > 0 ? replaceProviders(raw.split(/\r?\n/), want) : null;
-  const next = replaced ? replaced.join(eol) : `${raw.trimEnd()}${eol}${eol}${block.replace(/\n/g, eol)}`;
+  const next = withAuto(replaced ? replaced.join(eol) : `${raw.trimEnd()}${eol}${eol}${block.replace(/\n/g, eol)}`);
   if (!providerMatches(next, base))
     throw new SetupError("could not edit the existing mistwatch provider; edit it by hand");
   return next;
 };
+const AUTO_MODEL = `[[models]]
+name = "auto"
+provider = "mistwatch"
+alias = "auto"
+display_name = "Auto (Mistwatch)"
+max_context_length = 256000
+supports_images = true
+`;
 const SERVER_HEAD = /^\s*\[\s*server\s*\]\s*(#.*)?$/;
 const PORT_LINE = /^(\s*port\s*=\s*)\d+(\s*(?:#.*)?)$/;
 const serverPort = (text: string): unknown => {

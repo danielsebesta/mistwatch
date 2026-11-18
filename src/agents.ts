@@ -58,7 +58,16 @@ api_base = "${base}/v1"
 api_key_env_var = "${env}"
 backend = "mistral"
 
-# Then set provider = "mistwatch" on the models you use.
+# Pick this in Vibe to let Mistwatch choose the model.
+[[models]]
+name = "auto"
+provider = "mistwatch"
+alias = "auto"
+display_name = "Auto (Mistwatch)"
+max_context_length = 256000
+supports_images = true
+
+# Or set provider = "mistwatch" on the models you already use.
 `;
 export const merge = (dst: Record<string, unknown>, src: Record<string, unknown>): Record<string, unknown> => {
   for (const [k, v] of Object.entries(src)) {

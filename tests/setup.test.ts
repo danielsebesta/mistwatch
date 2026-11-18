@@ -470,7 +470,7 @@ describe("harness planners", () => {
     const list = Array.isArray(doc.providers) ? doc.providers : [];
     expect(list).toHaveLength(2);
     expect(list[1]).toMatchObject({ name: "mistwatch", api_base: `${BASE}/v1` });
-    expect(Array.isArray(doc.models) ? doc.models : []).toHaveLength(1);
+    expect(Array.isArray(doc.models) ? doc.models : []).toHaveLength(2);
   });
   it("replaces every stale mistwatch block and keeps the custom fields of the first", () => {
     const old =
@@ -487,7 +487,7 @@ describe("harness planners", () => {
         extra: "keep",
       },
     ]);
-    expect(Array.isArray(doc.models) ? doc.models : []).toHaveLength(1);
+    expect(Array.isArray(doc.models) ? doc.models : []).toHaveLength(2);
   });
   it("does not report ok while a second mistwatch block is stale", () => {
     const stale = `${vibe(BASE)}\n[[providers]]\nname = "mistwatch"\napi_base = "http://127.0.0.1:1/v1"\n`;
@@ -694,5 +694,20 @@ describe("parseUrl", () => {
   it("rejects other schemes, credentials and paths", () => {
     for (const bad of ["ftp://x", "http://u:p@x", "http://x/foo", "http://x/?a=1", "nope"])
       expect(() => parseUrl(bad)).toThrow(SetupArgError);
+  });
+});
+describe("planToml auto model", () => {
+  const find = (text: string) =>
+    ((parse(text).models as Record<string, unknown>[]) ?? []).filter((m) => m.name === "auto");
+  it("adds an auto model to an existing config, once", () => {
+    const raw = '[[models]]\nname = "x"\nprovider = "mistral"\nalias = "x"\n';
+    const once = planToml(raw, "http://h:1") ?? "";
+    expect(find(once)).toMatchObject([{ provider: "mistwatch", alias: "auto" }]);
+    expect(planToml(once, "http://h:1")).toBeNull();
+  });
+  it("adds it when only the provider exists", () => {
+    const raw = planToml("", "http://h:1") ?? "";
+    const noModel = raw.replace(/\[\[models\]\][\s\S]*$/, "");
+    expect(find(planToml(noModel, "http://h:1") ?? "")).toHaveLength(1);
   });
 });
