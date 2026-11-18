@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { openDb } from "../src/db.ts";
 import { close } from "./helpers.ts";
@@ -127,5 +130,42 @@ describe("db", () => {
     close(db.sumCost(0, 100), 7);
     close(db.sumCost(10, 30), 3);
     close(db.sumCost(40, 50), 0);
+  });
+  it("orders members by code point, not UTF-16 unit", () => {
+    const db = openDb(":memory:");
+    db.links = new Map([
+      ["\u{1F600}", "a"],
+      ["�", "a"],
+    ]);
+    expect(db.members("a")).toEqual(["a", "�", "\u{1F600}"]);
+  });
+  it("resolves chained links to the root", () => {
+    const db = openDb(":memory:");
+    db.links = new Map([
+      ["b", "a"],
+      ["a", "c"],
+    ]);
+    expect(db.canonical("b")).toBe("c");
+    expect(db.members("b")).toEqual(["c", "a", "b"]);
+  });
+  it("tx keeps protecting later transactions when BEGIN fails", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mw-tx-"));
+    const path = join(dir, "t.db");
+    const db = openDb(path);
+    const other = openDb(path);
+    db.conn.exec("PRAGMA busy_timeout=0");
+    other.conn.exec("BEGIN IMMEDIATE");
+    expect(() => db.tx(() => db.setMeta("x", "1"))).toThrow();
+    other.conn.exec("ROLLBACK");
+    expect(() =>
+      db.tx(() => {
+        db.setMeta("x", "1");
+        throw new Error("boom");
+      }),
+    ).toThrow("boom");
+    expect(db.getMeta("x")).toBeNull();
+    db.close();
+    other.close();
+    rmSync(dir, { recursive: true, force: true });
   });
 });

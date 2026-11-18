@@ -7,7 +7,19 @@ export const SYSTEM =
   "4-5 moderate coding or analysis; 6-7 multi-step debugging, design, long reasoning; " +
   "8-10 research-grade, hard math or proofs, large system design. " +
   'Reply with JSON only: {"difficulty": <int>}';
-const NUM = /"difficulty"\s*:\s*(\d+)/;
+const ND = /\p{Nd}/u;
+const NUM = /"difficulty"\s*:\s*(\p{Nd}+)/u;
+const digitValue = (c: number): number => {
+  if (c >= 0x1d7ce && c <= 0x1d7ff) return (c - 0x1d7ce) % 10;
+  let v = 0;
+  while (v < 9 && ND.test(String.fromCodePoint(c - v - 1))) v++;
+  return v;
+};
+const pyDigits = (s: string): number => {
+  let n = 0;
+  for (const ch of s) n = Math.min(n * 10 + digitValue(ch.codePointAt(0) ?? 0), 1e6);
+  return n;
+};
 export const CACHE_MAX = 1024;
 const cache = new Map<string, number>();
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -77,6 +89,7 @@ export const rate = async (
       },
       body: JSON.stringify(req),
       signal: AbortSignal.timeout(timeoutS * 1000),
+      redirect: "manual",
     });
     if (!res.ok) throw new Error(`upstream ${res.status}`);
     const data: unknown = await res.json();
@@ -85,7 +98,7 @@ export const rate = async (
     const content = isRec(c0) && isRec(c0.message) && typeof c0.message.content === "string" ? c0.message.content : "";
     const m = NUM.exec(content);
     if (!m || m[1] === undefined) return null;
-    score = Math.max(0, Math.min(10, Number.parseInt(m[1], 10)));
+    score = Math.max(0, Math.min(10, pyDigits(m[1])));
     const u = isRec(data) && isRec(data.usage) ? data.usage : {};
     promptT = toInt(u.prompt_tokens);
     completionT = toInt(u.completion_tokens);

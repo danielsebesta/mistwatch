@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { apply, decide, decisionHeader, scoreRequest } from "../src/router.ts";
+import { apply, decide, decisionHeader, scoreRequest, worthAsking } from "../src/router.ts";
 import type { ChatBody } from "../src/types.ts";
 
 const d = (text: string, kw: Record<string, unknown> = {}) =>
@@ -70,5 +70,24 @@ describe("router", () => {
     expect(raised.level).toBeGreaterThan(base.level);
     expect(decisionHeader(raised)).toContain(";llm=9");
     expect(decide(body, "auto", 1.0, 0).level).toBeLessThanOrEqual(base.level);
+  });
+});
+describe("python parity", () => {
+  it("sorts hard keywords by code point", () => {
+    const hi = String.fromCodePoint(0x1d41a);
+    const lo = String.fromCodePoint(0xfb01);
+    const r = scoreRequest({ messages: [{ role: "user", content: `debug${lo} debug${hi} bug` }] });
+    expect(r[1].join(";")).toContain(`['bug', 'debug${lo}', 'debug${hi}']`);
+  });
+  it("strips like str.strip in worthAsking", () => {
+    const ask = (s: string) => worthAsking({ messages: [{ role: "user", content: s }] }, 0);
+    expect(ask("x".repeat(29) + String.fromCharCode(0x1c))).toBe(false);
+    expect(ask("x".repeat(29) + String.fromCharCode(0x85))).toBe(false);
+    expect(ask("x".repeat(29) + String.fromCharCode(0xfeff))).toBe(true);
+  });
+  it("counts non-ascii digit list markers", () => {
+    const fw = (n: number) => String.fromCodePoint(0xff10 + n);
+    const r = d(`${fw(1)}. a ${fw(2)}. b ${fw(3)}. c`);
+    expect(r.reason).toContain("multi-part");
   });
 });

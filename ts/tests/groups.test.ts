@@ -144,4 +144,27 @@ describe("prototype-named accounts", () => {
     refreshLinks(db, accounts("__proto__", "normal"));
     expect([...db.links]).toEqual([["normal", "__proto__"]]);
   });
+  it("flattens retained links so a new canonical never creates chains", () => {
+    const db = openDb(":memory:");
+    seed(db, "a", 1, 0, 10, 12.75, NOW - 1000);
+    seed(db, "b", 5, 0, 10, 12.75, NOW - 1000);
+    db.links = new Map([["b", "a"]]);
+    db.linksInfo = new Map([["b", "likely"]]);
+    seed(db, "a", 2, 0, 10, 12.75, NOW);
+    seed(db, "c", 2, 0, 10, 12.75, NOW);
+    refreshLinks(db, accounts("c", "a", "b"));
+    expect(Object.fromEntries(db.links)).toEqual({ a: "c", b: "c" });
+    const e = eng(db);
+    expect(db.members("b")).toEqual(["c", "a", "b"]);
+    expect(e.tryReserve("a", "vibe", 6, 10)).not.toBeNull();
+    expect(e.tryReserve("b", "vibe", 6, 10)).toBeNull();
+  });
+  it("orders members and ties by code point", () => {
+    const db = openDb(":memory:");
+    for (const n of ["\u{1F600}", "�"]) seed(db, n, 1);
+    const accs = accounts("x", "y").map((a, i) => ({ ...a, name: i ? "\u{1F600}" : "�", priority: 1 }));
+    refreshLinks(db, accs);
+    expect([...db.links]).toEqual([["\u{1F600}", "�"]]);
+    expect(summarize(eng(db), accs, NOW).shared[0]?.members).toEqual(["�", "\u{1F600}"]);
+  });
 });

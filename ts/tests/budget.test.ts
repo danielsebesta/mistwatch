@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { type BudgetEngine, createBudgetEngine, DAY, poolBlockedBy, poolRetryAt, poolRoom } from "../src/budget.ts";
+import {
+  type BudgetEngine,
+  createBudgetEngine,
+  DAY,
+  poolBlockedBy,
+  poolRetryAt,
+  poolRoom,
+  pyRound,
+} from "../src/budget.ts";
 import { defaultLimits } from "../src/config.ts";
 import { type DB, openDb } from "../src/db.ts";
 import { createPriceBook } from "../src/pricing.ts";
@@ -81,5 +89,18 @@ describe("pricing", () => {
     expect(exact2).toBe(true);
     const [, exact3] = pb.costEur("something-new", 10, 10);
     expect(exact3).toBe(false);
+  });
+  it("pyRound matches CPython round() on the exact binary value", () => {
+    expect(pyRound(5e-5, 4)).toBe(0.0001);
+    expect(pyRound(0.00025, 4)).toBe(0.0003);
+    expect(pyRound(0.015, 2)).toBe(0.01);
+    expect(pyRound(0.5, 0)).toBe(0);
+    expect(pyRound(2.5, 0)).toBe(2);
+    expect(pyRound(1.5, 0)).toBe(2);
+    expect(pyRound(-2.675, 2)).toBe(-2.67);
+    expect(pyRound(1234.56789, 4)).toBe(1234.5679);
+    expect(Object.is(pyRound(-0.00001, 4), -0)).toBe(true);
+    expect(Object.is(pyRound(-0, 4), -0)).toBe(true);
+    expect(pyRound(Number.POSITIVE_INFINITY, 4)).toBe(Number.POSITIVE_INFINITY);
   });
 });

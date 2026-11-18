@@ -92,3 +92,28 @@ describe("rate", () => {
     expect(await rate(empty, "https://x", "k", body("unique foxtrot prompt"), "m", 1)).toBeNull();
   });
 });
+describe("rate hardening", () => {
+  it("parses non-ascii decimal digits like Python int()", async () => {
+    const reply =
+      (s: string): typeof fetch =>
+      async () =>
+        jsonRes({ choices: [{ message: { content: `{"difficulty": ${s}}` } }] });
+    const cp = String.fromCodePoint;
+    expect((await rate(reply(cp(0x663)), "https://x", "k", body("digit prompt arabic"), "m", 1))?.[0]).toBe(3);
+    expect((await rate(reply(cp(0x1d7d5)), "https://x", "k", body("digit prompt math"), "m", 1))?.[0]).toBe(7);
+    expect((await rate(reply(cp(0xff18, 0xff19)), "https://x", "k", body("digit prompt wide"), "m", 1))?.[0]).toBe(10);
+    expect((await rate(reply(cp(0xff12, 0xff10)), "https://x", "k", body("digit prompt twenty"), "m", 1))?.[0]).toBe(
+      10,
+    );
+    expect((await rate(reply(cp(0xff14)), "https://x", "k", body("digit prompt four"), "m", 1))?.[0]).toBe(4);
+  });
+  it("never follows redirects and treats 3xx as failure", async () => {
+    let init: RequestInit | undefined;
+    const redirecting: typeof fetch = async (_u, i) => {
+      init = i;
+      return new Response(null, { status: 307, headers: { location: "https://evil.example/" } });
+    };
+    expect(await rate(redirecting, "https://x", "k", body("unique redirect prompt"), "m", 1)).toBeNull();
+    expect(init?.redirect).toBe("manual");
+  });
+});

@@ -83,6 +83,7 @@ const accClause = (account: string | string[]): [string, string[]] =>
   typeof account === "string"
     ? ["account=?", [account]]
     : [`account IN (${account.map(() => "?").join(",")})`, [...account]];
+export const cmpCp = (a: string, b: string): number => Buffer.compare(Buffer.from(a), Buffer.from(b));
 export type CostBetweenOpts = {
   upto?: number | undefined;
   inclusive?: boolean | undefined;
@@ -138,10 +139,18 @@ export const openDb = (path: string): DB => {
     setMeta: (key, value) => {
       stmt("INSERT INTO meta(k, v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").run(key, value);
     },
-    canonical: (account) => db.links.get(account) ?? account,
+    canonical: (account) => {
+      let cur = account;
+      for (let i = 0; i <= db.links.size; i++) {
+        const next = db.links.get(cur);
+        if (next === undefined || next === account) break;
+        cur = next;
+      }
+      return cur;
+    },
     members: (account) => {
       const c = db.canonical(account);
-      const rest = [...db.links.keys()].filter((k) => k !== c && db.links.get(k) === c).sort();
+      const rest = [...db.links.keys()].filter((k) => k !== c && db.canonical(k) === c).sort(cmpCp);
       return [c, ...rest];
     },
     addLedger: (r) => {
@@ -231,8 +240,8 @@ export const openDb = (path: string): DB => {
         })),
     tx: (fn) => {
       if (inTx) return fn();
-      inTx = true;
       conn.exec("BEGIN IMMEDIATE");
+      inTx = true;
       try {
         const r = fn();
         conn.exec("COMMIT");

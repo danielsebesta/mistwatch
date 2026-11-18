@@ -222,6 +222,46 @@ describe("sign-in flow", () => {
     for (const [acc, pool] of combos) await signin.start(acc, pool);
     await expect(signin.start("a9", "vibe")).rejects.toThrow("Too many sign-ins in progress.");
   });
+  it("reserves capacity for concurrent starts", async () => {
+    const { signin } = mk({ final: { status: "pending" } });
+    const res = await Promise.allSettled(Array.from({ length: 8 }, (_, i) => signin.start(`c${i}`, "vibe")));
+    expect(res.filter((r) => r.status === "fulfilled")).toHaveLength(5);
+    expect(res.filter((r) => r.status === "rejected")).toHaveLength(3);
+  });
+  it("keeps only one concurrent start per account and pool", async () => {
+    const { signin } = mk({ final: { status: "pending" } });
+    const res = await Promise.allSettled([
+      signin.start("me@example.cz", "vibe"),
+      signin.start("me@example.cz", "vibe"),
+    ]);
+    expect(res.map((r) => r.status)).toEqual(["rejected", "fulfilled"]);
+  });
+  it("does not finish as done when cancelled during the post-exchange sync", async () => {
+    const db = openDb(":memory:");
+    const store = createStore(db);
+    store.createAccount("me@example.cz");
+    const cfg = defaultConfig();
+    cfg.db_path = ":memory:";
+    cfg.accounts.splice(0, 0, ...store.listAccounts());
+    const h = makeHandler({});
+    let cancel: () => void = () => undefined;
+    const signin = createSignIn({
+      cfg,
+      db,
+      store,
+      fetch: fakeFetch((url, init) => {
+        if (url.endsWith("/v1/billing/budget")) cancel();
+        return h(url, init);
+      }),
+      blockedUntil: new Map(),
+      pollIntervalS: 0.01,
+    });
+    const a = await signin.start("me@example.cz", "vibe");
+    cancel = () => signin.cancel(a.id);
+    await wait(signin, a.id, ["cancelled"]);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(must(signin.get(a.id)).status).toBe("cancelled");
+  });
   it("marks an already-expired attempt as expired", async () => {
     const { signin } = mk({ expires: "2000-01-01T00:00:00Z" });
     const a = await signin.start("me@example.cz", "vibe");

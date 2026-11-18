@@ -1,5 +1,5 @@
 import { poolGrossRoom, poolPressure, poolRoom } from "./budget.ts";
-import { rate as rateRequest } from "./classifier.ts";
+import { promptView, rate as rateRequest, SYSTEM } from "./classifier.ts";
 import { keyFor } from "./config.ts";
 import type { AppError } from "./errors.ts";
 import {
@@ -15,7 +15,7 @@ import {
 import type { Reservation } from "./queue.ts";
 import { createQueue } from "./queue.ts";
 import { createRateLimiter } from "./ratelimit.ts";
-import { AUTO_MODELS, apply, decide, decisionHeader, scoreRequest, truthy, worthAsking } from "./router.ts";
+import { AUTO_MODELS, apply, cpLen, decide, decisionHeader, scoreRequest, truthy, worthAsking } from "./router.ts";
 import {
   bodyWithinLimit,
   filterRequestHeaders,
@@ -179,9 +179,17 @@ const makeSseParser = (): {
       if (!Array.isArray(choices)) continue;
       for (const ch of choices) {
         const d = isRec(ch) && isRec(ch.delta) ? ch.delta.content : undefined;
-        if (typeof d === "string") outChars += d.length;
+        if (typeof d === "string") outChars += cpLen(d);
         else if (Array.isArray(d))
-          for (const x of d) if (isRec(x) && typeof x.text === "string") outChars += x.text.length;
+          for (const x of d) if (isRec(x) && typeof x.text === "string") outChars += cpLen(x.text);
+        const tcs = isRec(ch) && isRec(ch.delta) ? ch.delta.tool_calls : undefined;
+        if (Array.isArray(tcs))
+          for (const tc of tcs) {
+            const fn = isRec(tc) && isRec(tc.function) ? tc.function : null;
+            if (fn === null) continue;
+            if (typeof fn.name === "string") outChars += cpLen(fn.name);
+            if (typeof fn.arguments === "string") outChars += cpLen(fn.arguments);
+          }
       }
     }
   };
@@ -282,32 +290,60 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
         const h = scoreRequest(parsed)[0];
         const key0 = keyFor(c0.account, c0.pool);
         if (worthAsking(parsed, h) && key0) {
-          const res = await rateRequest(
-            st.fetch,
-            cfg.upstream,
-            key0,
-            parsed,
-            cfg.router.classifier_model,
-            cfg.router.classifier_timeout_s,
-          );
-          if (res !== null) {
-            const [s, pt, ct] = res;
-            llm = s;
-            if (pt || ct) {
-              const [c] = st.prices.costEur(cfg.router.classifier_model, pt, ct);
-              st.db.addLedger({
-                ts: Date.now() / 1000,
-                account: c0.account.name,
-                pool: c0.pool,
-                client: "(router)",
-                model: cfg.router.classifier_model,
-                endpoint: "router",
-                prompt_tokens: pt,
-                completion_tokens: ct,
-                cost_eur: c,
-                source: "proxy",
-                status: 200,
-              });
+          const [cp] = st.prices.lookup(cfg.router.classifier_model);
+          const cEst =
+            (((estimateTokens(cpLen(promptView(parsed)) + cpLen(SYSTEM)) + 1) * cp.input + 24 * cp.output) / 1e6) *
+            cfg.usd_to_eur;
+          const fresh0 = c0.status === null ? null : st.engine.status(c0.account.name, c0.pool, Date.now() / 1000);
+          const cres =
+            fresh0 === null ? null : st.engine.tryReserve(c0.account.name, c0.pool, cEst, poolGrossRoom(fresh0));
+          if (fresh0 === null || cres !== null) {
+            let res: [number, number, number] | null = null;
+            try {
+              res = await queue.run(
+                () =>
+                  rateRequest(
+                    st.fetch,
+                    cfg.upstream,
+                    key0,
+                    parsed,
+                    cfg.router.classifier_model,
+                    cfg.router.classifier_timeout_s,
+                  ),
+                {
+                  signal: AbortSignal.any([req.signal, drainCtrl.signal]),
+                  timeoutMs: cfg.router.classifier_timeout_s * 1000,
+                },
+              );
+            } catch (e) {
+              if (req.signal.aborted) {
+                cres?.release();
+                throw e;
+              }
+            }
+            try {
+              if (res !== null) {
+                const [s, pt, ct] = res;
+                llm = s;
+                if (pt || ct) {
+                  const [c] = st.prices.costEur(cfg.router.classifier_model, pt, ct);
+                  st.db.addLedger({
+                    ts: Date.now() / 1000,
+                    account: c0.account.name,
+                    pool: c0.pool,
+                    client: "(router)",
+                    model: cfg.router.classifier_model,
+                    endpoint: "router",
+                    prompt_tokens: pt,
+                    completion_tokens: ct,
+                    cost_eur: c,
+                    source: "proxy",
+                    status: 200,
+                  });
+                }
+              }
+            } finally {
+              cres?.settle();
             }
           }
         }
@@ -540,7 +576,13 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
             hdrs,
           );
         }
-        const content = new Uint8Array(await resp.arrayBuffer());
+        let content: Uint8Array;
+        try {
+          content = new Uint8Array(await resp.arrayBuffer());
+        } catch (e) {
+          if (resp.status >= 200 && resp.status < 300) book(ctx, [estIn, estOut, 0], resp.status, true);
+          throw e;
+        }
         bookJson(ctx, resp.status, content);
         heldResolve();
         return respond(content, resp.status, hdrs);

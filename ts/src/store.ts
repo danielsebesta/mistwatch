@@ -196,9 +196,9 @@ export const createStore = (db: DB) => {
       throw new StoreError("Key is missing.");
     }
     const old = acct.keys[pool];
-    if (old && old !== newRef) dropSecret(old);
     acct.keys[pool] = newRef;
     run("UPDATE accounts SET keys=? WHERE name=?", JSON.stringify(acct.keys), name);
+    if (old && old !== newRef) dropSecret(old);
   };
   return {
     countUsers,

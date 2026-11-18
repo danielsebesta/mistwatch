@@ -116,6 +116,38 @@ describe("charts and listing", () => {
     expect(calls).toBe(1);
   });
 });
+describe("python string semantics", () => {
+  it("strips the python whitespace set but keeps BOM", () => {
+    const n = createModelNames(openDb(":memory:"));
+    expect(n.resolve("\x1cmistral-large-latest\x85")[0]).toBe("Mistral Large 4");
+    n.setOverride("m", "\x1fName\x1c");
+    expect(n.display("m")).toBe("Name");
+    n.setOverride("m2", "﻿Name");
+    expect(n.display("m2")).toBe("﻿Name");
+  });
+  it("counts code points for the 80 char limit", () => {
+    const n = createModelNames(openDb(":memory:"));
+    expect(() => n.setOverride("m", "😀".repeat(80))).not.toThrow();
+    expect(() => n.setOverride("m", "😀".repeat(81))).toThrow("1-80");
+  });
+  it("sorts in code point order", () => {
+    const n = createModelNames(openDb(":memory:"));
+    n.setOverride("￿x", "x1");
+    n.setOverride("\u{10000}x", "x1");
+    const keys = n.listing().map((r) => r.key);
+    expect(keys.filter((k) => k.endsWith("x"))).toEqual(["￿x", "\u{10000}x"]);
+  });
+  it("does not follow redirects when refreshing", async () => {
+    const n = createModelNames(openDb(":memory:"));
+    let redirect: RequestInit["redirect"];
+    const f: typeof fetch = async (_i, init) => {
+      redirect = init?.redirect;
+      return new Response(null, { status: 302, headers: { location: "https://evil.example/" } });
+    };
+    await expect(n.refresh(f, "https://x", "k")).rejects.toThrow("302");
+    expect(redirect).toBe("manual");
+  });
+});
 describe("prototype-named models", () => {
   it.each(["constructor", "__proto__", "toString"])("%s resolves as an unknown name", (id) => {
     const n = createModelNames(openDb(":memory:"));

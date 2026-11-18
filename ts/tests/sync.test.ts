@@ -55,19 +55,6 @@ describe("sync", () => {
     expect(snap.used_eur).toBe(5);
     expect(snap.initial_eur).toBe(10);
   });
-  it("stamps the snapshot on arrival so bookings made during the fetch are not double counted", async () => {
-    const db = openDb(":memory:");
-    const cfg = defaultConfig();
-    cfg.accounts.push(acct("a", { vibe: "vibe-key" }));
-    const f = fakeFetch(async (url) => {
-      await new Promise((r) => setTimeout(r, 30));
-      db.addLedger({ ts: Date.now() / 1000, account: "a", pool: "vibe", cost_eur: 1, source: "proxy" });
-      return url.endsWith("/v1/billing/budget") ? json(BUDGET) : json({}, 404);
-    });
-    await syncAll(f, cfg, db);
-    const snap = must(db.latestSnapshot("a", "vibe"));
-    expect(db.costBetween(["a"], "vibe", snap.ts)).toBe(0);
-  });
   it("tries account keys vibe-first and falls through on errors", async () => {
     const db = openDb(":memory:");
     const cfg = defaultConfig();
@@ -227,5 +214,25 @@ describe("reset math and the loop", () => {
     await waitFor(() => st.lastSync > 0);
     expect(st.blockedUntil.size).toBe(0);
     stop();
+  });
+  it("keeps spending booked while the fetch is in flight and an account named __proto__", async () => {
+    const db = openDb(":memory:");
+    const cfg = defaultConfig();
+    cfg.accounts.push(acct("__proto__", { vibe: "vibe-key" }));
+    const zero = {
+      vibe_budget: { usage_percentage: 0, initial_budget: 100, reset_at: "2099-01-01T00:00:00Z", currency: "EUR" },
+    };
+    const res = await syncAll(
+      fakeFetch(async () => {
+        await new Promise((r) => setTimeout(r, 30));
+        db.addLedger({ ts: Date.now() / 1000, account: "__proto__", pool: "vibe", cost_eur: 1, source: "proxy" });
+        return json(zero);
+      }),
+      cfg,
+      db,
+    );
+    expect(Object.keys(res)).toEqual(["__proto__"]);
+    const snap = must(db.latestSnapshot("__proto__", "vibe"));
+    expect(snap.used_eur + db.costBetween("__proto__", "vibe", snap.ts)).toBeCloseTo(1, 9);
   });
 });

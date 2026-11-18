@@ -537,3 +537,87 @@ describe("proxy routing, limits and shutdown", () => {
     expect(r.status).toBeGreaterThanOrEqual(400);
   });
 });
+describe("proxy accounting hardening", () => {
+  it("runs the llm classifier through the queue and reserves its cost", async () => {
+    calls.length = 0;
+    let active = 0;
+    let peak = 0;
+    const cfg = mkCfg([acct()]);
+    cfg.router.llm_classifier = true;
+    const st = createState(
+      cfg,
+      fakeFetch(async (_u, init) => {
+        active += 1;
+        peak = Math.max(peak, active);
+        await new Promise((r) => setTimeout(r, 5));
+        active -= 1;
+        const b = bodyOf(init);
+        if (isRec(b) && b.model === cfg.router.classifier_model)
+          return json({
+            choices: [{ message: { content: '{"difficulty": 5}' } }],
+            usage: { prompt_tokens: 10, completion_tokens: 3 },
+          });
+        return okJson();
+      }),
+    );
+    seedPool(st, "a", "api", 0, 12.75);
+    seedPool(st, "a", "vibe", 127.5, 127.5);
+    const p = createProxy(st, { concurrency: 1, maxPending: 64 });
+    const rs = await Promise.all(
+      Array.from({ length: 6 }, async (_, i) => {
+        const r = await p.handle(
+          jreq(
+            "/v1/chat/completions",
+            { model: "auto", messages: [{ role: "user", content: `please explain topic number ${i} in some detail` }] },
+            AUTH,
+          ),
+        );
+        await r.text();
+        return r.status;
+      }),
+    );
+    expect(rs.every((s) => s === 200)).toBe(true);
+    expect(peak).toBe(1);
+    expect(st.db.recent().some((r) => r.endpoint === "router")).toBe(true);
+    expect(must(st.engine.status("a", "api")).inflight).toBe(0);
+  });
+  it("books an estimate when a 2xx body breaks mid-read", async () => {
+    const st = baseState(
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(c) {
+              c.enqueue(enc.encode("{"));
+              c.error(new Error("reset"));
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    const r = await createProxy(st).handle(
+      jreq("/v1/chat/completions", { model: "mistral-large-4-0", max_tokens: 100 }, AUTH),
+    );
+    expect(r.status).toBe(502);
+    const row = must(st.db.recent()[0]);
+    expect(row.estimated).toBe(1);
+    expect(row.completion_tokens).toBe(100);
+    expect(must(st.engine.status("a", "api")).inflight).toBe(0);
+  });
+  it("counts tool call chunks and code points in the stream fallback", async () => {
+    const e = "😀".repeat(8);
+    const chunk = (delta: unknown): string => `data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`;
+    const st = baseState(
+      () =>
+        new Response(
+          chunk({ content: e }) +
+            chunk({ tool_calls: [{ function: { name: "abcd", arguments: e } }] }) +
+            "data: [DONE]\n\n",
+        ),
+    );
+    const r = await createProxy(st).handle(
+      jreq("/v1/chat/completions", { model: "mistral-large-4-0", stream: true }, AUTH),
+    );
+    await r.text();
+    expect(must(st.db.recent()[0]).completion_tokens).toBe(5);
+  });
+});

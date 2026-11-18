@@ -45,7 +45,7 @@ const EASY = new RegExp(
   "iu",
 );
 const TRACE = /Traceback \(most recent|^\s+at .+\(.+:\d+\)|\bException\b|\bpanic:|error\[E\d+\]|Segmentation fault/m;
-const LIST = /(?:^\s*|\s)(\d{1,2}[.)]|[-*•])\s+\S/gm;
+const LIST = /(?:^\s*|\s)(\p{Nd}{1,2}[.)]|[-*•])\s+\S/gmu;
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 export const truthy = (v: unknown): boolean => {
   if (Array.isArray(v)) return v.length > 0;
@@ -81,6 +81,20 @@ export const cpLen = (s: string): number => {
   for (const _ of s) n++;
   return n;
 };
+const PY_STRIP =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: python str.isspace set
+  /^[\t-\r\x1c-\x20\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\t-\r\x1c-\x20\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g;
+export const pyStrip = (s: string): string => s.replace(PY_STRIP, "");
+const cpCmp = (a: string, b: string): number => {
+  const x = Array.from(a, (c) => c.codePointAt(0) ?? 0);
+  const y = Array.from(b, (c) => c.codePointAt(0) ?? 0);
+  const n = Math.min(x.length, y.length);
+  for (let i = 0; i < n; i++) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return x.length - y.length;
+};
 const pyList = (xs: string[]): string => `[${xs.map((x) => `'${x}'`).join(", ")}]`;
 export const scoreRequest = (body: ChatBody): [number, string[], number, boolean] => {
   const msgs = userMsgs(body);
@@ -113,7 +127,7 @@ export const scoreRequest = (body: ChatBody): [number, string[], number, boolean
     const g = m[0];
     if (g !== undefined) hard.add(g.toLowerCase());
   }
-  const sortedHard = [...hard].sort();
+  const sortedHard = [...hard].sort(cpCmp);
   if (hard.size >= 4) add(3, `many hard keywords ${pyList(sortedHard.slice(0, 4))}`);
   else if (hard.size >= 3) add(2, `hard keywords ${pyList(sortedHard.slice(0, 4))}`);
   else if (hard.size >= 1) add(1, `hard keyword ${sortedHard[0] ?? ""}`);
@@ -130,7 +144,7 @@ export const scoreRequest = (body: ChatBody): [number, string[], number, boolean
 };
 export const worthAsking = (body: ChatBody, score: number): boolean => {
   const last = lastUserText(userMsgs(body));
-  return cpLen(last.trim()) >= 30 && score < 8;
+  return cpLen(pyStrip(last)) >= 30 && score < 8;
 };
 const ladderAt = (i: number): Step => {
   const s = LADDER[((i % LADDER.length) + LADDER.length) % LADDER.length];

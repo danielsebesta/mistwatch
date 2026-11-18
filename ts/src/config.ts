@@ -55,6 +55,10 @@ const pyInt = (v: unknown): number => {
   if (typeof v === "string" && /^[+-]?\d+$/.test(v.trim())) return Number.parseInt(v.trim(), 10);
   throw new TypeError(`int() argument must be a string or a number, not ${describe(v)}`);
 };
+const finiteInt = (v: unknown): number => {
+  if (typeof v === "number" && !Number.isFinite(v)) throw new TypeError(`cannot convert ${v} to int`);
+  return pyInt(v);
+};
 const pyFloat = (v: unknown): number => {
   if (typeof v === "boolean") return v ? 1 : 0;
   if (typeof v === "number") return v;
@@ -135,7 +139,7 @@ export const loadConfig = (path?: string): Config => {
     burst_5h: pick(lim, "burst_5h", cfg.limits.burst_5h, pyFloat),
     burst_day: pick(lim, "burst_day", cfg.limits.burst_day, pyFloat),
     burst_week: pick(lim, "burst_week", cfg.limits.burst_week, pyFloat),
-    sync_interval_s: pick(lim, "sync_interval_s", cfg.limits.sync_interval_s, pyInt),
+    sync_interval_s: pick(lim, "sync_interval_s", cfg.limits.sync_interval_s, finiteInt),
     strategy: pick(lim, "strategy", cfg.limits.strategy, pyStr),
     fallback_to_other_pool: pick(lim, "fallback_to_other_pool", cfg.limits.fallback_to_other_pool, pyBool),
     vibe_user_agent_regex: pick(lim, "vibe_user_agent_regex", cfg.limits.vibe_user_agent_regex, pyStr),

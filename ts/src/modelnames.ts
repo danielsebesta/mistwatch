@@ -43,8 +43,7 @@ const word = (tok: string): string => {
   return tok.charAt(0).toUpperCase() + tok.slice(1).toLowerCase();
 };
 export const autoname = (modelId: string): string => {
-  const toks = modelId
-    .trim()
+  const toks = pyStrip(modelId)
     .toLowerCase()
     .split(/[-_ ]+/)
     .filter((t) => t);
@@ -79,6 +78,19 @@ export const autoname = (modelId: string): string => {
     i++;
   }
   return out.join(" ") + suffix || modelId;
+};
+const PY_SPACE = "\t\n\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000";
+const PY_STRIP = new RegExp(`^[${PY_SPACE}]+|[${PY_SPACE}]+$`, "g");
+const pyStrip = (s: string): string => s.replace(PY_STRIP, "");
+const cmpCodePoints = (a: string, b: string): number => {
+  const x = Array.from(a, (c) => c.codePointAt(0) ?? 0);
+  const y = Array.from(b, (c) => c.codePointAt(0) ?? 0);
+  const n = Math.min(x.length, y.length);
+  for (let i = 0; i < n; i++) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return x.length - y.length;
 };
 const looksHuman = (name: string): boolean => name.includes(" ") || [...name].some((c) => c !== c.toLowerCase());
 const str = (v: unknown): string => {
@@ -123,7 +135,7 @@ export const createModelNames = (db: DB) => {
     return c?.name || modelId;
   };
   const resolve = (modelId: string | null | undefined): [string, NameSource] => {
-    const m = (modelId ?? "").trim();
+    const m = pyStrip(modelId ?? "");
     if (!m) return ["(unknown)", "auto"];
     const key = groupKey(m);
     for (const k of [m, key]) {
@@ -139,6 +151,7 @@ export const createModelNames = (db: DB) => {
   };
   const refresh = async (fetchFn: FetchLike, base: string, key: string, now = Date.now() / 1000): Promise<number> => {
     const res = await fetchFn(`${base}/v1/models`, {
+      redirect: "manual",
       headers: { Authorization: `Bearer ${key}`, "User-Agent": "mistwatch/0.1" },
       signal: AbortSignal.timeout(20_000),
     });
@@ -165,13 +178,12 @@ export const createModelNames = (db: DB) => {
     reload();
     return rows.length;
   };
-  const cmpStr = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
   return {
     reload,
     groupKey,
     setOverride: (modelId: string, display: string): void => {
-      const d = display.trim();
-      if (!d || d.length > 80 || [...d].some((c) => c.charCodeAt(0) < 32))
+      const d = pyStrip(display);
+      if (!d || Array.from(d).length > 80 || [...d].some((c) => c.charCodeAt(0) < 32))
         throw new Error("Name must be 1-80 printable characters.");
       db.stmt(
         "INSERT INTO model_names(model_id, display) VALUES(?,?) ON CONFLICT(model_id) DO UPDATE SET display=excluded.display",
@@ -213,7 +225,7 @@ export const createModelNames = (db: DB) => {
       for (const s of LADDER) ids.add(s.model);
       if (includeAll) for (const k of cat.keys()) ids.add(k);
       const groups = new Map<string, { ids: string[]; calls: number; last: number }>();
-      for (const i of [...ids].sort()) {
+      for (const i of [...ids].sort(cmpCodePoints)) {
         const gk = groupKey(i);
         let g = groups.get(gk);
         if (!g) {
@@ -241,7 +253,7 @@ export const createModelNames = (db: DB) => {
           description: ce?.description ?? null,
         });
       }
-      return out.sort((a, b) => b.calls - a.calls || cmpStr(a.display.toLowerCase(), b.display.toLowerCase()));
+      return out.sort((a, b) => b.calls - a.calls || cmpCodePoints(a.display.toLowerCase(), b.display.toLowerCase()));
     },
   };
 };

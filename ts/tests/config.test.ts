@@ -42,6 +42,34 @@ describe("paths and secrets", () => {
   });
 });
 describe("loadConfig", () => {
+  it("keeps prototype-named TOML keys as plain data", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mwcfg-"));
+    const p = join(dir, "config.toml");
+    writeFileSync(
+      p,
+      `
+[pricing.models."__proto__"]
+input = 1
+output = 2
+
+[pricing.models.constructor]
+input = 3
+output = 4
+
+[[accounts]]
+name = "a"
+keys = {}
+
+[[clients]]
+name = "c"
+token = "t"
+`,
+    );
+    const cfg = loadConfig(p);
+    expect(Object.keys(cfg.price_overrides).sort()).toEqual(["__proto__", "constructor"]);
+    expect(Object.getPrototypeOf(cfg.price_overrides)).toBe(Object.prototype);
+    expect(({} as Record<string, unknown>).input).toBeUndefined();
+  });
   it("applies TOML overrides and keeps defaults", () => {
     const dir = mkdtempSync(join(tmpdir(), "mwcfg-"));
     const p = join(dir, "config.toml");
@@ -122,5 +150,10 @@ token = "tok"
   });
   it("fails with a helpful error when the file is missing", () => {
     expect(() => loadConfig("/definitely/missing-x.toml")).toThrow("not found - run `mistwatch init` first");
+  });
+  it("rejects a non-finite sync_interval_s", () => {
+    const p = join(mkdtempSync(join(tmpdir(), "mw-")), "c.toml");
+    writeFileSync(p, "[limits]\nsync_interval_s = nan\n");
+    expect(() => loadConfig(p)).toThrow("cannot convert");
   });
 });

@@ -29,11 +29,26 @@ export const poolRetryAt = (st: PoolStatus): number | null => {
   if (b === "month") return st.month_retry_at;
   return st.windows[b]?.retry_at ?? null;
 };
-const pyRound = (x: number, digits: number): number => {
-  const m = x * 10 ** digits;
-  const f = Math.floor(m);
-  const d = m - f;
-  return (d > 0.5 ? f + 1 : d < 0.5 ? f : f % 2 === 0 ? f : f + 1) / 10 ** digits;
+const f64 = new DataView(new ArrayBuffer(8));
+// CPython round(): half-even on the exact binary value, then the nearest double of the decimal result
+export const pyRound = (x: number, digits: number): number => {
+  if (!Number.isFinite(x) || x === 0) return x;
+  f64.setFloat64(0, Math.abs(x));
+  const bits = f64.getBigUint64(0);
+  const be = Number((bits >> 52n) & 0x7ffn);
+  const frac = bits & 0xfffffffffffffn;
+  const mant = be === 0 ? frac : frac | (1n << 52n);
+  const e = (be === 0 ? 1 : be) - 1075;
+  const num = mant * 10n ** BigInt(digits);
+  let n: bigint;
+  if (e >= 0) n = num << BigInt(e);
+  else {
+    const den = 1n << BigInt(-e);
+    n = num / den;
+    const twice = (num % den) * 2n;
+    if (twice > den || (twice === den && n % 2n === 1n)) n += 1n;
+  }
+  return Number(`${x < 0 ? "-" : ""}${n}e-${digits}`);
 };
 export const poolStatusDict = (st: PoolStatus): PoolStatusDict => ({
   account: st.account,

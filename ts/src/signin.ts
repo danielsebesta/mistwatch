@@ -82,6 +82,7 @@ type AttemptRec = {
   ctrl: AbortController;
   task: Promise<void> | null;
 };
+type Starting = { account: string; pool: Pool; ctrl: AbortController };
 const pub = (a: AttemptRec): SignInAttempt => ({
   id: a.id,
   account: a.account,
@@ -95,6 +96,7 @@ const pub = (a: AttemptRec): SignInAttempt => ({
 export const createSignIn = (deps: SignInDeps): SignInApi => {
   const pollInterval = deps.pollIntervalS ?? 3.0;
   const attempts = new Map<string, AttemptRec>();
+  const starting = new Set<Starting>();
   const finish = (a: AttemptRec, status: SignInStatus, message = ""): void => {
     a.status = status;
     a.message = message;
@@ -152,6 +154,7 @@ export const createSignIn = (deps: SignInDeps): SignInApi => {
     } catch {
       key = undefined;
     }
+    if (a.ctrl.signal.aborted) return;
     if (typeof key !== "string" || key === "") return finish(a, "error", "Mistral did not return an API key.");
     try {
       deps.store.setKey(a.account, a.pool, { value: key });
@@ -166,6 +169,7 @@ export const createSignIn = (deps: SignInDeps): SignInApi => {
     } catch (e) {
       console.error("sync after sign-in", e);
     }
+    if (a.ctrl.signal.aborted) return;
     finish(a, "done", "Signed in.");
   };
   const run = async (a: AttemptRec): Promise<void> => {
@@ -221,9 +225,20 @@ export const createSignIn = (deps: SignInDeps): SignInApi => {
       if (a.account === account && a.pool === pool && (a.status === "pending" || a.status === "exchanging"))
         cancel(a.id);
     }
-    let active = 0;
+    for (const s of starting) if (s.account === account && s.pool === pool) s.ctrl.abort();
+    let active = starting.size;
     for (const a of attempts.values()) if (a.status === "pending" || a.status === "exchanging") active += 1;
     if (active >= MAX_ACTIVE) throw new SignInError("Too many sign-ins in progress.");
+    const slot: Starting = { account, pool, ctrl: new AbortController() };
+    starting.add(slot);
+    try {
+      return await begin(slot);
+    } finally {
+      starting.delete(slot);
+    }
+  };
+  const begin = async (slot: Starting): Promise<SignInAttempt> => {
+    const { account, pool } = slot;
     const [verifier, challenge] = pkcePair();
     let r: Response;
     try {
@@ -232,11 +247,13 @@ export const createSignIn = (deps: SignInDeps): SignInApi => {
         redirect: "manual",
         headers: { "User-Agent": USER_AGENT, "Content-Type": "application/json" },
         body: JSON.stringify({ code_challenge: challenge, code_challenge_method: "S256" }),
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.any([slot.ctrl.signal, AbortSignal.timeout(20_000)]),
       });
     } catch (e) {
+      if (slot.ctrl.signal.aborted) throw new SignInError("Replaced by a newer sign-in for this account.");
       throw new SignInError(`Cannot reach Mistral (${errName(e)}).`);
     }
+    if (slot.ctrl.signal.aborted) throw new SignInError("Replaced by a newer sign-in for this account.");
     if (!r.ok) throw new SignInError(`Mistral refused to start the sign-in (HTTP ${r.status}).`);
     let a: AttemptRec;
     try {
@@ -266,6 +283,7 @@ export const createSignIn = (deps: SignInDeps): SignInApi => {
       if (e instanceof SignInError) throw e;
       throw new SignInError("Mistral returned an unexpected response.");
     }
+    if (slot.ctrl.signal.aborted) throw new SignInError("Replaced by a newer sign-in for this account.");
     attempts.set(a.id, a);
     a.task = run(a);
     return pub(a);

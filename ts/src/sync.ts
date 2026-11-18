@@ -137,13 +137,13 @@ const recordSnapshot = (
 const syncAccount = async (fetchFn: FetchLike, cfg: Config, db: DB, acct: Account): Promise<SyncedPools> => {
   const out: Record<string, SyncPoolResult> = {};
   let data: Record<string, unknown> | null = null;
+  // snapshot is stamped at request start: bookings made while the fetch is in flight stay on top of it
+  const now = Date.now() / 1000;
   try {
     data = await fetchBudget(fetchFn, cfg, acct);
   } catch (e) {
     console.warn(`budget sync failed for ${acct.name}:`, e);
   }
-  // stamp on arrival so bookings made during the fetch are not counted twice
-  const now = Date.now() / 1000;
   if (data !== null && Object.keys(data).length > 0) {
     for (const [fname, pool] of Object.entries(BUDGET_POOLS)) {
       const b = data[fname];
@@ -183,15 +183,15 @@ const syncAccount = async (fetchFn: FetchLike, cfg: Config, db: DB, acct: Accoun
   return out;
 };
 export const syncAll = async (fetchFn: FetchLike, cfg: Config, db: DB): Promise<SyncAllResult> => {
-  const res: SyncAllResult = {};
+  const res: [string, SyncedPools][] = [];
   for (const a of cfg.accounts) {
-    if (a.enabled) res[a.name] = await syncAccount(fetchFn, cfg, db, a);
+    if (a.enabled) res.push([a.name, await syncAccount(fetchFn, cfg, db, a)]);
   }
   refreshLinks(
     db,
     cfg.accounts.filter((a) => a.enabled),
   );
-  return res;
+  return Object.fromEntries(res);
 };
 export const startSyncLoop = (st: State): (() => void) => {
   let stopped = false;

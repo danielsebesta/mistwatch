@@ -265,6 +265,15 @@ describe("sessions, setup and login", () => {
     expect(r.status).toBe(429);
     expect(Number(r.headers.get("retry-after"))).toBeGreaterThan(0);
   });
+  it("applies the lockout to padded usernames", async () => {
+    const { app } = mkApp();
+    await login(app);
+    await jpost(app, "/api/logout", {}, H);
+    for (let i = 0; i < 5; i += 1)
+      await jpost(app, "/api/login", { username: "daniel", password: "bad-password-x" }, H);
+    const r = await jpost(app, "/api/login", { username: " daniel ", password: PW }, H);
+    expect(r.status).toBe(429);
+  });
   it("expires idle and absolute-expired sessions and touches last_seen", async () => {
     const { app, st } = mkApp();
     const { cookie } = await login(app);

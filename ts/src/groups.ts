@@ -1,5 +1,5 @@
 import { type BudgetEngine, poolRetryAt, poolRoom, WINDOWS } from "./budget.ts";
-import type { DB } from "./db.ts";
+import { cmpCp, type DB } from "./db.ts";
 import type { Account, PoolAgg, PoolStatus, SharedGroup, Snapshot, Summary, WindowAgg } from "./types.ts";
 import { POOLS } from "./types.ts";
 export const SAME_PASS_S = 90.0;
@@ -65,7 +65,7 @@ export const refreshLinks = (db: DB, accounts: Account[]): Map<string, string> =
     if (minTs >= newest - SAME_PASS_S) fresh.set(n, per);
     else stale.add(n);
   }
-  const names = [...fresh.keys()].sort();
+  const names = [...fresh.keys()].sort(cmpCp);
   const parent = new Map<string, string>(names.map((n) => [n, n]));
   const find = (x: string): string => {
     let cur = x;
@@ -107,7 +107,7 @@ export const refreshLinks = (db: DB, accounts: Account[]): Map<string, string> =
     for (const m of members) {
       const pm = prio.get(m) ?? 999;
       const pc = prio.get(canon) ?? 999;
-      if (pm < pc || (pm === pc && m < canon)) canon = m;
+      if (pm < pc || (pm === pc && cmpCp(m, canon) < 0)) canon = m;
     }
     const per = fresh.get(canon);
     const spent = per ? Object.values(per).some((s) => s.used_eur > EPS_EUR) : false;
@@ -117,6 +117,18 @@ export const refreshLinks = (db: DB, accounts: Account[]): Map<string, string> =
         info.set(m, spent ? "sure" : "likely");
       }
     }
+  }
+  for (const m of [...links.keys()]) {
+    let root = links.get(m) ?? m;
+    for (let i = 0; i <= links.size; i++) {
+      const next = links.get(root);
+      if (next === undefined || next === m) break;
+      root = next;
+    }
+    if (root === m) {
+      links.delete(m);
+      info.delete(m);
+    } else links.set(m, root);
   }
   db.links = links;
   db.linksInfo = info;
@@ -130,7 +142,8 @@ export const refreshLinks = (db: DB, accounts: Account[]): Map<string, string> =
 };
 export const sharedGroups = (db: DB): SharedGroup[] => {
   const out = new Map<string, SharedGroup>();
-  for (const [m, c] of db.links) {
+  for (const m of db.links.keys()) {
+    const c = db.canonical(m);
     let g = out.get(c);
     if (!g) {
       g = { canonical: c, members: [c], confidence: "sure" };
@@ -139,7 +152,7 @@ export const sharedGroups = (db: DB): SharedGroup[] => {
     g.members.push(m);
     if (db.linksInfo.get(m) !== "sure") g.confidence = "likely";
   }
-  return [...out.values()].map((g) => ({ ...g, members: [...g.members].sort() }));
+  return [...out.values()].map((g) => ({ ...g, members: [...g.members].sort(cmpCp) }));
 };
 const pos = (x: number): number => Math.max(x, 0);
 const sumOf = (xs: PoolStatus[], f: (s: PoolStatus) => number): number => xs.reduce((a, s) => a + f(s), 0);
@@ -164,7 +177,7 @@ const agg = (statuses: PoolStatus[]): PoolAgg => {
   const retries = blocked.map((s) => poolRetryAt(s)).filter((x): x is number => x !== null);
   return {
     budgets: statuses.length,
-    accounts: [...new Set(statuses.flatMap((s) => s.members))].sort(),
+    accounts: [...new Set(statuses.flatMap((s) => s.members))].sort(cmpCp),
     initial_eur: sumOf(statuses, (s) => s.initial),
     used_eur: sumOf(statuses, (s) => s.used),
     remaining_eur: sumOf(statuses, (s) => pos(s.remaining)),

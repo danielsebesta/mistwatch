@@ -163,7 +163,7 @@ export const createWebApi = (st: State, opts: WebApiOpts = {}): Hono => {
   api.post("/login", async (c) => {
     csrf(c);
     const b = await jsonBody(c);
-    const name = strOf(b.username);
+    const name = strOf(b.username).trim();
     const a = addr(c);
     const rl = loginLimit.check(a);
     if (!rl.allowed) throw asException(errors.rateLimited(rl.retryAfter));
