@@ -4,8 +4,36 @@ import { join } from "node:path";
 import { parse } from "smol-toml";
 import { type Keyring, keyring } from "./keyring.ts";
 import type { Account, Client, Config, Limits, ManualPool, PriceOverride, RouterCfg } from "./types.ts";
+
+declare const __USD_TO_EUR__: number | undefined;
+export const DEFAULT_USD_TO_EUR = typeof __USD_TO_EUR__ === "number" ? __USD_TO_EUR__ : 0.86;
 export const homeDir = (): string => process.env.MISTWATCH_HOME || join(homedir(), ".mistwatch");
 export const configPath = (): string => process.env.MISTWATCH_CONFIG || join(homeDir(), "config.toml");
+export const CONFIG_TEMPLATE = `# mistwatch config (server, limits, pricing). Accounts, keys and logins are managed in the web UI.
+[server]
+host = "127.0.0.1"
+port = 8787
+
+[upstream]
+base_url = "https://api.mistral.ai"
+
+[pricing]
+usd_to_eur = ${DEFAULT_USD_TO_EUR}          # docs prices are USD, budgets are EUR
+
+[limits]
+reserve_pct = 3.0          # untouchable slice of every pool's monthly budget
+burst_5h = 2.0             # x fair pace allowed within any 5h window
+burst_day = 1.5
+burst_week = 1.25
+sync_interval_s = 300
+strategy = "most_headroom" # or "priority"
+fallback_to_other_pool = true
+vibe_user_agent_regex = "Mistral-Vibe"
+
+[router]
+llm_classifier = true      # ask a tiny model to rate prompt difficulty for \`auto\`
+classifier_model = "ministral-3b-latest"
+`;
 export const defaultLimits = (): Limits => ({
   reserve_pct: 3.0,
   burst_5h: 2.0,
@@ -25,7 +53,7 @@ export const defaultConfig = (): Config => ({
   host: "127.0.0.1",
   port: 8787,
   upstream: "https://api.mistral.ai",
-  usd_to_eur: 0.86,
+  usd_to_eur: DEFAULT_USD_TO_EUR,
   db_path: join(homeDir(), "mistwatch.db"),
   limits: defaultLimits(),
   router: defaultRouterCfg(),

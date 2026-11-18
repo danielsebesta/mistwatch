@@ -182,6 +182,26 @@ describe("prototype-named accounts", () => {
     expect(e.tryReserve("b", "vibe", 6, 10)).not.toBeNull();
     expect(e.tryReserve("c", "vibe", 6, 10)).toBeNull();
   });
+  it("keeps a stale account in the group when the canonical changes", () => {
+    const db = openDb(":memory:");
+    seed(db, "a", 1, 0, 10, 12.75, NOW - 1000);
+    seed(db, "b", 2, 0, 10, 12.75, NOW);
+    seed(db, "c", 2, 0, 10, 12.75, NOW);
+    db.links = new Map([
+      ["b", "a"],
+      ["c", "a"],
+    ]);
+    db.linksInfo = new Map([
+      ["b", "likely"],
+      ["c", "likely"],
+    ]);
+    refreshLinks(db, accounts("a", "b", "c"));
+    expect(Object.fromEntries(db.links)).toEqual({ a: "b", c: "b" });
+    for (const n of ["a", "b", "c"]) expect(db.canonical(n)).toBe("b");
+    const e = eng(db);
+    expect(e.tryReserve("b", "vibe", 6, 10)).not.toBeNull();
+    expect(e.tryReserve("a", "vibe", 6, 10)).toBeNull();
+  });
   it("resolves persisted cycles to one canonical", () => {
     const db = openDb(":memory:");
     db.links = new Map([

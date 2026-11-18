@@ -109,8 +109,14 @@ export const refreshLinks = (db: DB, accounts: Account[]): Map<string, string> =
       const pc = prio.get(canon) ?? 999;
       if (pm < pc || (pm === pc && cmpCp(m, canon) < 0)) canon = m;
     }
+    const old = links.get(canon);
+    const oldInfo = info.get(canon) ?? "likely";
     links.delete(canon);
     info.delete(canon);
+    if (old !== undefined && old !== canon && !members.includes(old)) {
+      links.set(old, canon);
+      info.set(old, oldInfo);
+    }
     const per = fresh.get(canon);
     const spent = per ? Object.values(per).some((s) => s.used_eur > EPS_EUR) : false;
     for (const m of members) {

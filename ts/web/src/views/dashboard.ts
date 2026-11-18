@@ -76,6 +76,7 @@ const chartControls = (set: SetPref, panel: HTMLElement): Controls => {
 export const viewDash = async (main: HTMLElement): Promise<void> => {
   let range = asRange(pref.get("range", "7d"));
   let by = asBy(pref.get("by", "model"));
+  let shown = { range, by };
   let active = true;
   let timer = 0;
   const guard = latest();
@@ -86,14 +87,13 @@ export const viewDash = async (main: HTMLElement): Promise<void> => {
   const chartSlot = slot();
   const restSlot = slot();
   const set: SetPref = (k, v) => {
-    const prev = { range, by };
     if (k === "range") range = asRange(v);
     else by = asBy(v);
     pref.set(k, v);
     controls.sync(range, by);
     void load((e) => {
       // the new selection could not be loaded: go back to what is on screen
-      ({ range, by } = prev);
+      ({ range, by } = shown);
       pref.set("range", range);
       pref.set("by", by);
       controls.sync(range, by);
@@ -118,6 +118,7 @@ export const viewDash = async (main: HTMLElement): Promise<void> => {
     if (!active || !guard.isCurrent(ticket) || !body.isConnected) return;
     if (!body.dataset.ok) body.replaceChildren(topSlot, chartSec, restSlot);
     body.dataset.ok = "1";
+    shown = { range: r, by: b };
     syncMeta.textContent = `Last sync with Mistral: ${d.last_sync ? ago(d.last_sync) : "not yet"}`;
     const parts = dashBody(d, u, led, r, b);
     chartSec.hidden = !parts.chart;
