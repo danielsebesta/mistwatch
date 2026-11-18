@@ -51,6 +51,7 @@ export type AggStatus = {
   blocked: boolean;
   retry_at: number | null;
   reset_at: number | null;
+  resets: { at: number; budgets: number }[];
 };
 export type SharedGroup = { canonical: string; members: string[]; confidence: "sure" | "likely" };
 export type Summary = {

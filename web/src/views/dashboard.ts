@@ -391,6 +391,9 @@ const dashBody = (
   return { top: [summaryStrip(a)], chart: chartCard(u, a, range, by), rest: [split, fl] };
 };
 
+const fmtDay = (ts: number): string =>
+  new Date(ts * 1000).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+
 const summaryStrip = (a: AggStatus): HTMLElement => {
   const pct = a.initial_eur ? pct100((a.used_eur / a.initial_eur) * 100) : 0;
   const wins: [string, WindowTotal][] = [
@@ -448,7 +451,7 @@ const summaryStrip = (a: AggStatus): HTMLElement => {
       ? cell(
           "Resets",
           resetIn < 1 ? "< 1 day" : `in ${Math.round(resetIn)} d`,
-          new Date(resetAt * 1000).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }),
+          a.resets.length > 1 ? a.resets.map((r) => `${fmtDay(r.at)} (${r.budgets})`).join(" · ") : fmtDay(resetAt),
         )
       : null,
   );

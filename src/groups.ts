@@ -158,6 +158,16 @@ export const sharedGroups = (db: DB): SharedGroup[] => {
 };
 const pos = (x: number): number => Math.max(x, 0);
 const sumOf = (xs: PoolStatus[], f: (s: PoolStatus) => number): number => xs.reduce((a, s) => a + f(s), 0);
+// Distinct reset times (within a minute counts as the same), soonest first.
+const resetsOf = (statuses: PoolStatus[]): { at: number; budgets: number }[] => {
+  const out: { at: number; budgets: number }[] = [];
+  for (const at of statuses.map((s) => s.reset_at).sort((x, y) => x - y)) {
+    const last = out[out.length - 1];
+    if (last && at - last.at < 60) last.budgets++;
+    else out.push({ at, budgets: 1 });
+  }
+  return out;
+};
 const agg = (statuses: PoolStatus[]): PoolAgg => {
   const windows: Record<string, WindowAgg> = {};
   for (const n of Object.keys(WINDOWS)) {
@@ -194,6 +204,7 @@ const agg = (statuses: PoolStatus[]): PoolAgg => {
     blocked: allBlocked,
     retry_at: allBlocked && retries.length ? Math.min(...retries) : null,
     reset_at: statuses.length ? Math.min(...statuses.map((s) => s.reset_at)) : null,
+    resets: resetsOf(statuses),
   };
 };
 export const summarize = (engine: BudgetEngine, accounts: Account[], now?: number): Summary => {
