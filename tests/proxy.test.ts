@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultConfig } from "../src/config.ts";
 import { createProxy } from "../src/proxy.ts";
-import { blockKey, createState, type State } from "../src/state.ts";
+import { blockKey, createState, exhaustedInfo, type State } from "../src/state.ts";
 import type { Account, Config, FetchLike } from "../src/types.ts";
 import { must } from "./helpers.ts";
 
@@ -704,6 +704,11 @@ describe("proxy accounting hardening", () => {
     const ra = Number(r.headers.get("retry-after"));
     expect(ra).toBeGreaterThan(0);
     expect(ra).toBeLessThanOrEqual(30);
+  });
+  it("labels a pool that has room but not enough for the request", () => {
+    const st = baseState(() => okJson());
+    const info = exhaustedInfo(st, Date.now() / 1000, "api");
+    expect(info.pools.find((x) => x.pool === "api")?.blocked_by).toBe("insufficient-room");
   });
   it("counts tool call chunks and code points in the stream fallback", async () => {
     const e = "😀".repeat(8);

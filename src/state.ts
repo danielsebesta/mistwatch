@@ -109,7 +109,9 @@ export const exhaustedInfo = (st: State, now: number, cls?: "vibe" | "api"): Exh
       pools.push({
         account: account.name,
         pool,
-        blocked_by: blocked ? "temporarily-blocked" : (poolBlockedBy(status) ?? "temporarily-blocked"),
+        blocked_by: blocked
+          ? "temporarily-blocked"
+          : (poolBlockedBy(status) ?? (poolRoom(status) > 0 ? "insufficient-room" : "temporarily-blocked")),
         retry_at: retryAt,
       });
       if (retryAt) retry.push(retryAt);
