@@ -188,6 +188,9 @@ export const loadConfig = (path?: string): Config => {
   cfg.host = process.env.MISTWATCH_HOST || pick(server, "host", cfg.host, asStr);
   cfg.port = pick(server, "port", cfg.port, asInt);
   cfg.allowed_hosts = pick(server, "allowed_hosts", cfg.allowed_hosts, hostList);
+  // MISTWATCH_ALLOWED_HOSTS (comma separated) adds to the file list, so Docker needs no config edit
+  const envHosts = process.env.MISTWATCH_ALLOWED_HOSTS;
+  if (envHosts) cfg.allowed_hosts = [...new Set([...cfg.allowed_hosts, ...hostList(envHosts.split(","))])];
   cfg.upstream = pick(optTable(raw.upstream, "upstream"), "base_url", cfg.upstream, asStr).replace(/\/+$/, "");
   const pricing = optTable(raw.pricing, "pricing");
   cfg.usd_to_eur = pick(pricing, "usd_to_eur", cfg.usd_to_eur, asFloat);

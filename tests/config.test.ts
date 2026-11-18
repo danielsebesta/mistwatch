@@ -255,3 +255,11 @@ describe("MISTWATCH_HOST", () => {
     expect(loadConfig(p).host).toBe("0.0.0.0");
   });
 });
+describe("MISTWATCH_ALLOWED_HOSTS", () => {
+  it("adds comma separated hosts to the file list", () => {
+    const p = join(mkdtempSync(join(tmpdir(), "mw-ah-")), "config.toml");
+    writeFileSync(p, '[server]\nallowed_hosts = ["a.example"]\n');
+    vi.stubEnv("MISTWATCH_ALLOWED_HOSTS", " B.example, 100.64.0.1 ,a.example");
+    expect(loadConfig(p).allowed_hosts).toEqual(["a.example", "b.example", "100.64.0.1"]);
+  });
+});

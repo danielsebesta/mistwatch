@@ -95,7 +95,7 @@ Agents and integrators can read `/llms.txt` on a running proxy (no sign-in neede
 
 Settings live in `~/.mistwatch/config.toml` (server address and port, limits, prices, the `auto` router). Set `MISTWATCH_HOME` to keep it somewhere else. Accounts and keys are stored in the database, not in the config file.
 
-To reach the UI under another host name, for example through a tunnel, add it to `allowed_hosts` under `[server]`.
+To reach the UI under another host name, for example through a tunnel, add it to `allowed_hosts` under `[server]`. In Docker, set `MISTWATCH_ALLOWED_HOSTS` instead (comma separated, for example `mw.tailnet.ts.net,100.64.0.1`); it is added to the list from the file.
 
 ## Security
 
