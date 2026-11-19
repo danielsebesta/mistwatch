@@ -119,8 +119,19 @@ const accountCard = (a: AccountView, vibeCli: boolean, reload: () => void): HTML
       reload();
     }),
   });
+  // who Mistral says the keys belong to; read once per card, shown beside each key
+  const owners = a.keys.vibe || a.keys.api ? api.owner(a.name).catch(() => null) : Promise.resolve(null);
   const keyRow = (pool: Pool) => {
     const k = a.keys[pool];
+    const who = h("span", { class: "mut" });
+    void owners.then((o) => {
+      const t = o?.[pool];
+      if (!t) return;
+      const text = [t.name, t.email, t.organization ?? t.workspace, t.plan ? `${t.plan} plan` : null]
+        .filter((x) => x)
+        .join(" · ");
+      if (text) who.textContent = `· ${text}`;
+    });
     const kl = h(
       "div",
       { class: "kl" },
@@ -135,6 +146,7 @@ const accountCard = (a: AccountView, vibeCli: boolean, reload: () => void): HTML
             h("code", { title: k.hint ?? "" }, k.hint || "—"),
             h("span", {}, `· ${SRC[k.source] ?? k.source}`),
             k.error ? h("span", { class: "tx-bad" }, `· ${k.error}`) : null,
+            who,
           ]
         : "No key",
     );

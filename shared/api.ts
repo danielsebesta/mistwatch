@@ -129,6 +129,14 @@ export type AccountView = {
   keys: Record<Pool, KeyInfo | null>;
   shared_with: string[];
 };
+export type KeyOwner = {
+  name: string | null;
+  email: string | null;
+  workspace: string | null;
+  organization: string | null;
+  plan: string | null;
+};
+export type OwnerResponse = Record<Pool, KeyOwner | null>;
 export type AccountsResponse = { accounts: AccountView[]; vibe_cli_available: boolean };
 export type AccountCreate = { name: string; priority?: number };
 export type AccountPatch = { enabled?: boolean; priority?: number };

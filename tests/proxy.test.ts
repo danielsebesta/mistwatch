@@ -536,6 +536,13 @@ describe("proxy routing, limits and shutdown", () => {
     expect(lj.pools.map((x) => x.pool).sort()).toEqual(["api", "vibe"]);
     expect(Object.keys(lj.pools[0]?.windows ?? {}).sort()).toEqual(["5h", "day", "week"]);
   });
+  it("answers /v1/users/me with the Mistwatch user", async () => {
+    const st = baseState(() => okJson());
+    st.store.createUser("daniel", "correct horse battery");
+    const r = await createProxy(st).handle(req("/v1/users/me", { headers: AUTH }));
+    expect(await r.json()).toMatchObject({ first_name: "daniel" });
+    expect(calls.length).toBe(0);
+  });
   it("adds the limit windows to accounted responses", async () => {
     const st = baseState(() => okJson());
     const p = createProxy(st);

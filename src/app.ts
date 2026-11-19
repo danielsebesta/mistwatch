@@ -6,7 +6,7 @@ import type { ServerType } from "@hono/node-server";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { llmsTxt } from "./agents.ts";
-import { authClient, consoleForward, mistwatchIdentity } from "./compat.ts";
+import { authClient, consoleForward } from "./compat.ts";
 import { clientBaseUrl } from "./config.ts";
 import { apiErrorBody, errorHeaders, errors, isAppError, proxyErrorBody, toAppError } from "./errors.ts";
 import { createProxy } from "./proxy.ts";
@@ -64,15 +64,10 @@ export const createApp = (st: State, opts: AppOpts = {}): Hono => {
       headers: { "content-type": "application/json", ...errorHeaders(e) },
     });
   });
-  // The Vibe CLI reads the plan from console_base_url/api/vibe/whoami (your real account, forwarded) and the name it
-  // greets you with from /users/me (the Mistwatch user, or the key's name when there is none).
+  // The Vibe CLI reads the plan from console_base_url/api/vibe/whoami: your real account, forwarded.
   app.get("/api/vibe/whoami", (c) => {
     authClient(st, c.req.header("authorization") ?? null, c.req.header("x-api-key") ?? null);
     return consoleForward(st, "/api/vibe/whoami");
-  });
-  app.get("/users/me", (c) => {
-    const client = authClient(st, c.req.header("authorization") ?? null, c.req.header("x-api-key") ?? null);
-    return c.json(mistwatchIdentity(st, client));
   });
   app.route("/api", createWebApi(st, opts.apiOpts));
   app.get("/llms.txt", (c) => {

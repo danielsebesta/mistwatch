@@ -8,6 +8,7 @@ import { poolStatusDict } from "./budget.ts";
 import { keyFor } from "./config.ts";
 import { type AppException, apiErrorBody, appError, asException, errorHeaders, errors, isAppError } from "./errors.ts";
 import { summarize } from "./groups.ts";
+import { fetchOwner } from "./owner.ts";
 import { createLoginLockout, createRateLimiter, type RateLimiter } from "./ratelimit.ts";
 import { truthy } from "./router.ts";
 import { bodyWithinLimit, localRequestAllowed, readLimitedBody } from "./security.ts";
@@ -306,6 +307,18 @@ export const createWebApi = (st: State, opts: WebApiOpts = {}): Hono => {
   api.get("/accounts", (c) => {
     requireUser(c);
     return c.json({ accounts: st.store.listAccounts().map(acctView), vibe_cli_available: vibeCliKeyPresent() });
+  });
+  api.get("/accounts/:name/owner", async (c) => {
+    requireUser(c);
+    limitUpstream(c);
+    const a = getAcct(c.req.param("name"));
+    const [vibe, studio] = await Promise.all(
+      (["vibe", "api"] as const).map(async (pool) => {
+        const key = keyFor(a, pool);
+        return key ? await fetchOwner(st.fetch, st.cfg.upstream, st.cfg.console_upstream, key, pool === "vibe") : null;
+      }),
+    );
+    return c.json({ vibe: vibe ?? null, api: studio ?? null });
   });
   api.post("/accounts", async (c) => {
     requireUser(c);

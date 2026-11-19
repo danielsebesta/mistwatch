@@ -557,7 +557,7 @@ describe("config migration", () => {
 });
 
 describe("Vibe console endpoints", () => {
-  it("forwards whoami to the console and answers users/me from Mistwatch", async () => {
+  it("forwards whoami to the console with the Vibe key", async () => {
     const seen: string[] = [];
     const cfg = defaultConfig();
     cfg.db_path = ":memory:";
@@ -572,17 +572,37 @@ describe("Vibe console endpoints", () => {
     const w = await api(app, "/api/vibe/whoami");
     expect(w.status).toBe(200);
     expect(await w.json()).not.toHaveProperty("api_base");
-    const u = await api(app, "/users/me");
-    expect(u.status).toBe(200);
-    expect(await u.json()).toMatchObject({ first_name: "Mistwatch" });
-    st.store.createUser("daniel", "correct horse battery");
-    expect(await (await api(app, "/users/me")).json()).toMatchObject({ first_name: "daniel" });
     expect(seen).toEqual(["https://console.mistral.ai/api/vibe/whoami Bearer vk"]);
   });
   it("needs a Mistwatch key once keys exist", async () => {
     const { app, st } = mkApp();
     st.store.createApiKey("k");
-    const r = await api(app, "/users/me");
+    const r = await api(app, "/api/vibe/whoami");
     expect(r.status).toBe(401);
+  });
+});
+
+describe("key owner", () => {
+  it("reads who Mistral says a key belongs to", async () => {
+    const cfg = defaultConfig();
+    cfg.db_path = ":memory:";
+    cfg.accounts = [{ name: "a", keys: { vibe: "vk" }, priority: 100, enabled: true, manual: {} }];
+    const fetchFn = ((url: string) => {
+      const p = new URL(url).pathname;
+      if (p === "/v1/users/me")
+        return Promise.resolve(
+          json({ id: "u", first_name: "Ada", last_name: "L", email: "a@x.io", organization: { name: "Org" } }),
+        );
+      if (p === "/api/vibe/whoami") return Promise.resolve(json({ plan_type: "chat", plan_name: "Pro" }));
+      return Promise.resolve(json({}, 404));
+    }) as FetchLike;
+    const app = createApp(createState(cfg, fetchFn), { webDir: WEB_DIR });
+    const { cookie } = await login(app);
+    const r = await api(app, "/api/accounts/a/owner", { headers: authed(cookie) });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({
+      vibe: { name: "Ada L", email: "a@x.io", workspace: null, organization: "Org", plan: "Pro" },
+      api: null,
+    });
   });
 });

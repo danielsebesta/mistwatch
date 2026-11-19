@@ -1,6 +1,6 @@
 import { poolGrossRoom, poolPressure, poolRoom, poolStatusDict } from "./budget.ts";
 import { promptView, rate as rateRequest, SYSTEM } from "./classifier.ts";
-import { billingBudget, limits, limitsHeader } from "./compat.ts";
+import { billingBudget, limits, limitsHeader, mistwatchIdentity } from "./compat.ts";
 import { keyFor } from "./config.ts";
 import type { AppError } from "./errors.ts";
 import {
@@ -263,6 +263,8 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
     }
     if (req.method === "GET" && urlPath === "/v1/billing/budget")
       return Response.json(billingBudget(st, Date.now() / 1000));
+    // the Vibe CLI greets by this name: the Mistwatch user, not the Mistral account
+    if (req.method === "GET" && urlPath === "/v1/users/me") return Response.json(mistwatchIdentity(st, client));
     if (req.method === "GET" && urlPath === "/v1/mistwatch/limits") return Response.json(limits(st, Date.now() / 1000));
     if (!bodyWithinLimit(req.headers.get("content-length"), bodyLimit)) throw asException(errors.tooLarge());
     const g = globalRl.check("");
