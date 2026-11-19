@@ -30,6 +30,8 @@ import type { Account, ChatBody, Decision, PoolStatus } from "./types.ts";
 export const BODY_LIMIT = 8 * 1024 * 1024;
 export const CONNECT_S = 15;
 export const TOTAL_S = 600;
+// A stream may run this long in all; it is cut earlier only after TOTAL_S without any data.
+export const STREAM_MAX_S = 3600;
 export const BLOCK_S = 600;
 export const BLOCK_429_S = 30;
 // The free GLM Flash is tried first for auto; a failure parks it for this long.
@@ -523,7 +525,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
             clearTimeout(totalTimer);
           }
         },
-        { signal: drainSig, timeoutMs: totalMs },
+        { signal: drainSig, timeoutMs: wantStream ? Math.max(totalMs, STREAM_MAX_S * 1000) : totalMs },
       );
       void job.then(undefined, (e: unknown) => early.reject(e));
       let resp: Response;
@@ -600,11 +602,24 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
         };
         if (wantStream && resp.status === 200) {
           const sse = makeSseParser();
+          // a stream that keeps sending data may outlive TOTAL_S; only silence for that long cuts it
+          let idle: ReturnType<typeof setTimeout> | undefined;
+          const touch = (): void => {
+            clearTimeout(idle);
+            idle = setTimeout(() => ac.abort(asException(errors.upstreamTimeout())), totalMs);
+            idle.unref();
+          };
+          clearTimeout(totalTimer);
+          touch();
           return respond(
             pipe(
               resp,
-              sse.feed,
+              (c) => {
+                touch();
+                sse.feed(c);
+              },
               () => {
+                clearTimeout(idle);
                 try {
                   sse.flush();
                 } catch {

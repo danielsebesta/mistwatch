@@ -496,6 +496,31 @@ describe("proxy routing, limits and shutdown", () => {
     expect(r2.status).toBe(200);
     expect(seen).toEqual(["zai-glm-5-3-flash-vibe-free", "zai-glm-5-3-flash", "zai-glm-5-3-flash"]);
   });
+  it("lets a stream that keeps sending data outlive the total timeout", async () => {
+    const chunk = (t: string): Uint8Array =>
+      enc.encode(`data: {"model":"mistral-large-4-0","choices":[{"delta":{"content":"${t}"}}]}\n\n`);
+    const st = baseState(
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async start(c) {
+              for (let i = 0; i < 8; i++) {
+                c.enqueue(chunk(String(i)));
+                await new Promise((ok) => setTimeout(ok, 60));
+              }
+              c.enqueue(enc.encode("data: [DONE]\n\n"));
+              c.close();
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+    );
+    const p = createProxy(st, { totalTimeoutS: 0.25 });
+    const r = await p.handle(jreq("/v1/chat/completions", { model: "mistral-large-4-0", stream: true }, AUTH));
+    expect(r.status).toBe(200);
+    const text = await r.text();
+    expect(text).toContain("[DONE]");
+  });
   it("rejects oversize bodies with 413", async () => {
     const st = baseState(() => okJson());
     const p = createProxy(st, { bodyLimit: 64 });
