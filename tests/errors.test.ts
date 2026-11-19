@@ -80,8 +80,16 @@ describe("bodies and headers", () => {
   });
   it("errorHeaders emits Retry-After ceiled to >= 1", () => {
     expect(errorHeaders(errors.internal())).toEqual({});
-    expect(errorHeaders(errors.budget(41.2, []))).toEqual({ "Retry-After": "42" });
-    expect(errorHeaders(errors.rateLimited(0))).toEqual({ "Retry-After": "1" });
+    expect(errorHeaders(errors.budget(41.2, []))).toEqual({
+      "Retry-After": "42",
+      "RateLimit-Remaining": "0",
+      "RateLimit-Reset": "42",
+    });
+    expect(errorHeaders(errors.rateLimited(0))).toEqual({
+      "Retry-After": "1",
+      "RateLimit-Remaining": "0",
+      "RateLimit-Reset": "1",
+    });
   });
   it("constructor statuses", () => {
     expect(errors.auth().status).toBe(401);

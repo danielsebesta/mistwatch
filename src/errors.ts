@@ -34,7 +34,13 @@ export const proxyErrorBody = (e: AppError): { error: Record<string, unknown> } 
 });
 export const apiErrorBody = (e: AppError): { detail: string } => ({ detail: e.message });
 export const errorHeaders = (e: AppError): Record<string, string> =>
-  e.retryAfter === undefined ? {} : { "Retry-After": String(Math.max(Math.ceil(e.retryAfter), 1)) };
+  e.retryAfter === undefined
+    ? {}
+    : {
+        "Retry-After": String(Math.max(Math.ceil(e.retryAfter), 1)),
+        "RateLimit-Remaining": "0",
+        "RateLimit-Reset": String(Math.max(Math.ceil(e.retryAfter), 1)),
+      };
 const secs = (n: number): number => Math.max(Math.ceil(n), 1);
 export const errors = {
   auth: (): AppError =>

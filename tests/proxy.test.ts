@@ -548,6 +548,10 @@ describe("proxy routing, limits and shutdown", () => {
     const p = createProxy(st);
     const r = await p.handle(jreq("/v1/chat/completions", { model: "mistral-large-4-0" }, AUTH));
     expect(r.headers.get("x-mw-limits")).toMatch(/5h=.*day=.*week=.*month=/);
+    expect(r.headers.get("ratelimit-policy")).toMatch(/"5h";q=\d+;qu="eur-cent";w=18000, "day"/);
+    expect(r.headers.get("ratelimit")).toMatch(/"5h";r=\d+;t=\d+/);
+    expect(Number(r.headers.get("ratelimit-remaining"))).toBeGreaterThan(0);
+    expect(Number(r.headers.get("ratelimit-reset"))).toBeGreaterThan(0);
   });
   it("rejects oversize bodies with 413", async () => {
     const st = baseState(() => okJson());

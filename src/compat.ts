@@ -1,4 +1,4 @@
-import { poolStatusDict } from "./budget.ts";
+import { poolStatusDict, WINDOWS } from "./budget.ts";
 import { keyFor } from "./config.ts";
 import { asException, errors } from "./errors.ts";
 import type { State } from "./state.ts";
@@ -124,4 +124,36 @@ export const consoleForward = async (st: State, path: string): Promise<Response>
 export const mistwatchIdentity = (st: State, client: Client) => {
   const first = st.store.listUsers()[0]?.username ?? client?.name ?? "Mistwatch";
   return { id: "mistwatch", first_name: first, last_name: null, email: null };
+};
+
+const DAY_S = 86_400;
+const cents = (eur: number): number => Math.max(Math.round(eur * 100), 0);
+// Standard rate-limit headers (IETF httpapi-ratelimit-headers), so agents and SDKs that know them can back off.
+// Units are euro cents: the limit is money, not requests. The plain triple describes the tightest window.
+export const rateLimitHeaders = (d: ReturnType<typeof poolStatusDict>, now: number): Record<string, string> => {
+  const rows = [
+    ...Object.entries(d.windows).map(([n, w]) => ({
+      name: n,
+      cap: w.cap,
+      room: w.room,
+      window: Math.round((WINDOWS[n] ?? 1) * DAY_S),
+      retry: w.retry_at,
+    })),
+    {
+      name: "month",
+      cap: d.month.cap,
+      room: d.month.room,
+      window: Math.max(Math.round(d.reset_at - now), 1),
+      retry: d.month.room <= 0 ? d.reset_at : null,
+    },
+  ];
+  const reset = (r: (typeof rows)[number]): number => Math.max(Math.ceil((r.retry ?? now + r.window) - now), 0);
+  const tight = rows.reduce((a, b) => (b.cap > 0 && b.room / b.cap < (a.cap > 0 ? a.room / a.cap : 1) ? b : a));
+  return {
+    "RateLimit-Policy": rows.map((r) => `"${r.name}";q=${cents(r.cap)};qu="eur-cent";w=${r.window}`).join(", "),
+    RateLimit: rows.map((r) => `"${r.name}";r=${cents(r.room)};t=${reset(r)}`).join(", "),
+    "RateLimit-Limit": String(cents(tight.cap)),
+    "RateLimit-Remaining": String(cents(tight.room)),
+    "RateLimit-Reset": String(reset(tight)),
+  };
 };

@@ -1,6 +1,6 @@
 import { poolGrossRoom, poolPressure, poolRoom, poolStatusDict } from "./budget.ts";
 import { promptView, rate as rateRequest, SYSTEM } from "./classifier.ts";
-import { billingBudget, limits, limitsHeader, mistwatchIdentity } from "./compat.ts";
+import { billingBudget, limits, limitsHeader, mistwatchIdentity, rateLimitHeaders } from "./compat.ts";
 import { keyFor } from "./config.ts";
 import type { AppError } from "./errors.ts";
 import {
@@ -589,7 +589,9 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
         if (routed !== null) hdrs.set("x-mw-routed", decisionHeader(routed));
         if (cand.status !== null) {
           hdrs.set("x-mw-room-eur", poolRoom(cand.status).toFixed(4));
-          hdrs.set("x-mw-limits", limitsHeader(poolStatusDict(cand.status)));
+          const dict = poolStatusDict(cand.status);
+          hdrs.set("x-mw-limits", limitsHeader(dict));
+          for (const [k, v] of Object.entries(rateLimitHeaders(dict, Date.now() / 1000))) hdrs.set(k, v);
         }
         if (cand.status === null) {
           if (resp.body === null || resp.status === 204 || resp.status === 304) {
