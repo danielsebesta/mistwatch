@@ -461,6 +461,36 @@ describe("proxy routing, limits and shutdown", () => {
     expect(r.headers.get("x-mw-routed")).toContain("mistral-small-2603");
     expect(upstreamModel).toBe("mistral-small-2603");
   });
+  it("tries the free GLM Flash for auto and falls back to the paid one for a while", async () => {
+    const seen: string[] = [];
+    const st = baseState((_u, init) => {
+      const b = bodyOf(init);
+      const m = isRec(b) && typeof b.model === "string" ? b.model : "";
+      if (m === "ministral-3b-latest") {
+        return json({
+          choices: [{ message: { content: '{"difficulty": 5}' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 3 },
+        });
+      }
+      seen.push(m);
+      return m === "zai-glm-5-3-flash-vibe-free" ? new Response("{}", { status: 429 }) : okJson();
+    });
+    const p = createProxy(st);
+    const ask = (n: number) =>
+      p.handle(
+        jreq(
+          "/v1/chat/completions",
+          { model: "auto", messages: [{ role: "user", content: `explain feature number ${n} of this module` }] },
+          AUTH,
+        ),
+      );
+    const r1 = await ask(1);
+    expect(r1.status).toBe(200);
+    expect(seen).toEqual(["zai-glm-5-3-flash-vibe-free", "zai-glm-5-3-flash"]);
+    const r2 = await ask(2);
+    expect(r2.status).toBe(200);
+    expect(seen).toEqual(["zai-glm-5-3-flash-vibe-free", "zai-glm-5-3-flash", "zai-glm-5-3-flash"]);
+  });
   it("rejects oversize bodies with 413", async () => {
     const st = baseState(() => okJson());
     const p = createProxy(st, { bodyLimit: 64 });

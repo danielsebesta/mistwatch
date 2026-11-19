@@ -136,7 +136,7 @@ export const llmsTxt = (base: string): string => `# Mistwatch
 
 ## Models
 
-- \`auto\` picks the model and the reasoning effort for each request; you cannot set the effort. A small model rates how hard the request is from the prompt, the project instructions (such as AGENTS.md) and what the agent has done so far. Price and the budget that is left then decide between choices of similar strength.
+- \`auto\` picks the model and the reasoning effort for each request; you cannot set the effort. A small model rates how hard the request is from the prompt, the project instructions (such as AGENTS.md) and what the agent has done so far. Price and the budget that is left then decide between choices of similar strength. For GLM 5.3 Flash it tries the free Vibe variant first and falls back to the paid one for ten minutes when that is refused.
 - Any Mistral model id is forwarded unchanged. \`GET /v1/models\` lists the upstream models.
 
 ## What a client should handle

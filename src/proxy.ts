@@ -32,6 +32,10 @@ export const CONNECT_S = 15;
 export const TOTAL_S = 600;
 export const BLOCK_S = 600;
 export const BLOCK_429_S = 30;
+// The free GLM Flash is tried first for auto; a failure parks it for this long.
+export const FREE_FLASH = "zai-glm-5-3-flash-vibe-free";
+export const PAID_FLASH = "zai-glm-5-3-flash";
+export const FREE_COOLDOWN_S = 600;
 export const ACCOUNTED = [
   "/v1/chat/completions",
   "/v1/fim/completions",
@@ -228,6 +232,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
   const keyRl = createRateLimiter({ limit: kLim, windowS: kWin });
   const queue = createQueue({ concurrency: opts.concurrency ?? 8, maxPending: opts.maxPending ?? 64 });
   const drainCtrl = new AbortController();
+  let freeUntil = 0;
   const errResp = (e: AppError): Response =>
     Response.json(proxyErrorBody(e), { status: e.status, headers: errorHeaders(e) });
   const forward = async (req: Request): Promise<Response> => {
@@ -364,7 +369,14 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
       model = routed.model;
       console.info(`auto -> ${decisionHeader(routed)} | ${routed.reason}`);
     }
-    const [price] = st.prices.lookup(model);
+    const paidBody = sendBody;
+    const paidModel = model;
+    let tryFree = routed !== null && model === PAID_FLASH && Date.now() / 1000 >= freeUntil;
+    if (tryFree) {
+      sendBody = new TextEncoder().encode(JSON.stringify({ ...parsed, model: FREE_FLASH }));
+      model = FREE_FLASH;
+    }
+    const [price] = st.prices.lookup(paidModel);
     const estIn = estimateTokens(sendBody.length);
     const wantedOut = asInt(pickTruthy([parsed.max_tokens, 1024]));
     const estOut = Number.isFinite(wantedOut) && wantedOut > 0 ? wantedOut : 1024;
@@ -439,7 +451,9 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
         model: rec !== null && typeof rec.model === "string" ? rec.model : null,
       });
     };
-    for (const cand of cands) {
+    for (let ci = 0; ci < cands.length; ci++) {
+      const cand = cands[ci];
+      if (cand === undefined) continue;
       let key: string | null;
       try {
         key = keyFor(cand.account, cand.pool);
@@ -520,6 +534,19 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
         throw upstreamErr(e);
       }
       clearTimeout(connectTimer);
+      if (tryFree && resp.status >= 400) {
+        // The free variant refused (quota, not offered on this key, ...): use the paid model for a while.
+        await resp.arrayBuffer().catch(() => null);
+        console.warn(`free ${FREE_FLASH} answered ${resp.status}; using ${PAID_FLASH} for ${FREE_COOLDOWN_S}s`);
+        freeUntil = Date.now() / 1000 + FREE_COOLDOWN_S;
+        tryFree = false;
+        sendBody = paidBody;
+        model = paidModel;
+        res?.release();
+        heldResolve();
+        ci--;
+        continue;
+      }
       try {
         if (
           cand.status !== null &&

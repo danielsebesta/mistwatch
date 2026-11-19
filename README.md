@@ -22,7 +22,7 @@
 
 - **Tracks your budgets.** It shows how much of your Vibe Code and Studio (API) allowance you have used, per 5 hours, day, week and month.
 - **Spreads usage over time.** It paces requests so you do not burn a whole month's allowance in one afternoon. When nothing is left it answers `429` with a `Retry-After` header.
-- **Offers one `auto` model.** A small model rates each request from the prompt, the project instructions (AGENTS.md) and what the agent has done; the router then picks the model and reasoning effort, preferring the cheaper choice among similar ones. The client cannot set the effort.
+- **Offers one `auto` model.** A small model rates each request from the prompt, the project instructions (AGENTS.md) and what the agent has done; the router then picks the model and reasoning effort, preferring the cheaper choice among similar ones. The client cannot set the effort. When it lands on GLM 5.3 Flash it tries the free Vibe variant first and, if that is refused, uses the paid one for the next ten minutes.
 - **Pools several accounts.** Requests go to whichever account still has room.
 - **Works with your tools.** OpenCode, Pi and the Vibe CLI, or anything that speaks the OpenAI chat API.
 
