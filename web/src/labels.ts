@@ -10,8 +10,11 @@ export const SRC: Record<string, string> = {
   "vibe-cli": "Vibe CLI sign-in (updates automatically)",
   keyring: "saved on this computer",
   env: "environment setting",
-  inline: "app data",
+  inline: "stored by Mistwatch",
 };
+// Mistral's internal plan names, as people know them
+export const PLAN: Record<string, string> = { FREE: "Free", INDIVIDUAL: "Pro", EDU: "Student", TEAM: "Team" };
+export const planName = (raw: string): string => PLAN[raw.trim().toUpperCase()] ?? raw;
 export const NAME_SRC: Record<string, [string, string]> = {
   custom: ["custom", "info"],
   "built-in": ["built-in", ""],

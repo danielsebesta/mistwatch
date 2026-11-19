@@ -3,7 +3,7 @@ import { api } from "../api.ts";
 import { confirmDlg, modal } from "../dialog.ts";
 import { entriesOf, h, ic } from "../dom.ts";
 import { errMsg, eur } from "../format.ts";
-import { POOL, poolLabel, SRC } from "../labels.ts";
+import { POOL, planName, poolLabel, SRC } from "../labels.ts";
 import { toast } from "../toast.ts";
 import { act, badge, emptyState, errState, focusedKey, pageHead, restoreFocus, skel } from "../ui.ts";
 
@@ -129,16 +129,27 @@ const accountCard = (a: AccountView, vibeCli: boolean, reload: () => void): HTML
   });
   // who Mistral says the keys belong to; read once per card, shown beside each key
   const owners = a.keys.vibe || a.keys.api ? api.owner(a.name).catch(() => null) : Promise.resolve(null);
+  const titleEl = h("h2", { class: "trunc", title: a.name }, a.name);
+  const subEl = h("div", { class: "xs mut trunc" });
+  const planEl = h("span", {});
+  void owners.then((o) => {
+    const person = o?.vibe ?? o?.api;
+    if (!person) return;
+    if (person.name) {
+      titleEl.textContent = person.name;
+      subEl.textContent = person.email ?? a.name;
+    }
+    if (o?.vibe?.plan) planEl.replaceWith(badge("info", planName(o.vibe.plan)));
+  });
   const keyRow = (pool: Pool) => {
     const k = a.keys[pool];
     const who = h("span", { class: "mut" });
     void owners.then((o) => {
       const t = o?.[pool];
       if (!t) return;
-      const text = [t.name, t.email, t.organization ?? t.workspace, t.plan ? `${t.plan} plan` : null]
-        .filter((x) => x)
-        .join(" · ");
-      if (text) who.textContent = `· ${text}`;
+      // the Vibe budget belongs to the person's plan, the Studio budget to the workspace
+      const text = pool === "vibe" ? (t.plan ? `${planName(t.plan)} plan` : "") : (t.organization ?? t.workspace ?? "");
+      if (text) who.textContent = `· ${pool === "vibe" ? text : `workspace ${text}`}`;
     });
     const kl = h(
       "div",
@@ -225,7 +236,8 @@ const accountCard = (a: AccountView, vibeCli: boolean, reload: () => void): HTML
     h(
       "div",
       { class: "acct-h" },
-      h("h2", { class: "trunc", title: a.name }, a.name),
+      h("div", { class: "acct-t" }, titleEl, subEl),
+      planEl,
       a.enabled ? null : badge("warn", "Disabled"),
       a.shared_with.length
         ? h(
