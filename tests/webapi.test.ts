@@ -669,3 +669,27 @@ describe("keys find their owner", () => {
     expect((await jpost(app, "/api/accounts", { name: "x" }, authed(cookie))).status).toBe(404);
   });
 });
+
+describe("combined plan", () => {
+  it("joins the plan of every account", async () => {
+    const cfg = defaultConfig();
+    cfg.db_path = ":memory:";
+    cfg.accounts = [
+      { name: "a", keys: { vibe: "key-a-123456" }, priority: 100, enabled: true, manual: {} },
+      { name: "b", keys: { vibe: "key-b-123456" }, priority: 100, enabled: true, manual: {} },
+      { name: "c", keys: { vibe: "key-c-123456" }, priority: 100, enabled: true, manual: {} },
+    ];
+    const plans: Record<string, string> = {
+      "key-a-123456": "INDIVIDUAL",
+      "key-b-123456": "INDIVIDUAL",
+      "key-c-123456": "TEAM",
+    };
+    const fetchFn = ((_u: string, init?: RequestInit) => {
+      const key = (new Headers(init?.headers).get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+      return Promise.resolve(json({ plan_type: "chat", plan_name: plans[key] ?? "FREE" }));
+    }) as FetchLike;
+    const app = createApp(createState(cfg, fetchFn), { webDir: WEB_DIR });
+    const r = await api(app, "/api/vibe/whoami");
+    expect(await r.json()).toMatchObject({ plan_type: "chat", plan_name: "Pro + Pro + Team" });
+  });
+});

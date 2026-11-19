@@ -84,40 +84,48 @@ export const limitsHeader = (s: ReturnType<typeof poolStatusDict>): string =>
     `month=${s.month.room}/${s.month.cap}`,
   ].join(";");
 
-// Vibe rewrites its provider address from these two fields; left in, they would send it past Mistwatch.
-const dropTenantUrls = (body: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> => {
-  try {
-    const j: unknown = JSON.parse(new TextDecoder().decode(body));
-    if (typeof j !== "object" || j === null || Array.isArray(j)) return body;
-    const { api_base: _a, vibe_base: _v, ...rest } = j as Record<string, unknown>;
-    return new TextEncoder().encode(JSON.stringify(rest));
-  } catch {
-    return body;
-  }
-};
+const PLAN_TITLES: Record<string, string> = { FREE: "Free", INDIVIDUAL: "Pro", EDU: "Student", TEAM: "Team" };
+const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-// Plan and name come from Mistral itself: forward with the first key that has a Vibe pool.
-export const consoleForward = async (st: State, path: string): Promise<Response> => {
-  const acct =
-    st.cfg.accounts.find((a) => a.enabled && keyFor(a, "vibe")) ??
-    st.cfg.accounts.find((a) => a.enabled && Object.keys(a.keys).length > 0);
-  const key = acct ? (keyFor(acct, "vibe") ?? keyFor(acct, Object.keys(acct.keys)[0] ?? "")) : null;
-  if (!key) return Response.json({ error: "no account key" }, { status: 404 });
-  try {
-    const r = await st.fetch(`${st.cfg.console_upstream}${path}`, {
-      headers: { Authorization: `Bearer ${key}`, "User-Agent": "mistwatch/0.2" },
-      redirect: "manual",
-      signal: AbortSignal.timeout(5000),
-    });
-    let body: Uint8Array<ArrayBuffer> = new Uint8Array(await r.arrayBuffer());
-    if (r.ok && path.endsWith("/whoami")) body = dropTenantUrls(body);
-    return new Response(body, {
-      status: r.status,
-      headers: { "content-type": r.headers.get("content-type") ?? "application/json" },
-    });
-  } catch {
-    return Response.json({ error: "console unreachable" }, { status: 502 });
+// The plan comes from Mistral itself, asked once per Vibe key. With several accounts it reads "Pro + Pro + Team".
+export const whoami = async (st: State): Promise<Response> => {
+  const keys = new Set<string>();
+  for (const a of st.cfg.accounts) {
+    if (!a.enabled) continue;
+    try {
+      const k = keyFor(a, "vibe") ?? keyFor(a, Object.keys(a.keys)[0] ?? "");
+      if (k) keys.add(k);
+    } catch {
+      // an unreadable key just does not take part
+    }
   }
+  if (keys.size === 0) return Response.json({ error: "no account key" }, { status: 404 });
+  const got = await Promise.all(
+    [...keys].map(async (key): Promise<Record<string, unknown> | null> => {
+      try {
+        const r = await st.fetch(`${st.cfg.console_upstream}/api/vibe/whoami`, {
+          headers: { Authorization: `Bearer ${key}`, "User-Agent": "mistwatch/0.2" },
+          redirect: "manual",
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!r.ok) return null;
+        const j: unknown = await r.json();
+        return isRec(j) ? j : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  const ok = got.filter((x): x is Record<string, unknown> => x !== null);
+  const first = ok[0];
+  if (!first) return Response.json({ error: "console unreachable" }, { status: 502 });
+  // Vibe rewrites its provider address from api_base and vibe_base; left in, they would send it past Mistwatch.
+  const { api_base: _a, vibe_base: _v, ...rest } = first;
+  const names = ok.map((o) => {
+    const raw = typeof o.plan_name === "string" ? o.plan_name.trim() : "";
+    return PLAN_TITLES[raw.toUpperCase()] ?? raw;
+  });
+  return Response.json({ ...rest, plan_name: names.filter((n) => n).join(" + ") || rest.plan_name });
 };
 
 // The shape of Mistral's GET /users/me, filled from Mistwatch.
