@@ -555,3 +555,34 @@ describe("config migration", () => {
     expect(st.store.listAccounts()).toEqual([]);
   });
 });
+
+describe("Vibe console endpoints", () => {
+  it("forwards whoami and users/me to the console with the Vibe key", async () => {
+    const seen: string[] = [];
+    const cfg = defaultConfig();
+    cfg.db_path = ":memory:";
+    cfg.accounts = [{ name: "a", keys: { vibe: "vk" }, priority: 100, enabled: true, manual: {} }];
+    const st = createState(cfg, ((url: string, init?: RequestInit) => {
+      seen.push(`${url} ${new Headers(init?.headers).get("authorization")}`);
+      return Promise.resolve(
+        json({ plan_type: "chat", plan_name: "INDIVIDUAL", first_name: "Ada", api_base: "https://api.mistral.ai" }),
+      );
+    }) as FetchLike);
+    const app = createApp(st, { webDir: WEB_DIR });
+    const w = await api(app, "/api/vibe/whoami");
+    expect(w.status).toBe(200);
+    expect(await w.json()).not.toHaveProperty("api_base");
+    const u = await api(app, "/users/me");
+    expect(u.status).toBe(200);
+    expect(seen).toEqual([
+      "https://console.mistral.ai/api/vibe/whoami Bearer vk",
+      "https://console.mistral.ai/users/me Bearer vk",
+    ]);
+  });
+  it("needs a Mistwatch key once keys exist", async () => {
+    const { app, st } = mkApp();
+    st.store.createApiKey("k");
+    const r = await api(app, "/users/me");
+    expect(r.status).toBe(401);
+  });
+});

@@ -521,6 +521,27 @@ describe("proxy routing, limits and shutdown", () => {
     const text = await r.text();
     expect(text).toContain("[DONE]");
   });
+  it("answers the Vibe billing budget and the limit windows itself", async () => {
+    const st = baseState(() => okJson());
+    seedPool(st, "a", "vibe", 25.5, 127.5);
+    const p = createProxy(st);
+    const b = await p.handle(req("/v1/billing/budget", { headers: AUTH }));
+    expect(b.status).toBe(200);
+    const vb = (await b.json()) as { vibe_budget: { usage_percentage: number; initial_budget: number } };
+    expect(vb.vibe_budget.usage_percentage).toBe(20);
+    expect(vb.vibe_budget.initial_budget).toBe(127.5);
+    expect(calls.length).toBe(0);
+    const l = await p.handle(req("/v1/mistwatch/limits", { headers: AUTH }));
+    const lj = (await l.json()) as { pools: { pool: string; windows: Record<string, unknown> }[] };
+    expect(lj.pools.map((x) => x.pool).sort()).toEqual(["api", "vibe"]);
+    expect(Object.keys(lj.pools[0]?.windows ?? {}).sort()).toEqual(["5h", "day", "week"]);
+  });
+  it("adds the limit windows to accounted responses", async () => {
+    const st = baseState(() => okJson());
+    const p = createProxy(st);
+    const r = await p.handle(jreq("/v1/chat/completions", { model: "mistral-large-4-0" }, AUTH));
+    expect(r.headers.get("x-mw-limits")).toMatch(/5h=.*day=.*week=.*month=/);
+  });
   it("rejects oversize bodies with 413", async () => {
     const st = baseState(() => okJson());
     const p = createProxy(st, { bodyLimit: 64 });

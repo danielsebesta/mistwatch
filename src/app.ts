@@ -6,6 +6,7 @@ import type { ServerType } from "@hono/node-server";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { llmsTxt } from "./agents.ts";
+import { authClient, consoleForward } from "./compat.ts";
 import { clientBaseUrl } from "./config.ts";
 import { apiErrorBody, errorHeaders, errors, isAppError, proxyErrorBody, toAppError } from "./errors.ts";
 import { createProxy } from "./proxy.ts";
@@ -63,6 +64,13 @@ export const createApp = (st: State, opts: AppOpts = {}): Hono => {
       headers: { "content-type": "application/json", ...errorHeaders(e) },
     });
   });
+  // The Vibe CLI reads the plan and the user name from its console_base_url; point that here to see them.
+  for (const path of ["/api/vibe/whoami", "/users/me"]) {
+    app.get(path, (c) => {
+      authClient(st, c.req.header("authorization") ?? null, c.req.header("x-api-key") ?? null);
+      return consoleForward(st, path);
+    });
+  }
   app.route("/api", createWebApi(st, opts.apiOpts));
   app.get("/llms.txt", (c) => {
     const base = new URL(c.req.url).origin;

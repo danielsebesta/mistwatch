@@ -22,6 +22,8 @@ port = 8787
 
 [upstream]
 base_url = "https://api.mistral.ai"
+# Where the Vibe CLI reads your plan and name (served at /api/vibe/whoami and /users/me when its console_base_url points here)
+console_url = "https://console.mistral.ai"
 
 [pricing]
 usd_to_eur = ${DEFAULT_USD_TO_EUR}          # docs prices are USD, budgets are EUR
@@ -60,6 +62,7 @@ export const defaultConfig = (): Config => ({
   port: 8787,
   allowed_hosts: [],
   upstream: "https://api.mistral.ai",
+  console_upstream: "https://console.mistral.ai",
   usd_to_eur: DEFAULT_USD_TO_EUR,
   db_path: join(homeDir(), "mistwatch.db"),
   limits: defaultLimits(),
@@ -192,6 +195,10 @@ export const loadConfig = (path?: string): Config => {
   const envHosts = process.env.MISTWATCH_ALLOWED_HOSTS;
   if (envHosts) cfg.allowed_hosts = [...new Set([...cfg.allowed_hosts, ...hostList(envHosts.split(","))])];
   cfg.upstream = pick(optTable(raw.upstream, "upstream"), "base_url", cfg.upstream, asStr).replace(/\/+$/, "");
+  cfg.console_upstream = pick(optTable(raw.upstream, "upstream"), "console_url", cfg.console_upstream, asStr).replace(
+    /\/+$/,
+    "",
+  );
   const pricing = optTable(raw.pricing, "pricing");
   cfg.usd_to_eur = pick(pricing, "usd_to_eur", cfg.usd_to_eur, asFloat);
   cfg.price_overrides = parseOverrides(pricing.models);

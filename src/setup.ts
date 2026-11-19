@@ -389,7 +389,7 @@ const replaceProviders = (lines: string[], want: Record<string, string>): string
 };
 export const planToml = (raw: string | null, base: string): string | null => {
   const block = vibe(base);
-  if (raw === null || raw.trim() === "") return block;
+  if (raw === null || raw.trim() === "") return `console_base_url = "${base}"\n\n${block}`;
   try {
     parse(raw);
   } catch {
@@ -471,7 +471,19 @@ export const planToml = (raw: string | null, base: string): string | null => {
     const list = parse(next).allowed_models;
     return Array.isArray(list) && !list.some((x) => typeof x === "string" && LEGACY_AUTO.has(x)) ? next : text;
   };
-  const finish = (text: string): string => repoint(allowAuto(withAuto(dropLegacy(text))));
+  // Vibe reads the plan and your name from console_base_url; Mistwatch serves both (from your real account)
+  const withConsole = (text: string): string => {
+    const line = `console_base_url = "${base}"`;
+    const lines = text.split(/\r?\n/);
+    const firstTable = lines.findIndex((l) => /^\s*\[/.test(l));
+    const top = firstTable === -1 ? lines.length : firstTable;
+    const at = lines.findIndex((l, i) => i < top && /^\s*console_base_url\s*=/.test(l));
+    if (at !== -1) lines[at] = line;
+    else lines.splice(top, 0, line, "");
+    const next = lines.join(eol);
+    return parse(next).console_base_url === base ? next : text;
+  };
+  const finish = (text: string): string => withConsole(repoint(allowAuto(withAuto(dropLegacy(text)))));
   if (providerMatches(raw, base)) {
     const done = finish(raw);
     return done === raw ? null : done;

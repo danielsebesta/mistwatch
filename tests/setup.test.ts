@@ -409,9 +409,14 @@ describe("setup backups, merging and idempotency", () => {
     expect(await runSetup(["--yes"], h.deps)).toBe(0);
     expect(backups(p.vibe)).toHaveLength(1);
     const next = readFileSync(p.vibe, "utf8");
-    expect(next.startsWith(before.trimEnd())).toBe(true);
+    expect(
+      next
+        .replace(`console_base_url = "http://127.0.0.1:8787"\n\n[[providers]]`, "[[providers]]")
+        .startsWith(before.trimEnd()),
+    ).toBe(true);
     const doc = parse(next);
     expect(doc.active_model).toBe("x");
+    expect(doc.console_base_url).toBe("http://127.0.0.1:8787");
     const names = Array.isArray(doc.providers) ? doc.providers.map((x) => (isRec(x) ? x.name : null)) : [];
     expect(names).toEqual(["mistral", "mistwatch"]);
   });
@@ -470,8 +475,9 @@ describe("harness planners", () => {
     expect(() => planJson("[1]", data)).toThrow("not a JSON object");
   });
   it("creates, keeps and replaces the toml provider block", () => {
-    expect(planToml(null, BASE)).toBe(vibe(BASE));
-    const ok = `${vibe(BASE)}\n[[models]]\nname = "m"\n`;
+    const head = `console_base_url = "${BASE}"\n\n`;
+    expect(planToml(null, BASE)).toBe(`${head}${vibe(BASE)}`);
+    const ok = `${head}${vibe(BASE)}\n[[models]]\nname = "m"\n`;
     expect(planToml(ok, BASE)).toBeNull();
     const old =
       '[[providers]]\nname = "a"\n\n[[providers]]\nname = "mistwatch"\napi_base = "http://127.0.0.1:1/v1"\n\n[[models]]\nname = "m"\n';

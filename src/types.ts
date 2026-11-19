@@ -25,6 +25,7 @@ export type Config = {
   port: number;
   allowed_hosts: string[];
   upstream: string;
+  console_upstream: string;
   usd_to_eur: number;
   db_path: string;
   limits: Limits;

@@ -1,5 +1,6 @@
-import { poolGrossRoom, poolPressure, poolRoom } from "./budget.ts";
+import { poolGrossRoom, poolPressure, poolRoom, poolStatusDict } from "./budget.ts";
 import { promptView, rate as rateRequest, SYSTEM } from "./classifier.ts";
+import { billingBudget, limits, limitsHeader } from "./compat.ts";
 import { keyFor } from "./config.ts";
 import type { AppError } from "./errors.ts";
 import {
@@ -260,6 +261,9 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
       if (k === null) throw asException(errors.auth());
       client = k;
     }
+    if (req.method === "GET" && urlPath === "/v1/billing/budget")
+      return Response.json(billingBudget(st, Date.now() / 1000));
+    if (req.method === "GET" && urlPath === "/v1/mistwatch/limits") return Response.json(limits(st, Date.now() / 1000));
     if (!bodyWithinLimit(req.headers.get("content-length"), bodyLimit)) throw asException(errors.tooLarge());
     const g = globalRl.check("");
     if (!g.allowed) throw asException(errors.rateLimited(g.retryAfter));
@@ -581,7 +585,10 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
         hdrs.set("x-mw-account", cand.account.name);
         hdrs.set("x-mw-pool", cand.pool);
         if (routed !== null) hdrs.set("x-mw-routed", decisionHeader(routed));
-        if (cand.status !== null) hdrs.set("x-mw-room-eur", poolRoom(cand.status).toFixed(4));
+        if (cand.status !== null) {
+          hdrs.set("x-mw-room-eur", poolRoom(cand.status).toFixed(4));
+          hdrs.set("x-mw-limits", limitsHeader(poolStatusDict(cand.status)));
+        }
         if (cand.status === null) {
           if (resp.body === null || resp.status === 204 || resp.status === 304) {
             heldResolve();

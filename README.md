@@ -78,6 +78,8 @@ mistwatch vibe-config
 
 Claude Code and current Codex CLI do not work directly, because they need the Anthropic Messages or OpenAI Responses format and Mistral offers neither. Put a translating proxy such as LiteLLM in front of Mistwatch if you need them.
 
+**Limits for other tools.** `GET /v1/mistwatch/limits` (with your `mw-` key) returns the 5 h, day, week and month windows of every pool, and each accounted response carries `x-mw-limits` and `x-mw-room-eur`. `GET /v1/billing/budget` answers in Mistral's own shape, summed over your accounts, so the Vibe CLI footer shows the pooled Vibe Code budget. Setup also sets `console_base_url` in the Vibe config, so the plan name and your name come from your real Mistral account through Mistwatch. There is no standard usage endpoint for Pi or OpenCode; they can call the limits endpoint.
+
 Agents and integrators can read `/llms.txt` on a running proxy (no sign-in needed). It describes the address, authentication, the `auto` model and the `401` and `429` errors.
 
 ## Commands
