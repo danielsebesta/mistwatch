@@ -7,6 +7,7 @@ import { must } from "./helpers.ts";
 describe("autoname", () => {
   it.each([
     ["zai-glm-5-3-flash", "GLM 5.3 Flash"],
+    ["zai-glm-5-3-flash-vibe-free", "GLM 5.3 Flash (Free)"],
     ["zai-glm-5-3", "GLM 5.3"],
     ["mistral-large-4-0", "Mistral Large 4"],
     ["ministral-3b-2512", "Ministral 3B (2512)"],

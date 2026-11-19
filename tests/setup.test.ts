@@ -771,7 +771,7 @@ describe("planToml display names", () => {
     expect(label("mistral-large-4-0")).toBe("Mistral Large 4");
     expect(label("custom-x")).toBe("Custom X");
     expect(label("b")).toBe("Beta (Mistwatch)");
-    expect(label("auto")).toBe("Auto (budget-aware router)");
+    expect(label("auto")).toBe("Auto");
     expect(planToml(out, "http://h:1")).toBeNull();
   });
 });

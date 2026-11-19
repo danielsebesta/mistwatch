@@ -10,7 +10,7 @@ describe("agents.models", () => {
     expect(m[0]?.[0]).toBe("auto");
     expect(m.map(([id]) => id)).not.toContain("auto-fast");
     expect(m.map(([id]) => id)).not.toContain("auto-max");
-    expect(m[0]?.[1]).toBe("Auto (budget-aware router)");
+    expect(m[0]?.[1]).toBe("Auto");
     const ids = m.map(([id]) => id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toContain("mistral-small-2603");

@@ -9,6 +9,7 @@ export const BUILTIN: [RegExp, string][] = [
   [/^mistral-medium(-latest|-3-5|-3\.5)?$|^mistral-vibe-cli(-latest|-with-tools)?$/, "Mistral Medium 3.5"],
   [/^(zai-)?glm-5-3$|^zai-glm-(5|latest)$/, "GLM 5.3"],
   [/^(zai-)?glm-5-3-flash$/, "GLM 5.3 Flash"],
+  [/^(zai-)?glm-5-3-flash-vibe-free$/, "GLM 5.3 Flash (Free)"],
   [/^(zai-)?glm-5-2$/, "GLM 5.2"],
   [/^deepseek-v4-1-flash(-1017)?$/, "DeepSeek V4.1 Flash"],
   [/^ministral-3b(-latest|-2512)?$/, "Ministral 3 3B"],

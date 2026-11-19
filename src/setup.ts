@@ -794,7 +794,7 @@ const tokenCommand = (platform: NodeJS.Platform): string =>
     ? "setx MISTWATCH_TOKEN <token>   (then open a new terminal)"
     : "export MISTWATCH_TOKEN=<token>   (add it to your shell profile)";
 const toolHint: Record<Harness, string> = {
-  vibe: 'In Vibe, open /model and pick "Auto (budget-aware router)"; your Mistral models now go through Mistwatch too.',
+  vibe: 'In Vibe, open /model and pick "Auto"; your Mistral models now go through Mistwatch too.',
   opencode: 'In OpenCode, pick a model of the "mistwatch" provider (start with auto).',
   pi: "In Pi, pick the mistwatch provider and the model auto.",
 };

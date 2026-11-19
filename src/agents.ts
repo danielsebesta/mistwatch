@@ -9,13 +9,15 @@ const NON_ASCII = /[\u0080-\uffff]/g;
 export const dumpJson = (v: unknown): string =>
   JSON.stringify(v, null, 2).replace(NON_ASCII, (c) => `\\u${(c.codePointAt(0) ?? 0).toString(16).padStart(4, "0")}`);
 export const models = (): ModelSpec[] => {
-  const out: ModelSpec[] = [["auto", "Auto (budget-aware router)", 262_144, true]];
+  const out: ModelSpec[] = [["auto", "Auto", 262_144, true]];
   const seen = new Set<string>();
   for (const st of LADDER) {
     if (seen.has(st.model)) continue;
     seen.add(st.model);
     out.push([st.model, builtin(st.model) ?? autoname(st.model), st.ctx, st.vision]);
   }
+  // Included with Vibe Code; offered by name, the router does not pick it.
+  out.push(["zai-glm-5-3-flash-vibe-free", "GLM 5.3 Flash (Free)", 1_048_576, true]);
   return out;
 };
 // The names Mistwatch itself uses for its three router models.
