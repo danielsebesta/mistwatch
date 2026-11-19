@@ -655,7 +655,7 @@ const limitsCard = (a: AggStatus): HTMLElement => {
   ];
   return h(
     "section",
-    { class: "card", "aria-label": "Limits right now" },
+    { class: "card limits-dash", "aria-label": "Limits right now" },
     h("div", { class: "card-h" }, h("h2", {}, "Limits right now")),
     h(
       "p",

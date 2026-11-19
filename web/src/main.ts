@@ -1,4 +1,4 @@
-import type { SessionResponse, SummaryResponse } from "../../shared/api.ts";
+import type { SessionResponse, SummaryResponse, WindowTotal } from "../../shared/api.ts";
 import { api, signOut } from "./api.ts";
 import { entriesOf, h, type IconName, ic, logoMark, qs } from "./dom.ts";
 import { errMsg, eur, pct100 } from "./format.ts";
@@ -21,6 +21,28 @@ const ROUTES: { "": RouteDef; "#/accounts": RouteDef; "#/keys": RouteDef; "#/set
 type RouteKey = keyof typeof ROUTES;
 const isRoute = (x: string): x is RouteKey => Object.hasOwn(ROUTES, x);
 
+// the spending limits of each period, small, in the sidebar
+const limitRows = (box: HTMLElement, w: [string, WindowTotal][]): void => {
+  box.replaceChildren(
+    h("span", { class: "xs mut" }, "Limits right now"),
+    ...w.map(([name, t]) => {
+      const pct = t.cap > 0 ? pct100((t.spent / t.cap) * 100) : 100;
+      const tone = pct >= 95 ? "bad" : pct >= 80 ? "warn" : "";
+      return h(
+        "div",
+        { class: "lim", title: `${eur(t.spent)} of ${eur(t.cap)} spent` },
+        h("span", { class: "sm" }, name),
+        h(
+          "span",
+          { class: `num xs ${t.room > 0 ? "mut" : "tx-bad"}` },
+          t.room > 0 ? `${eur(t.room)} left` : "none left",
+        ),
+        h("span", { class: "mini" }, h("i", { class: tone, style: `width:${pct}%` })),
+      );
+    }),
+  );
+};
+
 const loadSummary = async (): Promise<void> => {
   const els = document.querySelectorAll<HTMLElement>(".sumv");
   if (!els.length) return;
@@ -31,6 +53,17 @@ const loadSummary = async (): Promise<void> => {
     return;
   }
   const a = d.all;
+  const lim = document.querySelector<HTMLElement>(".side-lim");
+  if (lim) {
+    if (a)
+      limitRows(lim, [
+        ["5 hours", a.windows["5h"]],
+        ["Day", a.windows.day],
+        ["Week", a.windows.week],
+        ["Month", a.month],
+      ]);
+    else lim.replaceChildren();
+  }
   els.forEach((el) => {
     el.replaceChildren();
     if (!a) {
@@ -87,6 +120,7 @@ const render = (): void => {
         { class: "side" },
         h("a", { class: "brand", href: "#/" }, logoMark(), "Mistwatch"),
         h("nav", { class: "nav", "aria-label": "Main" }, links(false)),
+        h("div", { class: "side-lim", "aria-label": "Limits right now" }),
         h("a", { class: "side-sum sumv", "data-full": "1", href: "#/", title: "Total across all accounts and keys" }),
         h(
           "div",
