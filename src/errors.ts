@@ -42,6 +42,13 @@ export const errorHeaders = (e: AppError): Record<string, string> =>
         "RateLimit-Reset": String(Math.max(Math.ceil(e.retryAfter), 1)),
       };
 const secs = (n: number): number => Math.max(Math.ceil(n), 1);
+const waitText = (s: number): string => {
+  if (s < 90) return `${s} s`;
+  const m = Math.round(s / 60);
+  if (m < 90) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return m % 60 === 0 ? `${h} h` : `${h} h ${m % 60} min`;
+};
 export const errors = {
   auth: (): AppError =>
     appError(
@@ -49,15 +56,17 @@ export const errors = {
       401,
       "Missing or invalid Mistwatch key. Create one under API keys in the web UI and send it as Authorization: Bearer mw-...",
     ),
-  budget: (retryAfter: number, pools: unknown): AppError => {
+  budget: (retryAfter: number, pools: unknown, now = Date.now()): AppError => {
     const ra = secs(retryAfter);
+    const resetAt = new Date(now + ra * 1000).toISOString();
+    // Clients that only show the message (OpenCode, for one) cannot read the headers.
     return appError(
       "mistwatch_budget_exhausted",
       429,
-      "No account has budget room right now. Wait for the Retry-After delay and try again.",
+      `No account has budget room right now. Budget frees up in ${waitText(ra)} (at ${resetAt}); retry after that.`,
       {
         retryAfter: ra,
-        extra: { pools, retry_after: ra },
+        extra: { pools, retry_after: ra, reset_at: resetAt },
       },
     );
   },

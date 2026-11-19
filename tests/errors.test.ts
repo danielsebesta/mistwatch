@@ -74,6 +74,12 @@ describe("bodies and headers", () => {
     expect(b.error.retry_after).toBe(42);
     expect(b.error.pools).toEqual([{ account: "a" }]);
   });
+  it("budget error says when room frees up, in words and as a timestamp", () => {
+    const e = errors.budget(4_350, [], Date.UTC(2026, 10, 19, 12, 0, 0));
+    expect(e.message).toContain("in 73 min (at 2026-11-19T13:12:30.000Z)");
+    expect(proxyErrorBody(e).error.reset_at).toBe("2026-11-19T13:12:30.000Z");
+    expect(errors.budget(42, [], 0).message).toContain("in 42 s");
+  });
   it("apiErrorBody matches the FastAPI {detail} shape", () => {
     expect(apiErrorBody(errors.unauthorized("You are not signed in."))).toEqual({ detail: "You are not signed in." });
     expect(apiErrorBody(errors.locked(60)).detail).toBe("Too many attempts, try again in 60 s.");
