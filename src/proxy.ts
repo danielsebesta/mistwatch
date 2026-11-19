@@ -87,6 +87,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: 
   });
   return { promise, resolve, reject };
 };
+const reasonText = (e: unknown): string => (e instanceof Error ? `${e.name}: ${e.message}` : String(e));
 const pipe = (
   resp: Response,
   feed: ((c: Uint8Array) => void) | null,
@@ -112,6 +113,7 @@ const pipe = (
         "abort",
         () => {
           if (done) return;
+          console.warn("response stream cut:", reasonText(signal.reason));
           c.error(signal.reason);
           fin();
         },
@@ -138,6 +140,7 @@ const pipe = (
           // a parser bug must not break the client's stream
         }
       } catch (e) {
+        console.warn("upstream stream broke:", reasonText(e));
         c.error(e);
         fin();
       }
