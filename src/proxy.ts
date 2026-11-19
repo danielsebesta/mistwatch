@@ -372,10 +372,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
     const paidBody = sendBody;
     const paidModel = model;
     let tryFree = routed !== null && model === PAID_FLASH && Date.now() / 1000 >= freeUntil;
-    if (tryFree) {
-      sendBody = new TextEncoder().encode(JSON.stringify({ ...parsed, model: FREE_FLASH }));
-      model = FREE_FLASH;
-    }
+    const freeBody = tryFree ? new TextEncoder().encode(JSON.stringify({ ...parsed, model: FREE_FLASH })) : paidBody;
     const [price] = st.prices.lookup(paidModel);
     const estIn = estimateTokens(sendBody.length);
     const wantedOut = asInt(pickTruthy([parsed.max_tokens, 1024]));
@@ -454,6 +451,10 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
     for (let ci = 0; ci < cands.length; ci++) {
       const cand = cands[ci];
       if (cand === undefined) continue;
+      // The free variant belongs to Vibe Code, so it is only tried on the Vibe pool.
+      const free = tryFree && cand.pool === "vibe";
+      sendBody = free ? freeBody : paidBody;
+      model = free ? FREE_FLASH : paidModel;
       let key: string | null;
       try {
         key = keyFor(cand.account, cand.pool);
@@ -534,14 +535,12 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
         throw upstreamErr(e);
       }
       clearTimeout(connectTimer);
-      if (tryFree && resp.status >= 400) {
+      if (free && resp.status >= 400) {
         // The free variant refused (quota, not offered on this key, ...): use the paid model for a while.
         await resp.arrayBuffer().catch(() => null);
         console.warn(`free ${FREE_FLASH} answered ${resp.status}; using ${PAID_FLASH} for ${FREE_COOLDOWN_S}s`);
         freeUntil = Date.now() / 1000 + FREE_COOLDOWN_S;
         tryFree = false;
-        sendBody = paidBody;
-        model = paidModel;
         res?.release();
         heldResolve();
         ci--;

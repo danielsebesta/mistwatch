@@ -461,7 +461,7 @@ describe("proxy routing, limits and shutdown", () => {
     expect(r.headers.get("x-mw-routed")).toContain("mistral-small-2603");
     expect(upstreamModel).toBe("mistral-small-2603");
   });
-  it("tries the free GLM Flash for auto and falls back to the paid one for a while", async () => {
+  it("tries the free GLM Flash on the Vibe pool only and falls back to the paid one for a while", async () => {
     const seen: string[] = [];
     const st = baseState((_u, init) => {
       const b = bodyOf(init);
@@ -475,15 +475,20 @@ describe("proxy routing, limits and shutdown", () => {
       seen.push(m);
       return m === "zai-glm-5-3-flash-vibe-free" ? new Response("{}", { status: 429 }) : okJson();
     });
+    seedPool(st, "a", "vibe", 0, 127.5);
     const p = createProxy(st);
-    const ask = (n: number) =>
+    const ask = (n: number, ua = "Mistral-Vibe/3.1.0") =>
       p.handle(
         jreq(
           "/v1/chat/completions",
           { model: "auto", messages: [{ role: "user", content: `explain feature number ${n} of this module` }] },
-          AUTH,
+          { ...AUTH, "user-agent": ua },
         ),
       );
+    const r0 = await ask(0, "other-client/1");
+    expect(r0.headers.get("x-mw-pool")).toBe("api");
+    expect(seen).toEqual(["zai-glm-5-3-flash"]);
+    seen.length = 0;
     const r1 = await ask(1);
     expect(r1.status).toBe(200);
     expect(seen).toEqual(["zai-glm-5-3-flash-vibe-free", "zai-glm-5-3-flash"]);
