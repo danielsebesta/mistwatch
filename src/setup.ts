@@ -103,6 +103,11 @@ options:
   -h, --help           show this help`;
 const isHarness = (s: string): s is Harness => (HARNESSES as readonly string[]).includes(s);
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+// Index of the last non-blank line, so a key added to a TOML segment stays above the gap before the next table.
+const lastContent = (seg: readonly string[]): number => {
+  for (let i = seg.length - 1; i >= 0; i--) if ((seg[i] ?? "").trim() !== "") return i;
+  return 0;
+};
 const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 export const parseHarnesses = (raw: string): Harness[] => {
   const names = raw
@@ -442,8 +447,13 @@ export const planToml = (raw: string | null, base: string): string | null => {
       if (!(isModel && mine)) out.push(...seg);
       else {
         const label = mwName.get(id) ?? builtin(id);
+        // Auto chooses the effort itself: an existing Auto block loses the picker too
+        const noEffort = mwName.has(id) && !seg.some((l) => /^\s*thinking_levels\s*=/.test(l));
+        const body = noEffort
+          ? [...seg.slice(0, lastContent(seg) + 1), 'thinking_levels = ["off"]', ...seg.slice(lastContent(seg) + 1)]
+          : seg;
         out.push(
-          ...seg.map((l) =>
+          ...body.map((l) =>
             l
               .replace(/^(\s*provider\s*=\s*)(["'])mistral\2/, '$1"mistwatch"')
               .replace(/^(\s*display_name\s*=\s*)"([^"\\]*)"/, (_m, head: string, cur: string) =>

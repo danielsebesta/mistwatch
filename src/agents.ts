@@ -61,6 +61,8 @@ alias = "${name}"
 display_name = "${label}"
 max_context_length = ${ctx}
 supports_images = true
+# Mistwatch picks the reasoning effort itself, so Vibe has no effort to offer.
+thinking_levels = ["off"]
 `;
 export const vibe = (base: string, env = ENV): string => `[[providers]]
 name = "mistwatch"

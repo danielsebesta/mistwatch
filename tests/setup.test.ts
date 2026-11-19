@@ -512,6 +512,23 @@ describe("harness planners", () => {
     expect(Array.isArray(list) ? list : []).toHaveLength(1);
     expect(planToml(next, BASE)).toBeNull();
   });
+  it("offers no effort picker on Auto, also on an Auto block written earlier", () => {
+    const models = (t: string | null): Record<string, unknown>[] => {
+      const m = parse(t ?? "").models;
+      return Array.isArray(m) ? (m as Record<string, unknown>[]) : [];
+    };
+    expect(models(planToml(null, BASE)).find((m) => m.name === "auto")?.thinking_levels).toEqual(["off"]);
+    const old =
+      `${vibe(BASE)
+        .replace(/^# Mistwatch picks.*\n/m, "")
+        .replace(/^thinking_levels.*\n/m, "")}\n` + '[[models]]\nname = "m"\nprovider = "mistral"\n';
+    expect(old).not.toContain("thinking_levels");
+    const next = planToml(old, BASE) ?? "";
+    const list = models(next);
+    expect(list.find((m) => m.name === "auto")?.thinking_levels).toEqual(["off"]);
+    expect(list.find((m) => m.name === "m")?.thinking_levels).toBeUndefined();
+    expect(planToml(next, BASE)).toBeNull();
+  });
   it("keeps CRLF line endings and rejects broken toml", () => {
     const next = planToml('[[providers]]\r\nname = "a"\r\n', BASE) ?? "";
     expect(next).toContain('name = "mistwatch"\r\n');
