@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app.ts";
 import { defaultConfig } from "../src/config.ts";
 import { createRateLimiter } from "../src/ratelimit.ts";
-import { createState } from "../src/state.ts";
+import { createState, reloadAccounts } from "../src/state.ts";
 import { hashPassword, verifyPassword } from "../src/store.ts";
 import type { FetchLike } from "../src/types.ts";
 import type { WebApiOpts } from "../src/webapi.ts";
@@ -195,7 +195,7 @@ describe("security guards", () => {
     const arr = await jpost(app, "/api/setup", [1, 2, 3], H);
     expect(arr.status).toBe(400);
     const { cookie } = await login(app);
-    expect((await jpost(app, "/api/accounts", 42, authed(cookie))).status).toBe(400);
+    expect((await jpost(app, "/api/keys/add", 42, authed(cookie))).status).toBe(400);
   });
   it("returns 400 for invalid ids and parameters", async () => {
     const { app } = mkApp();
@@ -262,8 +262,7 @@ describe("sessions, setup and login", () => {
     const { app } = mkApp();
     const { cookie } = await login(app);
     expect((await jpost(app, "/api/setup", { username: "x", password: PW })).status).toBe(403);
-    expect((await jpost(app, "/api/accounts", { name: "a" }, { cookie })).status).toBe(403);
-    expect((await jpost(app, "/api/accounts", { name: "a" }, authed(cookie))).status).toBe(200);
+    expect((await jpost(app, "/api/keys/add", { key: "good-key-123456" }, { cookie })).status).toBe(403);
   });
   it("rejects weak passwords with 400", async () => {
     const { app } = mkApp();
@@ -341,12 +340,11 @@ describe("users, accounts and keys", () => {
     expect((await api(app, "/api/status", { headers: { cookie } })).status).toBe(200);
     expect((await api(app, "/api/status", { headers: { cookie: second } })).status).toBe(401);
   });
-  it("creates accounts, stores keys after verification and syncs", async () => {
-    const { app } = mkApp();
+  it("stores keys after verification and syncs", async () => {
+    const { app, st } = mkApp();
     const { cookie } = await login(app);
-    expect((await jpost(app, "/api/accounts", { name: "bad name!" }, authed(cookie))).status).toBe(400);
-    expect((await jpost(app, "/api/accounts", { name: "osobni" }, authed(cookie))).status).toBe(200);
-    expect((await jpost(app, "/api/accounts", { name: "osobni" }, authed(cookie))).status).toBe(400);
+    st.store.createAccount("osobni");
+    reloadAccounts(st);
     expect(
       (await jbody(app, "PUT", "/api/accounts/osobni/keys/api", { key: "bad-key-123456" }, authed(cookie))).status,
     ).toBe(400);
@@ -378,7 +376,8 @@ describe("users, accounts and keys", () => {
     const { app, st } = mkApp();
     const { cookie } = await login(app);
     for (const name of ["a", "b"]) {
-      await jpost(app, "/api/accounts", { name }, authed(cookie));
+      st.store.createAccount(name);
+      reloadAccounts(st);
       await jbody(app, "PUT", `/api/accounts/${name}/keys/api`, { key: `good-key-${name}-123456` }, authed(cookie));
     }
     st.db.links.set("b", "a");
@@ -404,10 +403,11 @@ describe("users, accounts and keys", () => {
     expect((await jpost(app, "/api/keys/check", { key: "  " }, authed(cookie))).status).toBe(400);
   });
   it("accepts e-mail style account names and url-encoded paths", async () => {
-    const { app } = mkApp();
+    const { app, st } = mkApp();
     const { cookie } = await login(app);
     const name = "daniel+mistral@example.cz";
-    expect((await jpost(app, "/api/accounts", { name }, authed(cookie))).status).toBe(200);
+    st.store.createAccount(name);
+    reloadAccounts(st);
     const q = encodeURIComponent(name);
     const r = await jbody(app, "PUT", `/api/accounts/${q}/keys/api`, { key: "good-key-123456" }, authed(cookie));
     expect(r.status, await r.text()).toBe(200);
@@ -416,13 +416,12 @@ describe("users, accounts and keys", () => {
     expect(isRec(first) ? first.name : null).toBe(name);
     expect((await jbody(app, "PATCH", `/api/accounts/${q}`, { enabled: false }, authed(cookie))).status).toBe(200);
     expect((await api(app, `/api/accounts/${q}`, { method: "DELETE", headers: authed(cookie) })).status).toBe(200);
-    expect((await jpost(app, "/api/accounts", { name: "a b" }, authed(cookie))).status).toBe(400);
-    expect((await jpost(app, "/api/accounts", { name: "x/y" }, authed(cookie))).status).toBe(400);
   });
   it("rejects invalid account patches and missing accounts", async () => {
-    const { app } = mkApp();
+    const { app, st } = mkApp();
     const { cookie } = await login(app);
-    await jpost(app, "/api/accounts", { name: "osobni" }, authed(cookie));
+    st.store.createAccount("osobni");
+    reloadAccounts(st);
     expect((await jbody(app, "PATCH", "/api/accounts/osobni", { priority: "high" }, authed(cookie))).status).toBe(400);
     expect((await jbody(app, "PATCH", "/api/accounts/missing", { enabled: true }, authed(cookie))).status).toBe(404);
     expect((await api(app, "/api/accounts/missing", { method: "DELETE", headers: authed(cookie) })).status).toBe(404);
@@ -434,7 +433,7 @@ describe("users, accounts and keys", () => {
 
 describe("models, agent-config and sign-in", () => {
   it("lists, renames, resets and refreshes model names", async () => {
-    const { app } = mkApp();
+    const { app, st } = mkApp();
     const { cookie } = await login(app);
     const list: unknown = await (await api(app, "/api/models", { headers: authed(cookie) })).json();
     expect(Array.isArray(list)).toBe(true);
@@ -447,7 +446,8 @@ describe("models, agent-config and sign-in", () => {
     ).toBe(200);
     const refresh = await jpost(app, "/api/models-refresh", {}, authed(cookie));
     expect(refresh.status).toBe(502);
-    await jpost(app, "/api/accounts", { name: "osobni" }, authed(cookie));
+    st.store.createAccount("osobni");
+    reloadAccounts(st);
     await jbody(app, "PUT", "/api/accounts/osobni/keys/api", { key: "good-key-123456", verify: false }, authed(cookie));
     const r2 = await jpost(app, "/api/models-refresh", {}, authed(cookie));
     expect(r2.status).toBe(200);
@@ -468,9 +468,10 @@ describe("models, agent-config and sign-in", () => {
     expect(first).toContain("MISTWATCH_TOKEN");
   });
   it("surfaces sign-in failures and 404s", async () => {
-    const { app } = mkApp();
+    const { app, st } = mkApp();
     const { cookie } = await login(app);
-    await jpost(app, "/api/accounts", { name: "osobni" }, authed(cookie));
+    st.store.createAccount("osobni");
+    reloadAccounts(st);
     const r = await jpost(app, "/api/accounts/osobni/signin", {}, authed(cookie));
     expect(r.status).toBe(400);
     const b: unknown = await r.json();
@@ -513,7 +514,8 @@ describe("proxy keys lifecycle", () => {
     const { app, st } = mkApp();
     const { cookie, out } = await login(app);
     const key = isRec(out.api_key) && typeof out.api_key.secret === "string" ? out.api_key.secret : "";
-    await jpost(app, "/api/accounts", { name: "osobni" }, authed(cookie));
+    st.store.createAccount("osobni");
+    reloadAccounts(st);
     await jbody(app, "PUT", "/api/accounts/osobni/keys/api", { key: "good-key-123456" }, authed(cookie));
     const now = Date.now() / 1000;
     st.db.addSnapshot({
@@ -596,13 +598,74 @@ describe("key owner", () => {
       if (p === "/api/vibe/whoami") return Promise.resolve(json({ plan_type: "chat", plan_name: "Pro" }));
       return Promise.resolve(json({}, 404));
     }) as FetchLike;
-    const app = createApp(createState(cfg, fetchFn), { webDir: WEB_DIR });
+    const ownerSt = createState(cfg, fetchFn);
+    const app = createApp(ownerSt, { webDir: WEB_DIR });
     const { cookie } = await login(app);
     const r = await api(app, "/api/accounts/a/owner", { headers: authed(cookie) });
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({
-      vibe: { name: "Ada L", email: "a@x.io", workspace: null, organization: "Org", plan: "Pro" },
+      vibe: { name: "Ada L", email: "a@x.io", workspace: null, organization: "Org", plan: "Pro", kind: "chat" },
       api: null,
     });
+  });
+});
+
+describe("keys find their owner", () => {
+  const owners: Record<string, { email: string; kind: string }> = {
+    "vibe-key-ada-123": { email: "ada@x.io", kind: "chat" },
+    "api-key-ada-1234": { email: "ada@x.io", kind: "api" },
+    "api-key-bob-1234": { email: "bob@x.io", kind: "api" },
+  };
+  const fetchFn = ((url: string, init?: RequestInit) => {
+    const key = (new Headers(init?.headers).get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+    const o = owners[key];
+    const p = new URL(url).pathname;
+    if (!o) return Promise.resolve(json({}, 401));
+    if (p === "/v1/billing/budget")
+      return Promise.resolve(
+        json({
+          [o.kind === "chat" ? "vibe_budget" : "api_budget"]: {
+            usage_percentage: 10,
+            initial_budget: 100,
+            reset_at: "2099-01-01T00:00:00Z",
+          },
+        }),
+      );
+    if (p === "/v1/users/me") return Promise.resolve(json({ id: o.email, email: o.email, first_name: "X" }));
+    if (p === "/api/vibe/whoami") return Promise.resolve(json({ plan_type: o.kind, plan_name: "P" }));
+    return Promise.resolve(json({ data: [] }));
+  }) as FetchLike;
+  const names = async (app: Hono, cookie: string): Promise<Record<string, string[]>> => {
+    const r = (await (await api(app, "/api/accounts", { headers: authed(cookie) })).json()) as {
+      accounts: { name: string; keys: Record<string, unknown> }[];
+    };
+    return Object.fromEntries(r.accounts.map((a) => [a.name, Object.keys(a.keys).filter((k) => a.keys[k])]));
+  };
+  it("puts a pasted key under its owner, one account per person, one key per pool", async () => {
+    const { app } = mkApp({}, fetchFn);
+    const { cookie } = await login(app);
+    const add = (key: string) => jpost(app, "/api/keys/add", { key }, authed(cookie));
+    expect((await add("vibe-key-ada-123")).status).toBe(200);
+    expect((await add("api-key-ada-1234")).status).toBe(200);
+    expect((await add("api-key-bob-1234")).status).toBe(200);
+    expect(await names(app, cookie)).toEqual({ "ada@x.io": ["vibe", "api"], "bob@x.io": ["api"] });
+    expect((await add("api-key-ada-1234")).status).toBe(200);
+    expect(Object.keys(await names(app, cookie))).toHaveLength(2);
+    expect((await add("nope-nope-nope-1")).status).toBe(400);
+  });
+  it("moves a signed-in account to its owner and drops the temporary one", async () => {
+    const { app, st } = mkApp({}, fetchFn);
+    const { cookie } = await login(app);
+    st.store.createAccount("pending-1");
+    st.store.setKey("pending-1", "vibe", { value: "vibe-key-ada-123" });
+    reloadAccounts(st);
+    const r = await jpost(app, "/api/accounts/pending-1/adopt", {}, authed(cookie));
+    expect(r.status).toBe(200);
+    expect(await names(app, cookie)).toEqual({ "ada@x.io": ["vibe"] });
+  });
+  it("no longer creates accounts by name", async () => {
+    const { app } = mkApp({}, fetchFn);
+    const { cookie } = await login(app);
+    expect((await jpost(app, "/api/accounts", { name: "x" }, authed(cookie))).status).toBe(404);
   });
 });

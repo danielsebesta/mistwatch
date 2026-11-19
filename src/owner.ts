@@ -7,6 +7,7 @@ export type KeyOwner = {
   workspace: string | null;
   organization: string | null;
   plan: string | null;
+  kind: string | null;
 };
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
@@ -44,5 +45,6 @@ export const fetchOwner = async (
     workspace: entity(me?.workspace),
     organization: entity(me?.organization),
     plan: str(who?.plan_name),
+    kind: str(who?.plan_type)?.toLowerCase() ?? null,
   };
 };

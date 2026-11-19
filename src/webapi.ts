@@ -1,8 +1,10 @@
+import { randomBytes } from "node:crypto";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { type Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import * as v from "valibot";
 import type { AccountView, Pool, StatusResponse } from "../shared/api.ts";
+import { type Adopted, adoptAccount, adoptKey } from "./adopt.ts";
 import { render, TOOL_ORDER } from "./agents.ts";
 import { poolStatusDict } from "./budget.ts";
 import { keyFor } from "./config.ts";
@@ -320,14 +322,50 @@ export const createWebApi = (st: State, opts: WebApiOpts = {}): Hono => {
     );
     return c.json({ vibe: vibe ?? null, api: studio ?? null });
   });
-  api.post("/accounts", async (c) => {
-    requireUser(c);
-    const b = await jsonBody(c);
-    const priority = b.priority === undefined || b.priority === null ? 100 : intOf(b.priority);
-    if (priority === null) throw apiError(400, "Invalid priority.");
-    st.store.createAccount(strOf(b.name), priority);
+  // Accounts are never created by hand: a key or a Mistral sign-in is placed under its owner (see adopt.ts).
+  const finishAdopt = async (c: Context, moved: Adopted[]) => {
     reloadAccounts(st);
-    return c.json({ ok: true });
+    st.blockedUntil.clear();
+    await syncAll(st.fetch, st.cfg, st.db);
+    st.lastSync = Date.now() / 1000;
+    return c.json({ ok: true, adopted: moved });
+  };
+  api.post("/keys/add", async (c) => {
+    requireUser(c);
+    limitUpstream(c);
+    const b = await jsonBody(c);
+    let secret: { value: string } | { ref: string };
+    if (b.source === "vibe-cli") {
+      if (!vibeCliKeyPresent()) throw apiError(400, "No Vibe CLI sign-in in the keyring (run `vibe --setup`).");
+      secret = { ref: VIBE_REF };
+    } else {
+      const key = strOf(b.key).trim();
+      if (!key) throw apiError(400, "Key is missing.");
+      secret = { value: key };
+    }
+    return finishAdopt(c, [await adoptKey(st, secret)]);
+  });
+  api.post("/accounts/:name/adopt", async (c) => {
+    requireUser(c);
+    limitUpstream(c);
+    const name = c.req.param("name");
+    getAcct(name);
+    return finishAdopt(c, await adoptAccount(st, name));
+  });
+  api.post("/signin", async (c) => {
+    requireUser(c);
+    limitUpstream(c);
+    const temp = `pending-${randomBytes(4).toString("hex")}`;
+    st.store.createAccount(temp);
+    reloadAccounts(st);
+    try {
+      return c.json(await st.signin.start(temp, "vibe"));
+    } catch (e) {
+      st.store.deleteAccount(temp);
+      reloadAccounts(st);
+      if (e instanceof SignInError) throw apiError(400, e.message);
+      throw e;
+    }
   });
   api.patch("/accounts/:name", async (c) => {
     requireUser(c);

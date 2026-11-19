@@ -251,7 +251,7 @@ const dashBody = (
                 "key",
                 "Nothing to watch yet",
                 "Add a Mistral account and key. Mistwatch will track your budget and help you spread it out.",
-                h("a", { class: "btn pri", href: "#/accounts" }, ic("plus"), "Add an account"),
+                h("a", { class: "btn pri", href: "#/accounts" }, ic("plus"), "Add a key"),
               ),
         ),
       ],

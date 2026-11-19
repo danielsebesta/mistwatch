@@ -1,6 +1,7 @@
 import type {
   AccountPatch,
   AccountsResponse,
+  AdoptResponse,
   AgentConfig,
   ApiKeysResponse,
   Credentials,
@@ -90,7 +91,9 @@ export const api = {
   sync: () => req<SyncAllResult>("POST", "/sync"),
   accounts: () => req<AccountsResponse>("GET", "/accounts"),
   owner: (name: string) => req<OwnerResponse>("GET", `/accounts/${enc(name)}/owner`),
-  addAccount: (name: string) => req<OkResponse>("POST", "/accounts", { name }),
+  addKey: (b: { key?: string; source?: "vibe-cli" }) => req<AdoptResponse>("POST", "/keys/add", b),
+  adopt: (name: string) => req<AdoptResponse>("POST", `/accounts/${enc(name)}/adopt`),
+  newSignin: () => req<SignInAttempt>("POST", "/signin"),
   patchAccount: (name: string, b: AccountPatch) => req<OkResponse>("PATCH", `/accounts/${enc(name)}`, b),
   delAccount: (name: string) => req<OkResponse>("DELETE", `/accounts/${enc(name)}`),
   putKey: (name: string, pool: Pool, b: PutKeyBody) =>

@@ -135,10 +135,11 @@ export type KeyOwner = {
   workspace: string | null;
   organization: string | null;
   plan: string | null;
+  kind: string | null;
 };
 export type OwnerResponse = Record<Pool, KeyOwner | null>;
 export type AccountsResponse = { accounts: AccountView[]; vibe_cli_available: boolean };
-export type AccountCreate = { name: string; priority?: number };
+export type AdoptResponse = { ok: true; adopted: { account: string; pool: Pool; created: boolean }[] };
 export type AccountPatch = { enabled?: boolean; priority?: number };
 export type SyncPoolResult = { used: number; initial: number; source: string };
 export type SyncedPools = Partial<Record<Pool, SyncPoolResult>>;

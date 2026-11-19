@@ -29,34 +29,42 @@ export const viewAccounts = async (main: HTMLElement): Promise<void> => {
       list.replaceChildren(errState(errMsg(e), load));
       return;
     }
-    const nameIn = h("input", {
-      class: "input",
-      id: "an",
-      "data-fk": "add-name",
-      placeholder: "name or e-mail",
-      autocomplete: "off",
-      spellcheck: "false",
-      "aria-label": "Account name",
-    });
-    const add = act(async () => {
-      await api.addAccount(nameIn.value);
-      toast("Account added");
-      load();
-    });
-    nameIn.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") add();
-    });
+    // accounts are not named by hand: a key or a sign-in is filed under the person it belongs to
     const form = h(
       "div",
       { class: "card" },
-      h("div", { class: "card-h" }, h("h2", {}, "Add an account")),
+      h("div", { class: "card-h" }, h("h2", {}, "Add a key")),
+      h(
+        "p",
+        { class: "mut sm" },
+        "Mistwatch asks Mistral who the key belongs to and files it under that person's e-mail or organization.",
+      ),
       h(
         "div",
-        { class: "field-row" },
-        h("label", { class: "f", for: "an" }, "Name", nameIn),
-        h("button", { class: "btn pri", "data-fk": "add", onclick: add }, ic("plus"), "Add account"),
+        { class: "row", style: "gap:var(--sp-2);flex-wrap:wrap" },
+        h(
+          "button",
+          { class: "btn pri", "data-fk": "add-signin", onclick: () => signIn(null, load) },
+          ic("plus"),
+          "Sign in with Mistral",
+        ),
+        d.vibe_cli_available
+          ? h(
+              "button",
+              {
+                class: "btn",
+                "data-fk": "add-vibe-cli",
+                onclick: act(async () => {
+                  await api.addKey({ source: "vibe-cli" });
+                  toast("Vibe CLI login added");
+                  load();
+                }),
+              },
+              "Use Vibe CLI login",
+            )
+          : null,
+        h("button", { class: "btn", "data-fk": "add-paste", onclick: () => pasteNewKey(load) }, "Paste a key"),
       ),
-      h("p", { class: "xs mut", style: "margin-top:var(--sp-2)" }, "1–80 characters: letters, digits and . _ + @ -"),
     );
     list.replaceChildren(
       ...(d.accounts.length ? d.accounts.map((a) => accountCard(a, d.vibe_cli_available, load)) : []),
@@ -70,7 +78,7 @@ export const viewAccounts = async (main: HTMLElement): Promise<void> => {
           emptyState(
             "accounts",
             "No accounts yet",
-            "An account is one Mistral login. Add one below, then connect its Vibe Code and Studio keys.",
+            "Sign in with Mistral or paste a key below. Keys of the same person are grouped automatically.",
           ),
         ),
       );
@@ -264,12 +272,13 @@ const syncNote = (r: { synced?: SyncedPools }): string => {
 };
 
 // Sign-in runs in a new Mistral tab; we poll until the key lands.
-const signIn = async (name: string, reload: () => void): Promise<void> => {
+// name null: a new sign-in, filed under whoever signed in once it is done
+const signIn = async (name: string | null, reload: () => void): Promise<void> => {
   // opened inside the click so popup blockers allow it
   const tab = window.open("", "_blank");
   let att: SignInAttempt;
   try {
-    att = await api.startSignin(name);
+    att = name === null ? await api.newSignin() : await api.startSignin(name);
   } catch (e) {
     tab?.close();
     toast(errMsg(e), true);
@@ -308,7 +317,10 @@ const signIn = async (name: string, reload: () => void): Promise<void> => {
   // closing by any route (Cancel, Escape, backdrop) abandons the attempt
   m.addEventListener("close", () => {
     stopped = true;
-    if (!settled) api.signinCancel(att.id).catch(() => null);
+    if (!settled) {
+      api.signinCancel(att.id).catch(() => null);
+      if (name === null) api.delAccount(att.account).catch(() => null);
+    }
   });
   while (!stopped && document.body.contains(m)) {
     await new Promise((r) => setTimeout(r, 2000));
@@ -325,12 +337,21 @@ const signIn = async (name: string, reload: () => void): Promise<void> => {
       stopped = true;
       settled = true;
       m.remove();
-      toast(`Signed in${syncNote(s)}`);
+      if (name === null) {
+        try {
+          const r = await api.adopt(att.account);
+          const to = r.adopted[0]?.account;
+          toast(to ? `Signed in as ${to}` : "Signed in");
+        } catch (e) {
+          toast(errMsg(e), true);
+        }
+      } else toast(`Signed in${syncNote(s)}`);
       reload();
       return;
     }
     if (!["pending", "exchanging"].includes(s.status)) {
       stopped = true;
+      if (name === null) api.delAccount(att.account).catch(() => null);
       msg.textContent = s.message || "Sign-in failed.";
       msg.className = "err";
       return;
@@ -375,6 +396,54 @@ const pasteKey = (name: string, pool: Pool, reload: () => void): void => {
       "p",
       { class: "mut sm" },
       `For account ${name}. Mistwatch checks the key with Mistral, then stores it securely on this computer. It is never shown in full.`,
+    ),
+    h("label", { class: "f", for: "pk" }, "Key", inp),
+    msg,
+    h("div", { class: "acts" }, h("button", { class: "btn", onclick: () => m.remove() }, "Cancel"), save),
+  ]);
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") save.click();
+  });
+  inp.focus();
+};
+
+const pasteNewKey = (reload: () => void): void => {
+  const inp = h("input", {
+    class: "input",
+    id: "pk",
+    type: "password",
+    placeholder: "Vibe CLI key or API key",
+    autocomplete: "off",
+    spellcheck: "false",
+  });
+  const msg = h("div", { class: "err", role: "alert" });
+  const save = h(
+    "button",
+    {
+      class: "btn pri",
+      onclick: async () => {
+        save.disabled = true;
+        msg.textContent = "";
+        try {
+          const r = await api.addKey({ key: inp.value });
+          m.remove();
+          const to = r.adopted[0]?.account;
+          toast(to ? `Key added to ${to}` : "Key added");
+          reload();
+        } catch (e) {
+          msg.textContent = errMsg(e);
+          save.disabled = false;
+        }
+      },
+    },
+    "Verify and add",
+  );
+  const m = modal([
+    h("h2", {}, "Paste a key"),
+    h(
+      "p",
+      { class: "mut sm" },
+      "Mistwatch checks the key with Mistral, finds out whose it is and which budget it belongs to, and stores it securely on this computer.",
     ),
     h("label", { class: "f", for: "pk" }, "Key", inp),
     msg,
