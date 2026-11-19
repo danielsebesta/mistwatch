@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { openDb } from "../src/db.ts";
-import { autoname, createModelNames } from "../src/modelnames.ts";
+import { autoname, builtin, createModelNames } from "../src/modelnames.ts";
 import { usage } from "../src/usage.ts";
 import { must } from "./helpers.ts";
 
 describe("autoname", () => {
   it.each([
     ["zai-glm-5-3-flash", "GLM 5.3 Flash"],
-    ["zai-glm-5-3-flash-vibe-free", "GLM 5.3 Flash (Free)"],
     ["zai-glm-5-3", "GLM 5.3"],
     ["mistral-large-4-0", "Mistral Large 4"],
     ["ministral-3b-2512", "Ministral 3B (2512)"],
@@ -163,5 +162,12 @@ describe("prototype-named models", () => {
     expect(n.resolve("constructor")).toEqual(["Ctor", "custom"]);
     expect(n.listing().map((r) => r.key)).toEqual(expect.arrayContaining(["__proto__", "constructor"]));
     expect(n.resolve("toString")[1]).toBe("auto");
+  });
+});
+
+describe("builtin", () => {
+  it("names the Vibe free GLM Flash", () => {
+    expect(builtin("zai-glm-5-3-flash-vibe-free")).toBe("GLM 5.3 Flash (Free)");
+    expect(builtin("zai-glm-5-3-flash")).toBe("GLM 5.3 Flash");
   });
 });
