@@ -119,3 +119,9 @@ export const consoleForward = async (st: State, path: string): Promise<Response>
     return Response.json({ error: "console unreachable" }, { status: 502 });
   }
 };
+
+// The shape of Mistral's GET /users/me, filled from Mistwatch.
+export const mistwatchIdentity = (st: State, client: Client) => {
+  const first = st.store.listUsers()[0]?.username ?? client?.name ?? "Mistwatch";
+  return { id: "mistwatch", first_name: first, last_name: null, email: null };
+};

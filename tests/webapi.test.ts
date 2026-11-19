@@ -557,7 +557,7 @@ describe("config migration", () => {
 });
 
 describe("Vibe console endpoints", () => {
-  it("forwards whoami and users/me to the console with the Vibe key", async () => {
+  it("forwards whoami to the console and answers users/me from Mistwatch", async () => {
     const seen: string[] = [];
     const cfg = defaultConfig();
     cfg.db_path = ":memory:";
@@ -574,10 +574,10 @@ describe("Vibe console endpoints", () => {
     expect(await w.json()).not.toHaveProperty("api_base");
     const u = await api(app, "/users/me");
     expect(u.status).toBe(200);
-    expect(seen).toEqual([
-      "https://console.mistral.ai/api/vibe/whoami Bearer vk",
-      "https://console.mistral.ai/users/me Bearer vk",
-    ]);
+    expect(await u.json()).toMatchObject({ first_name: "Mistwatch" });
+    st.store.createUser("daniel", "correct horse battery");
+    expect(await (await api(app, "/users/me")).json()).toMatchObject({ first_name: "daniel" });
+    expect(seen).toEqual(["https://console.mistral.ai/api/vibe/whoami Bearer vk"]);
   });
   it("needs a Mistwatch key once keys exist", async () => {
     const { app, st } = mkApp();
