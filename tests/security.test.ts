@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   bodyWithinLimit,
+  clientIp,
   filterRequestHeaders,
   filterResponseHeaders,
   hashPasswordAsync,
   hostAllowed,
+  isExposed,
+  isHttps,
   limitBodyStream,
   localRequestAllowed,
   originAllowed,
@@ -226,5 +229,28 @@ describe("log redaction and paths", () => {
     for (const ok of ["favicon.svg", "icon-192.png", "a.b_c-d"]) expect(safePathSegment(ok), ok).toBe(true);
     for (const bad of ["..", "../x", "a/b", "a\\b", ".hidden", "", "a b", "a%2e", "index.html/evil"])
       expect(safePathSegment(bad), bad).toBe(false);
+  });
+});
+
+describe("client address and exposure", () => {
+  it("uses the socket address unless a reverse proxy is trusted", () => {
+    expect(clientIp("1.2.3.4", "6.6.6.6", false)).toBe("1.2.3.4");
+    expect(clientIp(undefined, null, false)).toBe("?");
+    expect(clientIp("::ffff:1.2.3.4", null, false)).toBe("1.2.3.4");
+  });
+  it("takes the last X-Forwarded-For hop when trusted, so a forged first entry is ignored", () => {
+    expect(clientIp("127.0.0.1", "6.6.6.6, 203.0.113.5", true)).toBe("203.0.113.5");
+    expect(clientIp("127.0.0.1", "not-an-ip", true)).toBe("127.0.0.1");
+    expect(clientIp("127.0.0.1", null, true)).toBe("127.0.0.1");
+  });
+  it("detects https and exposure", () => {
+    expect(isHttps("https:", null, false)).toBe(true);
+    expect(isHttps("http:", "https", false)).toBe(false);
+    expect(isHttps("http:", "https", true)).toBe(true);
+    const base = { host: "127.0.0.1", trust_proxy: false, allowed_hosts: [] as string[] };
+    expect(isExposed(base)).toBe(false);
+    expect(isExposed({ ...base, host: "0.0.0.0" })).toBe(true);
+    expect(isExposed({ ...base, trust_proxy: true })).toBe(true);
+    expect(isExposed({ ...base, allowed_hosts: ["mw.example.com"] })).toBe(true);
   });
 });

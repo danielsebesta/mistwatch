@@ -111,7 +111,10 @@ To reach the UI under another host name, for example through a tunnel, add it to
 - Passwords are hashed with salted scrypt. Sessions and proxy keys are stored only as SHA-256 hashes.
 - Mistral keys have to be forwarded, so they cannot be hashed. They are kept in your system keyring (Windows Credential Manager, macOS Keychain, libsecret). The database holds only a reference. The Docker image has no keyring and stores them in the data volume instead.
 - Cookies are `HttpOnly` and `SameSite=Strict`, and five failed sign-ins lock an account for 60 seconds.
-- The server listens on `127.0.0.1` only. If you expose it to a network, put a reverse proxy with HTTPS in front.
+- The server listens on `127.0.0.1` only. If you expose it to a network, put a reverse proxy with HTTPS in front (Caddy, nginx, Cloudflare) and set `trust_proxy = true` under `[server]` (or `MISTWATCH_TRUST_PROXY=1`) plus `allowed_hosts = ["mw.example.com"]`. The proxy must set `X-Forwarded-For` and `X-Forwarded-Proto` and must overwrite any such header the client sends. With `trust_proxy` the per-IP limits count the real client address and the session cookie gets the `Secure` flag; HTTPS responses carry `Strict-Transport-Security`.
+- Before any database lookup the proxy applies a per-IP request budget (600 per minute) and locks an address for 60 seconds after 10 wrong keys. All endpoints, including `/v1/mistwatch/limits`, `/v1/billing/budget` and `/v1/users/me`, sit behind it.
+- A server that is reachable from outside (non-loopback host, `trust_proxy` or `allowed_hosts`) answers `401` to every proxy request until an API key exists, instead of running open. Create the web login and key from the local machine before you publish it.
+- Connection-level floods (slowloris, many open sockets) are not handled here. Put Cloudflare or your reverse proxy's connection limits in front.
 - Forgot your password? Run `mistwatch passwd <username>`.
 
 ## Development

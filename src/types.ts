@@ -24,6 +24,7 @@ export type Config = {
   host: string;
   port: number;
   allowed_hosts: string[];
+  trust_proxy: boolean;
   upstream: string;
   console_upstream: string;
   usd_to_eur: number;

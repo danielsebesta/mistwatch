@@ -1,17 +1,28 @@
 import { poolStatusDict, WINDOWS } from "./budget.ts";
 import { keyFor } from "./config.ts";
 import { asException, errors } from "./errors.ts";
+import { isExposed } from "./security.ts";
 import type { State } from "./state.ts";
 
 // What other tools can read from Mistwatch: the Vibe CLI's plan, name and budget footer, and the limit windows.
 export type Client = { id: number; name: string } | null;
 
-export const authClient = (st: State, authorization: string | null, xApiKey: string | null): Client => {
-  if (!st.store.hasApiKeys()) return null;
+// Checks the Mistwatch key. The per-IP budget and the lock after wrong keys run first, before any database lookup.
+// An exposed server (non-loopback address, reverse proxy, extra hosts) never runs without a key.
+export const authClient = (st: State, authorization: string | null, xApiKey: string | null, ip = "?"): Client => {
+  st.guard.before(ip);
+  if (!st.store.hasApiKeys()) {
+    if (isExposed(st.cfg)) throw asException(errors.auth());
+    return null;
+  }
   const auth = authorization ?? "";
   const tok = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7) : (xApiKey ?? "");
-  const k = st.store.verifyApiKey(tok.trim());
-  if (k === null) throw asException(errors.auth());
+  const k = st.store.verifyApiKey(tok.trim().slice(0, 256));
+  if (k === null) {
+    st.guard.wrongKey(ip);
+    throw asException(errors.auth());
+  }
+  st.guard.rightKey(ip);
   return k;
 };
 

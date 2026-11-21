@@ -1,6 +1,6 @@
 import { poolGrossRoom, poolPressure, poolRoom, poolStatusDict } from "./budget.ts";
 import { promptView, rate as rateRequest, SYSTEM } from "./classifier.ts";
-import { billingBudget, limits, limitsHeader, mistwatchIdentity, rateLimitHeaders } from "./compat.ts";
+import { authClient, billingBudget, limits, limitsHeader, mistwatchIdentity, rateLimitHeaders } from "./compat.ts";
 import { keyFor } from "./config.ts";
 import type { AppError } from "./errors.ts";
 import {
@@ -215,7 +215,7 @@ export type ProxyOpts = {
   concurrency?: number | undefined;
   maxPending?: number | undefined;
 };
-export type Proxy = { handle(req: Request): Promise<Response>; drain(graceMs?: number): Promise<void> };
+export type Proxy = { handle(req: Request, ip?: string): Promise<Response>; drain(graceMs?: number): Promise<void> };
 type Cand = { account: Account; pool: string; status: PoolStatus | null };
 type Ctx = {
   res: Reservation;
@@ -241,7 +241,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
   let freeUntil = 0;
   const errResp = (e: AppError): Response =>
     Response.json(proxyErrorBody(e), { status: e.status, headers: errorHeaders(e) });
-  const forward = async (req: Request): Promise<Response> => {
+  const forward = async (req: Request, ip: string): Promise<Response> => {
     if (
       !localRequestAllowed(
         { host: req.headers.get("host"), origin: req.headers.get("origin") },
@@ -253,24 +253,18 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
     const urlPath = url.pathname;
     if (urlPath === "/api" || urlPath.startsWith("/api/"))
       return Response.json(apiErrorBody(appError("mistwatch_not_found", 404, "Not Found")), { status: 404 });
-    let client: { id: number; name: string } | null = null;
-    if (st.store.hasApiKeys()) {
-      const auth = req.headers.get("authorization") ?? "";
-      const tok = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7) : (req.headers.get("x-api-key") ?? "");
-      const k = st.store.verifyApiKey(tok.trim());
-      if (k === null) throw asException(errors.auth());
-      client = k;
-    }
-    if (req.method === "GET" && urlPath === "/v1/billing/budget")
-      return Response.json(billingBudget(st, Date.now() / 1000));
-    // the Vibe CLI greets by this name: the Mistwatch user, not the Mistral account
-    if (req.method === "GET" && urlPath === "/v1/users/me") return Response.json(mistwatchIdentity(st, client));
-    if (req.method === "GET" && urlPath === "/v1/mistwatch/limits") return Response.json(limits(st, Date.now() / 1000));
+    // per-IP budget and the lock after wrong keys come first, then the key lookup, then the shared limits
+    const client = authClient(st, req.headers.get("authorization"), req.headers.get("x-api-key"), ip);
     if (!bodyWithinLimit(req.headers.get("content-length"), bodyLimit)) throw asException(errors.tooLarge());
     const g = globalRl.check("");
     if (!g.allowed) throw asException(errors.rateLimited(g.retryAfter));
     const kr = keyRl.check(client === null ? "open" : String(client.id));
     if (!kr.allowed) throw asException(errors.rateLimited(kr.retryAfter));
+    if (req.method === "GET" && urlPath === "/v1/billing/budget")
+      return Response.json(billingBudget(st, Date.now() / 1000));
+    // the Vibe CLI greets by this name: the Mistwatch user, not the Mistral account
+    if (req.method === "GET" && urlPath === "/v1/users/me") return Response.json(mistwatchIdentity(st, client));
+    if (req.method === "GET" && urlPath === "/v1/mistwatch/limits") return Response.json(limits(st, Date.now() / 1000));
     const body = await readLimitedBody(req.body, bodyLimit);
     const cls = classify(st, req.headers.get("user-agent") ?? "");
     const accounted = req.method === "POST" && ACCOUNTED.some((p) => urlPath === p || urlPath.startsWith(`${p}/`));
@@ -677,9 +671,9 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
     }
     throw asException(errors.upstream());
   };
-  const handle = async (req: Request): Promise<Response> => {
+  const handle = async (req: Request, ip = "?"): Promise<Response> => {
     try {
-      return await forward(req);
+      return await forward(req, ip);
     } catch (e) {
       return errResp(toAppError(e));
     }

@@ -133,6 +133,38 @@ describe("proxy auth and local checks", () => {
     const r = await p.handle(jreq("/v1/chat/completions", { model: "mistral-large-4-0" }));
     expect(r.status).toBe(200);
   });
+  it("locks an address after repeated wrong keys, before any key lookup", async () => {
+    const st = baseState(() => okJson());
+    const p = createProxy(st);
+    for (let i = 0; i < 10; i++)
+      expect(
+        (await p.handle(jreq("/v1/chat/completions", { model: "x" }, { authorization: "Bearer bad" }), "9.9.9.9"))
+          .status,
+      ).toBe(401);
+    const locked = await p.handle(jreq("/v1/chat/completions", { model: "x" }, AUTH), "9.9.9.9");
+    expect(locked.status).toBe(429);
+    expect(locked.headers.get("retry-after")).not.toBeNull();
+    const other = await p.handle(jreq("/v1/chat/completions", { model: "mistral-large-4-0" }, AUTH), "8.8.8.8");
+    expect(other.status).toBe(200);
+  });
+  it("puts the local info endpoints behind the same checks", async () => {
+    const st = baseState(() => okJson());
+    const p = createProxy(st);
+    expect((await p.handle(req("/v1/mistwatch/limits"), "7.7.7.7")).status).toBe(401);
+    expect((await p.handle(req("/v1/mistwatch/limits", { headers: AUTH }), "7.7.7.7")).status).toBe(200);
+  });
+  it("refuses to run open when the server is exposed", async () => {
+    const cfg = mkCfg([acct()], false);
+    cfg.trust_proxy = true;
+    const st = createState(
+      cfg,
+      fakeFetch(() => okJson()),
+    );
+    seedPool(st, "a", "api", 0, 12.75);
+    const r = await createProxy(st).handle(jreq("/v1/chat/completions", { model: "mistral-large-4-0" }));
+    expect(r.status).toBe(401);
+    expect(calls.length).toBe(0);
+  });
   it("rejects foreign Host and Origin headers", async () => {
     const st = baseState(() => okJson());
     const p = createProxy(st);

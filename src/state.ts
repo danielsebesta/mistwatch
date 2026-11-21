@@ -3,6 +3,8 @@ import { createBudgetEngine, poolBlockedBy, poolRetryAt, poolRoom } from "./budg
 import type { DB } from "./db.ts";
 import { openDb } from "./db.ts";
 import { loadLinks } from "./groups.ts";
+import type { Guard } from "./guard.ts";
+import { createGuard } from "./guard.ts";
 import type { ModelNames } from "./modelnames.ts";
 import { createModelNames } from "./modelnames.ts";
 import type { PriceBook } from "./pricing.ts";
@@ -24,6 +26,7 @@ export type State = {
   readonly engine: BudgetEngine;
   readonly prices: PriceBook;
   readonly store: Store;
+  readonly guard: Guard;
   readonly names: ModelNames;
   readonly signin: SignInApi;
   readonly vibeRe: RegExp;
@@ -42,6 +45,7 @@ export const createState = (cfg: Config, fetchFn: FetchLike = fetch): State => {
     engine: createBudgetEngine(db, cfg.limits),
     prices: createPriceBook(cfg.usd_to_eur, cfg.price_overrides),
     store,
+    guard: createGuard(),
     names: createModelNames(db),
     signin: createSignIn({
       cfg,

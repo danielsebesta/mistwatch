@@ -13,7 +13,7 @@ import { summarize } from "./groups.ts";
 import { fetchOwner } from "./owner.ts";
 import { createLoginLockout, createRateLimiter, type RateLimiter } from "./ratelimit.ts";
 import { truthy } from "./router.ts";
-import { bodyWithinLimit, localRequestAllowed, readLimitedBody } from "./security.ts";
+import { bodyWithinLimit, clientIp, isHttps, localRequestAllowed, readLimitedBody } from "./security.ts";
 import { SignInError } from "./signin.ts";
 import { blockKey, reloadAccounts, type State } from "./state.ts";
 import { SESSION_TTL, StoreError, VIBE_REF, vibeCliKeyPresent } from "./store.ts";
@@ -86,11 +86,13 @@ export const createWebApi = (st: State, opts: WebApiOpts = {}): Hono => {
   const loginLimit = opts.loginLimit ?? createRateLimiter({ limit: 20, windowS: 60 });
   const lockout = createLoginLockout({ maxFails: 5, lockS: 60, windowS: 600, maxKeys: 8192 });
   const addr = (c: Context): string => {
+    let remote: string | undefined;
     try {
-      return getConnInfo(c).remote.address ?? "?";
+      remote = getConnInfo(c).remote.address;
     } catch {
-      return "?";
+      remote = undefined;
     }
+    return clientIp(remote, c.req.header("x-forwarded-for"), st.cfg.trust_proxy);
   };
   const csrf = (c: Context): void => {
     if (c.req.method !== "GET" && c.req.method !== "HEAD" && c.req.header("x-mw") !== "1")
@@ -124,7 +126,13 @@ export const createWebApi = (st: State, opts: WebApiOpts = {}): Hono => {
     return p.output;
   };
   const setSessionCookie = (c: Context, token: string): void => {
-    setCookie(c, COOKIE, token, { httpOnly: true, sameSite: "Strict", path: "/", maxAge: SESSION_TTL });
+    setCookie(c, COOKIE, token, {
+      httpOnly: true,
+      sameSite: "Strict",
+      path: "/",
+      maxAge: SESSION_TTL,
+      secure: isHttps(new URL(c.req.url).protocol, c.req.header("x-forwarded-proto"), st.cfg.trust_proxy),
+    });
   };
   api.use("*", async (c, next) => {
     if (

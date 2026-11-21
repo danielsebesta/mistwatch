@@ -1,4 +1,5 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { isIP } from "node:net";
 import { asException, errors, isAppError } from "./errors.ts";
 import { createQueue } from "./queue.ts";
 export const randomToken = (bytes = 32): string => randomBytes(bytes).toString("base64url");
@@ -211,3 +212,25 @@ export const redactSecrets = (text: string, secrets: Iterable<string> = []): str
 };
 const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 export const safePathSegment = (name: string): boolean => SAFE_SEGMENT.test(name);
+
+const isLoopbackHost = (h: string): boolean => {
+  const x = h.toLowerCase().replace(/^\[|\]$/g, "");
+  return x === "localhost" || x === "::1" || x === "::ffff:127.0.0.1" || /^127\./.test(x);
+};
+// True when something other than this computer can reach the server: it listens on a non-loopback address,
+// sits behind a reverse proxy or answers to extra host names.
+export const isExposed = (cfg: { host: string; trust_proxy: boolean; allowed_hosts: readonly string[] }): boolean =>
+  cfg.trust_proxy || cfg.allowed_hosts.length > 0 || !isLoopbackHost(cfg.host);
+const lastHop = (v: string | null | undefined): string => (v ?? "").split(",").pop()?.trim() ?? "";
+// The address limits are counted by. Behind a trusted reverse proxy it is the last X-Forwarded-For entry
+// (the one the proxy itself appended, so a client cannot forge it); otherwise the socket address.
+export const clientIp = (remote: string | undefined, xff: string | null | undefined, trustProxy: boolean): string => {
+  const norm = (a: string): string => a.replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i, "$1");
+  if (trustProxy) {
+    const h = lastHop(xff).replace(/^\[|\]$/g, "");
+    if (isIP(h) !== 0) return norm(h);
+  }
+  return remote === undefined || remote === "" ? "?" : norm(remote);
+};
+export const isHttps = (protocol: string, xfp: string | null | undefined, trustProxy: boolean): boolean =>
+  protocol === "https:" || (trustProxy && lastHop(xfp).toLowerCase() === "https");

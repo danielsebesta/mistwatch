@@ -4,19 +4,21 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ServerType } from "@hono/node-server";
 import { serve } from "@hono/node-server";
+import { getConnInfo } from "@hono/node-server/conninfo";
+import type { Context } from "hono";
 import { Hono } from "hono";
 import { llmsTxt } from "./agents.ts";
 import { authClient, whoami } from "./compat.ts";
 import { clientBaseUrl } from "./config.ts";
 import { apiErrorBody, errorHeaders, errors, isAppError, proxyErrorBody, toAppError } from "./errors.ts";
 import { createProxy } from "./proxy.ts";
-import { localRequestAllowed, safePathSegment } from "./security.ts";
+import { clientIp, isExposed, isHttps, localRequestAllowed, safePathSegment } from "./security.ts";
 import { createState, type State } from "./state.ts";
 import { startSyncLoop } from "./sync.ts";
 import type { Config } from "./types.ts";
 import { createWebApi, type WebApiOpts } from "./webapi.ts";
 export type ProxyLike = {
-  handle(req: Request): Promise<Response>;
+  handle(req: Request, ip?: string): Promise<Response>;
   drain(graceMs?: number): Promise<void>;
 };
 export type AppOpts = { proxy?: ProxyLike; webDir?: string; apiOpts?: WebApiOpts };
@@ -46,10 +48,22 @@ export const createApp = (st: State, opts: AppOpts = {}): Hono => {
   const proxy = opts.proxy ?? createProxy(st);
   const webDir = opts.webDir ?? WEB_DIR;
   const app = new Hono();
+  const ipOf = (c: Context): string => {
+    let remote: string | undefined;
+    try {
+      remote = getConnInfo(c).remote.address;
+    } catch {
+      remote = undefined;
+    }
+    return clientIp(remote, c.req.header("x-forwarded-for"), st.cfg.trust_proxy);
+  };
   app.use("*", async (c, next) => {
     await next();
     c.header("X-Frame-Options", "DENY");
     c.header("Referrer-Policy", "no-referrer");
+    c.header("X-Content-Type-Options", "nosniff");
+    if (isHttps(new URL(c.req.url).protocol, c.req.header("x-forwarded-proto"), st.cfg.trust_proxy))
+      c.header("Strict-Transport-Security", "max-age=31536000");
   });
   app.use("*", async (c, next) => {
     const h = { host: c.req.header("host"), origin: c.req.header("origin") };
@@ -66,7 +80,7 @@ export const createApp = (st: State, opts: AppOpts = {}): Hono => {
   });
   // The Vibe CLI reads the plan from console_base_url/api/vibe/whoami: your real account, forwarded.
   app.get("/api/vibe/whoami", (c) => {
-    authClient(st, c.req.header("authorization") ?? null, c.req.header("x-api-key") ?? null);
+    authClient(st, c.req.header("authorization") ?? null, c.req.header("x-api-key") ?? null, ipOf(c));
     return whoami(st);
   });
   app.route("/api", createWebApi(st, opts.apiOpts));
@@ -99,7 +113,7 @@ export const createApp = (st: State, opts: AppOpts = {}): Hono => {
       return c.body(new Uint8Array(data), 200, { "content-type": type, "Cache-Control": "public, max-age=86400" });
     });
   }
-  app.all("*", (c) => proxy.handle(c.req.raw));
+  app.all("*", (c) => proxy.handle(c.req.raw, ipOf(c)));
   app.onError((e) => {
     const err = isAppError(e) ? e : toAppError(e);
     if (!isAppError(e)) console.error("app: unhandled error:", e);
@@ -122,6 +136,16 @@ export const startServer = async (
   const proxy = createProxy(st);
   const app = createApp(st, { proxy });
   const stopSync = startSyncLoop(st);
+  if (isExposed(cfg)) {
+    if (st.store.countUsers() === 0)
+      console.warn(
+        "mistwatch: WARNING this server is reachable from outside and has no login yet. Anyone who opens the web UI first can create it. Create the login from this computer (host 127.0.0.1) before you publish it.",
+      );
+    if (!cfg.trust_proxy && cfg.allowed_hosts.length > 0)
+      console.warn(
+        "mistwatch: allowed_hosts is set but trust_proxy is false: per-IP limits see the proxy address, and cookies are not marked Secure. Set trust_proxy = true behind a reverse proxy.",
+      );
+  }
   const server = serve({ fetch: app.fetch, hostname: cfg.host, port: cfg.port });
   await new Promise<void>((ok, fail) => {
     server.once("listening", ok);

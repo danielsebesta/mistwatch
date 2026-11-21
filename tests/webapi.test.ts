@@ -93,6 +93,27 @@ describe("web ui and session gate", () => {
     expect(c).toContain("Max-Age=2592000");
     expect(c).not.toContain("Secure");
   });
+  it("marks the cookie Secure behind a trusted HTTPS proxy", async () => {
+    const cfg = defaultConfig();
+    cfg.db_path = ":memory:";
+    cfg.trust_proxy = true;
+    cfg.allowed_hosts = ["mw.example.com"];
+    const st = createState(cfg);
+    const app = createApp(st, { proxy: { handle: async () => new Response("x"), drain: async () => undefined } });
+    const r = await app.request("http://mw.example.com/api/setup", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-mw": "1",
+        host: "mw.example.com",
+        "x-forwarded-proto": "https",
+        "x-forwarded-for": "203.0.113.5",
+      },
+      body: JSON.stringify({ username: "daniel", password: PW }),
+    });
+    expect(r.headers.getSetCookie()[0]).toContain("Secure");
+    expect(r.headers.get("strict-transport-security")).toContain("max-age");
+  });
   it("allows inline scripts by hash instead of unsafe-inline", async () => {
     const dir = mkdtempSync(join(tmpdir(), "mw-web-"));
     const body = "console.log(1)";
