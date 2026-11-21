@@ -4,6 +4,27 @@ import type { Limits, PoolStatus, PoolStatusDict, WindowStatus } from "./types.t
 export const DAY = 86400;
 export const WINDOWS: Record<string, number> = { "5h": 5 / 24, day: 1.0, week: 7.0 };
 export const MIN_DAYS_LEFT = 1 / 24;
+export const BOOST_HOURS = 5;
+const localDay = (t: number): string => {
+  const d = new Date(t * 1000);
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+};
+export type BoostInfo = { active: boolean; until: number | null; available: boolean; hours: number };
+// A boost lifts the 5 h and day pacing windows (never week or month) for BOOST_HOURS, once per local day.
+export const boostInfo = (db: DB, now: number = Date.now() / 1000): BoostInfo => {
+  const until = Number(db.getMeta("boost_until") ?? 0);
+  const active = Number.isFinite(until) && now < until;
+  const usedToday = db.getMeta("boost_day") === localDay(now);
+  return { active, until: active ? until : null, available: !active && !usedToday, hours: BOOST_HOURS };
+};
+export const startBoost = (db: DB, now: number = Date.now() / 1000): BoostInfo => {
+  const b = boostInfo(db, now);
+  if (b.active) throw new RangeError("A boost is already running.");
+  if (!b.available) throw new RangeError("Today's boost is already used. It is available again after midnight.");
+  db.setMeta("boost_until", String(now + BOOST_HOURS * 3600));
+  db.setMeta("boost_day", localDay(now));
+  return boostInfo(db, now);
+};
 export const poolRoom = (st: PoolStatus): number =>
   Math.min(st.month_room, ...Object.values(st.windows).map((w) => w.room)) - st.inflight;
 export const poolGrossRoom = (st: PoolStatus): number =>
@@ -154,6 +175,7 @@ export const createBudgetEngine = (db: DB, limits: Limits): BudgetEngine => {
       group: canon,
       members,
     };
+    const boosted = boostInfo(db, t).active;
     const wideRows = db.rowsSince(members, pool, t - widest * DAY);
     for (const [name, length] of Object.entries(WINDOWS)) {
       const rows = wideRows.filter(([ts]) => ts >= t - length * DAY);
@@ -161,8 +183,10 @@ export const createBudgetEngine = (db: DB, limits: Limits): BudgetEngine => {
       for (const [, c] of rows) spent += c;
       const b0 = Math.min(Math.max(remaining, 0) + spent, initial);
       const k = (length / (daysLeft + length)) * burst(name);
-      const cap = b0 * k;
-      const room = cap - spent;
+      // boosted: the 5 h and day windows only stop at the month budget, so the cap follows what is left there
+      const lifted = boosted && name !== "week";
+      const room = lifted ? Math.max(b0 * k - spent, monthRoom) : b0 * k - spent;
+      const cap = lifted ? spent + room : b0 * k;
       st.windows[name] = {
         name,
         length_days: length,

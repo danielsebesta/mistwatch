@@ -6,7 +6,7 @@ import * as v from "valibot";
 import type { AccountView, Pool, StatusResponse } from "../shared/api.ts";
 import { type Adopted, adoptAccount, adoptKey } from "./adopt.ts";
 import { render, TOOL_ORDER } from "./agents.ts";
-import { poolStatusDict } from "./budget.ts";
+import { boostInfo, poolStatusDict, startBoost } from "./budget.ts";
 import { keyFor } from "./config.ts";
 import { type AppException, apiErrorBody, appError, asException, errorHeaders, errors, isAppError } from "./errors.ts";
 import { summarize } from "./groups.ts";
@@ -76,6 +76,7 @@ const statusPayload = (st: State, now: number): StatusResponse => {
     last_sync: st.lastSync,
     pools,
     summary: summarize(st.engine, st.cfg.accounts, now),
+    boost: boostInfo(st.db, now),
     by_client_7d: st.db.byClientSince(now - 7 * 86400).flatMap((r) => (isPool(r.pool) ? [{ ...r, pool: r.pool }] : [])),
   };
 };
@@ -241,7 +242,16 @@ export const createWebApi = (st: State, opts: WebApiOpts = {}): Hono => {
   });
   api.get("/summary", (c) => {
     requireUser(c);
-    return c.json({ last_sync: st.lastSync, ...summarize(st.engine, st.cfg.accounts) });
+    return c.json({ last_sync: st.lastSync, ...summarize(st.engine, st.cfg.accounts), boost: boostInfo(st.db) });
+  });
+  api.post("/boost", (c) => {
+    requireUser(c);
+    try {
+      return c.json(startBoost(st.db));
+    } catch (e) {
+      if (e instanceof RangeError) throw apiError(409, e.message);
+      throw e;
+    }
   });
   api.get("/usage", (c) => {
     requireUser(c);

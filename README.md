@@ -62,6 +62,7 @@ With Docker Compose (`docker-compose.yml` in this repo), set `MISTWATCH_BIND` to
 ## Web UI
 
 - **Overview**: Vibe and Studio budgets, limits per period, a spending chart and recent requests.
+- **Boost**: when the 5 hour or day limit stops you but the month budget has plenty left, press Boost on the Overview (or run `mistwatch boost`). The 5 hour and day limits are lifted for 5 hours, once per day (resets at local midnight). The week and month limits and the reserve still apply.
 - **Accounts**: your Mistral accounts, each with a Vibe key (can be taken over from the Vibe CLI in one click) and a Studio API key. A key is checked before it is saved.
 - **API keys**: `mw-…` keys for your tools. A key is shown only once, when you create it. The same page has ready-made configs for OpenCode, Pi and the Vibe CLI, plus environment variables for other tools.
 - **Settings**: change your password, add users and rename models in charts and tables.

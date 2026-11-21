@@ -60,13 +60,16 @@ export type Summary = {
   shared: SharedGroup[];
   accounts: number;
 };
-export type SummaryResponse = Summary & { last_sync: number | null };
+// A boost lifts the 5 h and day windows for a few hours, once per local day. Month and week still apply.
+export type BoostState = { active: boolean; until: number | null; available: boolean; hours: number };
+export type SummaryResponse = Summary & { last_sync: number | null; boost: BoostState };
 export type ByClientRow = { client: string; account: string; pool: Pool; n: number; cost_eur: number };
 export type StatusResponse = {
   now: number;
   last_sync: number | null;
   pools: PoolStatus[];
   summary: Summary;
+  boost: BoostState;
   by_client_7d: ByClientRow[];
 };
 

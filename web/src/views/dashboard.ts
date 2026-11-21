@@ -1,5 +1,6 @@
 import type {
   AggStatus,
+  BoostState,
   LedgerRow,
   PoolStatus,
   PoolWindow,
@@ -19,6 +20,8 @@ import { handlers, pref } from "../state.ts";
 import { toast } from "../toast.ts";
 import { act, badge, emptyState, errState, fold, pageHead, skel, td } from "../ui.ts";
 
+const hhmm = (ts: number): string =>
+  new Date(ts * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 type SetPref = (k: "range" | "by", v: string) => void;
 
 const foldTitle = (d: HTMLDetailsElement): string => d.querySelector("summary span")?.textContent ?? "";
@@ -125,7 +128,24 @@ export const viewDash = async (main: HTMLElement): Promise<void> => {
     refresh(topSlot, parts.top);
     refresh(chartSlot, parts.chart ?? []);
     refresh(restSlot, parts.rest);
+    showBoost(d.boost);
   };
+  const boostBtn = h("button", { class: "btn" }, ic("clock"), "Boost");
+  const showBoost = (b: BoostState): void => {
+    const label = b.active && b.until ? `Boost until ${hhmm(b.until)}` : "Boost";
+    boostBtn.replaceChildren(ic("clock"), label);
+    (boostBtn as HTMLButtonElement).disabled = !b.available;
+    boostBtn.title = b.active
+      ? "The 5 hour and day limits are lifted. Week and month still apply."
+      : b.available
+        ? `Lift the 5 hour and day limits for ${b.hours} hours. Once per day. Week and month still apply.`
+        : "Today's boost is used. It is available again after midnight.";
+  };
+  boostBtn.onclick = act(async () => {
+    showBoost(await api.boost());
+    toast("Boost on: the 5 hour and day limits are lifted");
+    void load();
+  });
   const syncBtn = h(
     "button",
     {
@@ -157,7 +177,7 @@ export const viewDash = async (main: HTMLElement): Promise<void> => {
     active = false;
     stop();
   };
-  main.append(pageHead("Overview", syncMeta, syncBtn), body);
+  main.append(pageHead("Overview", syncMeta, boostBtn, syncBtn), body);
   await load();
   poll();
 };

@@ -17,6 +17,7 @@ commands:
   import-vibe    add the Vibe CLI keyring login as an account (--name)
   status         budget status of every account/pool (--json)
   sync           pull budget usage from Mistral now
+  boost          lift the 5 h and day limits for 5 hours, once per day (--status)
   serve          run the proxy and web UI (--port)
   route          dry-run the auto router on a prompt (--tools --llm --pressure)
   passwd         create a user / reset a password
@@ -263,6 +264,32 @@ const cmdStatus = async (args: string[]): Promise<number> => {
   console.log(values.json ? dumpJson(d) : fmtStatus(d));
   return 0;
 };
+const cmdBoost = async (args: string[]): Promise<number> => {
+  const { values } = opts({ args, options: { status: { type: "boolean", default: false } }, strict: true });
+  const { boostInfo, startBoost } = await import("./budget.ts");
+  const { db } = await openApp();
+  try {
+    const until = (t: number | null): string => (t === null ? "" : new Date(t * 1000).toLocaleTimeString());
+    if (values.status) {
+      const b = boostInfo(db);
+      console.log(
+        b.active ? `Boost active until ${until(b.until)}` : b.available ? "Boost available" : "Boost used today",
+      );
+      return 0;
+    }
+    const b = startBoost(db);
+    console.log(`Boost on until ${until(b.until)}. The 5 h and day limits are lifted; week and month still apply.`);
+    return 0;
+  } catch (e) {
+    if (e instanceof RangeError) {
+      console.error(`mistwatch: ${e.message}`);
+      return 1;
+    }
+    throw e;
+  } finally {
+    db.close();
+  }
+};
 const cmdSync = async (): Promise<number> => {
   const { syncAll } = await import("./sync.ts");
   const { cfg, db } = await openApp();
@@ -407,6 +434,7 @@ export const main = async (argv: string[]): Promise<number> => {
     if (cmd === "set-token") return await cmdSetToken(rest);
     if (cmd === "status") return await cmdStatus(rest);
     if (cmd === "sync") return await cmdSync();
+    if (cmd === "boost") return await cmdBoost(rest);
     if (cmd === "serve") return await cmdServe(rest);
     if (cmd === "route") return await cmdRoute(rest);
     if (cmd === "vibe-config") return await cmdVibeConfig();

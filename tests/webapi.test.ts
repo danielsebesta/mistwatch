@@ -714,3 +714,17 @@ describe("combined plan", () => {
     expect(await r.json()).toMatchObject({ plan_type: "chat", plan_name: "Pro + Pro + Team" });
   });
 });
+
+describe("boost endpoint", () => {
+  it("needs a login, starts once per day and shows in status", async () => {
+    const { app } = mkApp();
+    expect((await jpost(app, "/api/boost", {}, H)).status).toBe(401);
+    const { cookie } = await login(app);
+    const first = await jpost(app, "/api/boost", {}, authed(cookie));
+    expect(first.status).toBe(200);
+    expect(await first.json()).toMatchObject({ active: true, available: false });
+    expect((await jpost(app, "/api/boost", {}, authed(cookie))).status).toBe(409);
+    const status = await api(app, "/api/status", { headers: { cookie } });
+    expect(await status.json()).toMatchObject({ boost: { active: true } });
+  });
+});

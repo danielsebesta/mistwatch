@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  BOOST_HOURS,
   type BudgetEngine,
+  boostInfo,
   createBudgetEngine,
   DAY,
   poolBlockedBy,
   poolRetryAt,
   poolRoom,
   roundTo,
+  startBoost,
 } from "../src/budget.ts";
 import { defaultLimits } from "../src/config.ts";
 import { type DB, openDb } from "../src/db.ts";
@@ -102,5 +105,49 @@ describe("pricing", () => {
     expect(Object.is(roundTo(-0.00001, 4), -0)).toBe(true);
     expect(Object.is(roundTo(-0, 4), -0)).toBe(true);
     expect(roundTo(Number.POSITIVE_INFINITY, 4)).toBe(Number.POSITIVE_INFINITY);
+  });
+});
+
+describe("boost", () => {
+  it("lifts the 5h window but still stops at the month budget", () => {
+    const [db, eng, now] = mk();
+    const cap = win(must(eng.status("a", "vibe", now)), "5h").cap;
+    db.addLedger({ ts: now - 60, account: "a", pool: "vibe", cost_eur: cap + 1, source: "proxy" });
+    expect(poolBlockedBy(must(eng.status("a", "vibe", now)))).toBe("5h");
+    startBoost(db, now);
+    const s = must(eng.status("a", "vibe", now));
+    expect(poolBlockedBy(s)).toBeNull();
+    expect(poolRoom(s)).toBeGreaterThan(cap);
+    expect(poolRoom(s)).toBeLessThanOrEqual(s.month_room);
+  });
+  it("does not lift the week window or an exhausted month", () => {
+    const [db, eng, now] = mk(127.5, 127.5);
+    startBoost(db, now);
+    expect(poolBlockedBy(must(eng.status("a", "vibe", now)))).toBe("month");
+    const [db2, eng2, n2] = mk();
+    const weekCap = win(must(eng2.status("a", "vibe", n2)), "week").cap;
+    db2.addLedger({ ts: n2 - 60, account: "a", pool: "vibe", cost_eur: weekCap + 1, source: "proxy" });
+    startBoost(db2, n2);
+    expect(poolBlockedBy(must(eng2.status("a", "vibe", n2)))).toBe("week");
+  });
+  it("lasts BOOST_HOURS, then the windows apply again", () => {
+    const [db, eng, now] = mk();
+    const cap = win(must(eng.status("a", "vibe", now)), "5h").cap;
+    startBoost(db, now);
+    expect(boostInfo(db, now + 60).active).toBe(true);
+    const after = now + BOOST_HOURS * 3600 + 1;
+    expect(boostInfo(db, after).active).toBe(false);
+    db.addLedger({ ts: after - 60, account: "a", pool: "vibe", cost_eur: cap + 1, source: "proxy" });
+    expect(poolBlockedBy(must(eng.status("a", "vibe", after)))).toBe("5h");
+  });
+  it("can be started once per local day", () => {
+    const [db, , now] = mk();
+    expect(boostInfo(db, now).available).toBe(true);
+    startBoost(db, now);
+    expect(() => startBoost(db, now + 10)).toThrow(RangeError);
+    const afterEnd = now + BOOST_HOURS * 3600 + 5;
+    const sameDay = new Date(afterEnd * 1000).toDateString() === new Date(now * 1000).toDateString();
+    expect(boostInfo(db, afterEnd).available).toBe(!sameDay);
+    expect(boostInfo(db, now + 26 * 3600).available).toBe(true);
   });
 });
