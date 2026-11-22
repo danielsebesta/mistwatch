@@ -1,6 +1,6 @@
 {
   "name": "mistwatch",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Local proxy for Mistral AI that tracks your Vibe Code and Studio budgets and adds an auto model",
   "type": "module",
   "license": "MIT",
