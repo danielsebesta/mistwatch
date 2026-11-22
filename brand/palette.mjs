@@ -33,7 +33,10 @@ const T = {
   "accent-container": P(30),// primaryContainer
   ok: hue(150, 46, 80), warn: hue(100, 62, 80), bad: E(80),                    // extended colours + error
   "ok-container": hue(150, 46, 30), "warn-container": hue(100, 62, 30), "bad-container": E(30), // *Container
-  s1: P(72), s2: hue(200, 46, 72), s3: hue(255, 42, 78), s4: hue(140, 44, 72), s5: hue(350, 52, 76), s6: hue(105, 54, 80),
+  // chart series: one tone and a moderate chroma, so the bars sit inside the warm scheme instead of shouting over it.
+  // Hues alternate warm/cool, because neighbouring segments of a stacked bar are the pair people compare first.
+  s1: hue(35, 44, 70), s2: hue(195, 36, 70), s3: hue(350, 40, 70),
+  s4: hue(255, 40, 70), s5: hue(145, 34, 70), s6: hue(300, 38, 70),
   "s-other": NV(45),
 };
 const css = Object.entries(T).map(([k, v]) => `  --${k}:${v};`).join("\n") +

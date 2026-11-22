@@ -24,12 +24,12 @@
   --ok-container: #00531f;
   --warn-container: #524700;
   --bad-container: #93000a;
-  --s1: #ff9647;
-  --s2: #3ac2c7;
-  --s3: #95c4ff;
-  --s4: #89bf73;
-  --s5: #ff9dcf;
-  --s6: #d7c93c;
+  --s1: #f59072;
+  --s2: #64b9b7;
+  --s3: #e493bb;
+  --s4: #80aee8;
+  --s5: #8ab782;
+  --s6: #b5a1e4;
   --s-other: #7d6658;
   --accent-soft: var(--accent-container);
   --ok-soft: var(--ok-container);
