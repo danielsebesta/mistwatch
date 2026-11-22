@@ -9,12 +9,13 @@ import type {
   UsageBy,
   UsageRange,
   UsageResponse,
+  UsageSeries,
   WindowTotal,
 } from "../../../shared/api.ts";
 import { api } from "../api.ts";
 import { entriesOf, h, ic, type Kid, keysOf, svg } from "../dom.ts";
 import { latest, stepTab } from "../flow.ts";
-import { ago, errMsg, eur, eur4, niceMax, pct100, plural, short, when } from "../format.ts";
+import { ago, errMsg, eur, eur4, exact, niceMax, pct100, plural, short, TOKEN_STEPS, tokens, when } from "../format.ts";
 import { asBy, asRange, BYS, colorOf, PERIOD_DAYS, poolLabel, RANGE_DAYS, RANGES, winLabel } from "../labels.ts";
 import { handlers, pref } from "../state.ts";
 import { toast } from "../toast.ts";
@@ -22,7 +23,9 @@ import { act, badge, emptyState, errState, fold, pageHead, skel, td } from "../u
 
 const hhmm = (ts: number): string =>
   new Date(ts * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-type SetPref = (k: "range" | "by", v: string) => void;
+type Metric = "cost" | "tokens";
+const asMetric = (v: string): Metric => (v === "tokens" ? "tokens" : "cost");
+type SetPref = (k: "range" | "by" | "metric", v: string) => void;
 
 const foldTitle = (d: HTMLDetailsElement): string => d.querySelector("summary span")?.textContent ?? "";
 const refresh = (slot: HTMLElement, kids: HTMLElement[]): void => {
@@ -33,12 +36,13 @@ const refresh = (slot: HTMLElement, kids: HTMLElement[]): void => {
   for (const d of slot.querySelectorAll<HTMLDetailsElement>("details")) d.open = open.has(foldTitle(d));
 };
 
-type Controls = { head: HTMLElement; sync: (range: UsageRange, by: UsageBy) => void };
+type Controls = { head: HTMLElement; sync: (range: UsageRange, by: UsageBy, metric: Metric) => void };
 
 const chartControls = (set: SetPref, panel: HTMLElement): Controls => {
   const keys = keysOf(RANGES);
   panel.id = "chart-panel";
   panel.setAttribute("role", "tabpanel");
+  const title = h("h2", {}, "Spending");
   const tabs = keys.map((r) =>
     h(
       "button",
@@ -56,12 +60,20 @@ const chartControls = (set: SetPref, panel: HTMLElement): Controls => {
     tabs[to ?? 0]?.focus();
     set("range", next);
   });
+  const metrics: [Metric, string][] = [
+    ["cost", "€"],
+    ["tokens", "tokens"],
+  ];
+  const mbtns = metrics.map(([m, text]) =>
+    h("button", { class: "tab", "aria-pressed": "false", onclick: () => set("metric", m) }, text),
+  );
+  const mstrip = h("div", { class: "tabs", "aria-label": "Show" }, mbtns);
   const sel = h(
     "select",
     { class: "input", style: "width:auto", "aria-label": "Split spending by", onchange: () => set("by", sel.value) },
     entriesOf(BYS).map(([k, v]) => h("option", { value: k }, `by ${v.toLowerCase()}`)),
   );
-  const sync = (range: UsageRange, by: UsageBy): void => {
+  const sync = (range: UsageRange, by: UsageBy, metric: Metric): void => {
     tabs.forEach((t, i) => {
       const on = keys[i] === range;
       t.setAttribute("aria-selected", String(on));
@@ -69,9 +81,13 @@ const chartControls = (set: SetPref, panel: HTMLElement): Controls => {
     });
     panel.setAttribute("aria-labelledby", `range-${range}`);
     if (sel.value !== by) sel.value = by;
+    title.textContent = metric === "tokens" ? "Tokens" : "Spending";
+    mbtns.forEach((b, i) => {
+      b.setAttribute("aria-pressed", String(metrics[i]?.[0] === metric));
+    });
   };
   return {
-    head: h("div", { class: "card-h" }, h("h2", {}, "Spending"), h("span", { class: "grow" }), strip, sel),
+    head: h("div", { class: "card-h" }, title, h("span", { class: "grow" }), mstrip, strip, sel),
     sync,
   };
 };
@@ -79,7 +95,8 @@ const chartControls = (set: SetPref, panel: HTMLElement): Controls => {
 export const viewDash = async (main: HTMLElement): Promise<void> => {
   let range = asRange(pref.get("range", "7d"));
   let by = asBy(pref.get("by", "model"));
-  let shown = { range, by };
+  let metric = asMetric(pref.get("metric", "cost"));
+  let shown = { range, by, metric };
   let active = true;
   let timer = 0;
   const guard = latest();
@@ -91,24 +108,26 @@ export const viewDash = async (main: HTMLElement): Promise<void> => {
   const restSlot = slot();
   const set: SetPref = (k, v) => {
     if (k === "range") range = asRange(v);
-    else by = asBy(v);
+    else if (k === "by") by = asBy(v);
+    else metric = asMetric(v);
     pref.set(k, v);
-    controls.sync(range, by);
+    controls.sync(range, by, metric);
     void load((e) => {
       // the new selection could not be loaded: go back to what is on screen
-      ({ range, by } = shown);
+      ({ range, by, metric } = shown);
       pref.set("range", range);
       pref.set("by", by);
-      controls.sync(range, by);
+      pref.set("metric", metric);
+      controls.sync(range, by, metric);
       toast(errMsg(e), true);
     });
   };
   const controls = chartControls(set, chartSlot);
   const chartSec = h("section", { class: "card", "aria-label": "Spending over time" }, controls.head, chartSlot);
-  controls.sync(range, by);
+  controls.sync(range, by, metric);
   const load = async (onFail?: (e: unknown) => void): Promise<void> => {
     const ticket = guard.next();
-    const [r, b] = [range, by];
+    const [r, b, m] = [range, by, metric];
     let d: StatusResponse, u: UsageResponse, led: LedgerRow[];
     try {
       [d, u, led] = await Promise.all([api.status(), api.usage(r, b), api.ledger(18)]);
@@ -121,9 +140,9 @@ export const viewDash = async (main: HTMLElement): Promise<void> => {
     if (!active || !guard.isCurrent(ticket) || !body.isConnected) return;
     if (!body.dataset.ok) body.replaceChildren(topSlot, chartSec, restSlot);
     body.dataset.ok = "1";
-    shown = { range: r, by: b };
+    shown = { range: r, by: b, metric: m };
     syncMeta.textContent = `Last sync with Mistral: ${d.last_sync ? ago(d.last_sync) : "not yet"}`;
-    const parts = dashBody(d, u, led, r, b);
+    const parts = dashBody(d, u, led, r, b, m);
     chartSec.hidden = !parts.chart;
     refresh(topSlot, parts.top);
     refresh(chartSlot, parts.chart ?? []);
@@ -248,6 +267,7 @@ const dashBody = (
   led: LedgerRow[],
   range: UsageRange,
   by: UsageBy,
+  metric: Metric,
 ): { top: HTMLElement[]; chart: HTMLElement[] | null; rest: HTMLElement[] } => {
   const sm = d.summary;
   const a = sm.all;
@@ -408,7 +428,7 @@ const dashBody = (
         )
       : null,
   );
-  return { top: [summaryStrip(a)], chart: chartCard(u, a, range, by), rest: [split, fl] };
+  return { top: [summaryStrip(a)], chart: chartCard(u, a, range, by, metric), rest: [split, fl] };
 };
 
 const fmtDay = (ts: number): string =>
@@ -477,26 +497,14 @@ const summaryStrip = (a: AggStatus): HTMLElement => {
   );
 };
 
-const chartCard = (u: UsageResponse, a: AggStatus, range: UsageRange, by: UsageBy): HTMLElement[] => {
+const chartCard = (u: UsageResponse, a: AggStatus, range: UsageRange, by: UsageBy, metric: Metric): HTMLElement[] => {
+  const tok = metric === "tokens";
   const label = (n: string): string => (by === "pool" ? poolLabel(n) : n);
   const avg = u.total / RANGE_DAYS[range];
   const delta = u.prev_total > 0 ? ((u.total - u.prev_total) / u.prev_total) * 100 : null;
   const over = a.fair_daily_eur > 0 && avg > a.fair_daily_eur;
-  const legend = h(
-    "div",
-    { class: "legend" },
-    u.series.map((s, i) =>
-      h(
-        "span",
-        {},
-        h("i", { style: `background:${colorOf(s.name, i)}` }),
-        h("span", { class: "trunc" }, label(s.name)),
-        h("span", { class: "mut num" }, eur4(s.total)),
-      ),
-    ),
-  );
   const box = h("div", { class: "chart" });
-  const draw = () => drawChart(box, u, a, label);
+  const draw = () => drawChart(box, u, a, label, metric);
   requestAnimationFrame(draw);
   if (window.ResizeObserver) {
     const ro = new ResizeObserver(() => {
@@ -512,13 +520,15 @@ const chartCard = (u: UsageResponse, a: AggStatus, range: UsageRange, by: UsageB
       h(
         "span",
         {},
-        h("b", { class: "num" }, eur(u.total)),
-        h("span", { class: "mut" }, ` in ${RANGES[range]} · ${plural(u.requests, "request")}`),
+        h("b", { class: "num" }, tok ? tokens(u.tokens_in + u.tokens_out) : eur(u.total)),
+        h("span", { class: "mut" }, ` ${tok ? "tokens" : ""} in ${RANGES[range]} · ${plural(u.requests, "request")}`),
       ),
-      delta === null
-        ? null
-        : h("span", { class: "mut" }, `${delta >= 0 ? "up" : "down"} ${Math.abs(delta).toFixed(0)}% vs. previous`),
-      a.fair_daily_eur > 0
+      tok
+        ? h("span", { class: "mut num" }, `${tokens(u.tokens_in)} in · ${tokens(u.tokens_out)} out`)
+        : delta === null
+          ? null
+          : h("span", { class: "mut" }, `${delta >= 0 ? "up" : "down"} ${Math.abs(delta).toFixed(0)}% vs. previous`),
+      !tok && a.fair_daily_eur > 0
         ? [
             h("span", { class: "mut num" }, `avg ${eur(avg)}/day · target ${eur(a.fair_daily_eur)}/day`),
             over ? badge("warn", "Spending fast") : badge("ok", "On track"),
@@ -526,11 +536,69 @@ const chartCard = (u: UsageResponse, a: AggStatus, range: UsageRange, by: UsageB
         : null,
     ),
     box,
-    u.series.length ? legend : null,
+    usageTable(u, by, label),
   ].flatMap((x) => (x ? [x] : []));
 };
 
-const drawChart = (box: HTMLElement, u: UsageResponse, a: AggStatus, label: (n: string) => string): void => {
+type TableRow = { requests: number; tokens_in: number; tokens_out: number; tokens_cached: number; total: number };
+const usageTable = (u: UsageResponse, by: UsageBy, label: (n: string) => string): HTMLElement | null => {
+  if (!u.series.length) return null;
+  const row = (name: string, i: number | null, r: TableRow): HTMLElement =>
+    h(
+      "tr",
+      {},
+      h(
+        "td",
+        { class: "max trunc", title: name },
+        i === null ? null : h("i", { class: "dot", style: `background:${colorOf(name, i)}` }),
+        label(name),
+      ),
+      td("Requests", "n", exact(r.requests)),
+      td("Tokens in", "n", exact(r.tokens_in)),
+      td("Tokens out", "n", exact(r.tokens_out)),
+      td("Cached", "n", exact(r.tokens_cached)),
+      td("Cost", "n", eur4(r.total)),
+    );
+  return h(
+    "div",
+    { class: "tw", style: "margin-top:var(--sp-4)" },
+    h(
+      "table",
+      { class: "tbl stack" },
+      h(
+        "thead",
+        {},
+        h(
+          "tr",
+          {},
+          h("th", {}, BYS[by]),
+          h("th", { class: "n" }, "Requests"),
+          h("th", { class: "n" }, "Tokens in"),
+          h("th", { class: "n" }, "Tokens out"),
+          h("th", { class: "n" }, "Cached"),
+          h("th", { class: "n" }, "Cost"),
+        ),
+      ),
+      h(
+        "tbody",
+        {},
+        u.series.map((s, i) => row(s.name, i, s)),
+      ),
+      h("tfoot", {}, row("Total", null, u)),
+    ),
+  );
+};
+
+const drawChart = (
+  box: HTMLElement,
+  u: UsageResponse,
+  a: AggStatus,
+  label: (n: string) => string,
+  metric: Metric,
+): void => {
+  const tok = metric === "tokens";
+  const val = (s: UsageSeries, i: number): number => (tok ? (s.tokens[i] ?? 0) : (s.values[i] ?? 0));
+  const fmt = tok ? tokens : short;
   const W = Math.max(box.clientWidth || 640, 200);
   const narrow = W < 460;
   const H = Math.round(Math.min(Math.max(W * 0.38, 170), 280));
@@ -541,26 +609,28 @@ const drawChart = (box: HTMLElement, u: UsageResponse, a: AggStatus, label: (n: 
   const n = u.buckets.length;
   const pw = W - L - R;
   const ph = H - T - B;
-  const sums = u.buckets.map((_, i) => u.series.reduce((t, s) => t + (s.values[i] ?? 0), 0));
-  const fair = u.unit === "day" ? a.fair_daily_eur : 0;
+  const sums = u.buckets.map((_, i) => u.series.reduce((t, s) => t + val(s, i), 0));
+  const fair = !tok && u.unit === "day" ? a.fair_daily_eur : 0;
   const peak = Math.max(...sums, 0.0001);
   // a pace line far above the bars would flatten them
   const fairShown = fair > 0 && fair <= peak * 2.5;
-  const top = niceMax(Math.max(peak, fairShown ? fair * 1.05 : 0));
+  const top = niceMax(Math.max(peak, fairShown ? fair * 1.05 : 0), tok ? TOKEN_STEPS : undefined);
   const y = (v: number) => T + ph - (v / top) * ph;
   const bw = pw / n;
   const root = svg("svg", {
     viewBox: `0 0 ${W} ${H}`,
     preserveAspectRatio: "xMidYMid meet",
     role: "img",
-    "aria-label": `Spending over ${RANGES[u.range]}: total ${eur(u.total)}`,
+    "aria-label": tok
+      ? `Tokens over ${RANGES[u.range]}: total ${tokens(u.tokens_in + u.tokens_out)}`
+      : `Spending over ${RANGES[u.range]}: total ${eur(u.total)}`,
   });
   const ticks = narrow ? 2 : 4;
   for (let i = 0; i <= ticks; i++) {
     const v = (top * i) / ticks;
     root.append(
       svg("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), class: "g" }),
-      svg("text", { x: L - 6, y: y(v) + 4, class: "ax", "text-anchor": "end" }, short(v)),
+      svg("text", { x: L - 6, y: y(v) + 4, class: "ax", "text-anchor": "end" }, fmt(v)),
     );
   }
   const fmtX = (t: number): string => {
@@ -583,7 +653,7 @@ const drawChart = (box: HTMLElement, u: UsageResponse, a: AggStatus, label: (n: 
       root.append(svg("text", { x: x + bw / 2, y: H - 6, class: "ax", "text-anchor": "middle" }, fmtX(t)));
     let acc = 0;
     u.series.forEach((s, si) => {
-      const v = s.values[i] ?? 0;
+      const v = val(s, i);
       if (v <= 0) return;
       const y0 = y(acc);
       const y1 = y(acc + v);
@@ -611,16 +681,16 @@ const drawChart = (box: HTMLElement, u: UsageResponse, a: AggStatus, label: (n: 
       tip.replaceChildren(
         h("b", {}, when_),
         ...u.series
-          .filter((s) => (s.values[i] ?? 0) > 0)
+          .filter((s) => val(s, i) > 0)
           .map((s) =>
             h(
               "div",
               {},
               h("i", { style: `background:${colorOf(s.name, u.series.indexOf(s))}` }),
-              `${label(s.name)} ${eur4(s.values[i] ?? 0)}`,
+              `${label(s.name)} ${tok ? tokens(val(s, i)) : eur4(val(s, i))}`,
             ),
           ),
-        h("div", { class: "t" }, `Total ${eur4(sums[i] ?? 0)}`),
+        h("div", { class: "t" }, `Total ${tok ? tokens(sums[i] ?? 0) : eur4(sums[i] ?? 0)}`),
       );
       tip.hidden = false;
       const tw = tip.offsetWidth;
@@ -655,15 +725,18 @@ const drawChart = (box: HTMLElement, u: UsageResponse, a: AggStatus, label: (n: 
   const sr = h(
     "table",
     { class: "sr" },
-    h("caption", {}, `Spending per ${u.unit}`),
+    h("caption", {}, `${tok ? "Tokens" : "Spending"} per ${u.unit}`),
     h(
       "tbody",
       {},
-      u.buckets.map((t, i) => h("tr", {}, h("th", { scope: "row" }, fmtX(t)), h("td", {}, eur4(sums[i] ?? 0)))),
+      u.buckets.map((t, i) =>
+        h("tr", {}, h("th", { scope: "row" }, fmtX(t)), h("td", {}, tok ? tokens(sums[i] ?? 0) : eur4(sums[i] ?? 0))),
+      ),
     ),
   );
   box.replaceChildren(root, tip, sr);
-  if (!u.total) box.append(h("div", { class: "empty-chart" }, "No spending in this period."));
+  if (tok ? !(u.tokens_in + u.tokens_out) : !u.total)
+    box.append(h("div", { class: "empty-chart" }, tok ? "No tokens in this period." : "No spending in this period."));
 };
 
 const limitsCard = (a: AggStatus): HTMLElement => {

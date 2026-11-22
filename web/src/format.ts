@@ -29,10 +29,22 @@ export const short = (v: number): string =>
       : v >= 1
         ? `€${v.toFixed(1).replace(/\.0$/, "")}`
         : `€${v.toFixed(2)}`;
-export const niceMax = (v: number): number => {
+export const niceMax = (v: number, steps: readonly number[] = [1, 1.5, 2, 3, 5, 7.5, 10]): number => {
   if (v <= 0) return 1;
   const p = 10 ** Math.floor(Math.log10(v));
-  for (const m of [1, 1.5, 2, 3, 5, 7.5, 10]) if (v <= m * p) return m * p;
+  for (const m of steps) if (v <= m * p) return m * p;
   return 10 * p;
 };
+// token axes read better in round steps than in 1.875M ones
+export const TOKEN_STEPS = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+// token counts are read at a glance: 845k, 12.3M, 1.6B
+export const tokens = (v: number): string => {
+  const a = Math.abs(v);
+  const trim = (s: string): string => s.replace(/\.0$/, "");
+  if (a >= 1e9) return `${trim((v / 1e9).toFixed(a >= 1e10 ? 0 : 1))}B`;
+  if (a >= 1e6) return `${trim((v / 1e6).toFixed(a >= 1e7 ? 0 : 1))}M`;
+  if (a >= 1e3) return `${trim((v / 1e3).toFixed(a >= 1e4 ? 0 : 1))}k`;
+  return String(Math.round(v));
+};
+export const exact = (v: number): string => Math.round(v).toLocaleString("en-US");
 export const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));

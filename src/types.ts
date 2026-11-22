@@ -85,6 +85,9 @@ export type UsageRow = {
   account: string;
   pool: string;
   source: string;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  cached_tokens: number | null;
 };
 export type ClientSpend = { client: string; account: string; pool: string; n: number; cost_eur: number };
 export type WindowStatus = {
@@ -178,7 +181,16 @@ export type SessionUser = { id: number; username: string };
 export type ApiKeyRow = { id: number; name: string; prefix: string; created: number; last_used: number | null };
 export type KeySource = "vibe-cli" | "keyring" | "env" | "inline";
 export type KeyInfo = { source: KeySource; hint: string | null; ok: boolean; error?: string };
-export type UsageSeries = { name: string; total: number; values: number[] };
+export type UsageSeries = {
+  name: string;
+  total: number;
+  values: number[];
+  tokens: number[];
+  requests: number;
+  tokens_in: number;
+  tokens_out: number;
+  tokens_cached: number;
+};
 export type UsageResult = {
   range: string;
   by: string;
@@ -189,4 +201,7 @@ export type UsageResult = {
   total: number;
   prev_total: number;
   requests: number;
+  tokens_in: number;
+  tokens_out: number;
+  tokens_cached: number;
 };

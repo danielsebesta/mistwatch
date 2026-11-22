@@ -220,7 +220,9 @@ export const openDb = (path: string): DB => {
       return num(r?.s ?? 0);
     },
     usageRows: (since, until) =>
-      stmt("SELECT ts, cost_eur, model, client, account, pool, source FROM ledger WHERE ts>=? AND ts<? ORDER BY ts")
+      stmt(
+        "SELECT ts, cost_eur, model, client, account, pool, source, prompt_tokens, completion_tokens, cached_tokens FROM ledger WHERE ts>=? AND ts<? ORDER BY ts",
+      )
         .all(since, until)
         .map((r) => ({
           ts: num(r.ts),
@@ -230,6 +232,9 @@ export const openDb = (path: string): DB => {
           account: str(r.account),
           pool: str(r.pool),
           source: str(r.source),
+          prompt_tokens: optNum(r.prompt_tokens),
+          completion_tokens: optNum(r.completion_tokens),
+          cached_tokens: optNum(r.cached_tokens),
         })),
     recent: (limit = 50) => stmt("SELECT * FROM ledger ORDER BY ts DESC LIMIT ?").all(limit).map(mapLedgerRow),
     byClientSince: (since) =>

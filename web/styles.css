@@ -745,6 +745,11 @@ select.input option {
   color: var(--text);
   box-shadow: var(--shadow);
 }
+.tab[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
 
 /* ---------- summary strip ---------- */
 .strip {
@@ -967,27 +972,6 @@ select.input option {
   font-size: var(--t-sm);
   pointer-events: none;
 }
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-1) var(--sp-4);
-  margin-top: var(--sp-3);
-  font-size: var(--t-xs);
-}
-.legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-width: 0;
-  max-width: 100%;
-}
-.legend i {
-  width: 0.625rem;
-  height: 0.625rem;
-  border-radius: 2px;
-  flex: none;
-}
-
 /* ---------- tables ---------- */
 .tw {
   position: relative;
@@ -1039,6 +1023,17 @@ select.input option {
 }
 .tbl .max {
   max-width: 14rem;
+}
+.tbl .dot {
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 2px;
+  margin-right: 0.45rem;
+  vertical-align: baseline;
+}
+.tbl tfoot td {
+  font-weight: 500;
 }
 .tbl.wide {
   min-width: 36rem;

@@ -4,6 +4,7 @@ import { bucketStarts, usage } from "../src/usage.ts";
 import { close, must } from "./helpers.ts";
 
 const NOW = new Date(2026, 10, 17, 15, 30, 0).getTime() / 1000;
+type Tokens = { in: number; out: number; cached?: number };
 const add = (
   db: DB,
   agoH: number,
@@ -13,7 +14,21 @@ const add = (
   account = "a",
   pool = "vibe",
   source = "proxy",
-): void => db.addLedger({ ts: NOW - agoH * 3600, account, pool, client, model, endpoint: "e", cost_eur: cost, source });
+  tokens: Tokens | null = null,
+): void =>
+  db.addLedger({
+    ts: NOW - agoH * 3600,
+    account,
+    pool,
+    client,
+    model,
+    endpoint: "e",
+    cost_eur: cost,
+    source,
+    prompt_tokens: tokens?.in ?? null,
+    completion_tokens: tokens?.out ?? null,
+    cached_tokens: tokens?.cached ?? null,
+  });
 describe("usage buckets", () => {
   it("aligns to local hour/day starts", () => {
     const h = bucketStarts(NOW, 24, "hour");
@@ -49,7 +64,7 @@ describe("usage buckets", () => {
   });
   it("hourly range folds the tail into other", () => {
     const db = openDb(":memory:");
-    for (let i = 0; i < 9; i++) add(db, 0.2, 1.0 + i, `model-${i}`);
+    for (let i = 0; i < 9; i++) add(db, 0.2, 1.0 + i, `model-${i}`, "c1", "a", "vibe", "proxy", { in: 100, out: 10 });
     const u = usage(db, "24h", "model", NOW);
     expect(u.series.length).toBe(7);
     expect(u.series[6]?.name).toBe("other");
@@ -60,6 +75,32 @@ describe("usage buckets", () => {
       u.series.reduce((a, s) => a + s.total, 0),
       u.total,
     );
+    // the folded tail keeps its tokens
+    expect(u.series[6]?.tokens_in).toBe(300);
+    expect(u.series[6]?.tokens_out).toBe(30);
+    expect(u.tokens_in).toBe(900);
+  });
+  it("sums tokens per group, per bucket and in total", () => {
+    const db = openDb(":memory:");
+    add(db, 1, 1.0, "m1", "c1", "a", "vibe", "proxy", { in: 100, out: 20, cached: 40 });
+    add(db, 2, 0.5, "m1", "c1", "a", "vibe", "proxy", { in: 300, out: 30 });
+    add(db, 3, 0.2, "m2", "c1", "a", "vibe", "proxy", { in: 10, out: 5 });
+    add(db, 4, 0.3, null, "(external)", "a", "api", "sync");
+    const u = usage(db, "7d", "model", NOW);
+    const m1 = must(u.series.find((s) => s.name === "M1"));
+    expect(m1.tokens_in).toBe(400);
+    expect(m1.tokens_out).toBe(50);
+    expect(m1.tokens_cached).toBe(40);
+    expect(m1.requests).toBe(2);
+    expect(m1.tokens.reduce((a, b) => a + b, 0)).toBe(450);
+    expect(u.tokens_in).toBe(410);
+    expect(u.tokens_out).toBe(55);
+    expect(u.tokens_cached).toBe(40);
+    expect(u.requests).toBe(3);
+    // a sync row carries no tokens and is not a request
+    const ext = must(u.series.find((s) => s.name === "(external)"));
+    expect(ext.tokens_in).toBe(0);
+    expect(ext.requests).toBe(0);
   });
   it("groups by client, account, pool and marks external rows", () => {
     const db = openDb(":memory:");

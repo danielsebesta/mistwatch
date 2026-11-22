@@ -77,7 +77,16 @@ export type StatusResponse = {
 export type UsageRange = "24h" | "7d" | "30d";
 export type UsageBy = "model" | "client" | "account" | "pool";
 export type UsageUnit = "hour" | "day";
-export type UsageSeries = { name: string; total: number; values: number[] };
+export type UsageSeries = {
+  name: string;
+  total: number;
+  values: number[];
+  tokens: number[];
+  requests: number;
+  tokens_in: number;
+  tokens_out: number;
+  tokens_cached: number;
+};
 export type UsageResponse = {
   range: UsageRange;
   by: UsageBy;
@@ -88,6 +97,9 @@ export type UsageResponse = {
   total: number;
   prev_total: number;
   requests: number;
+  tokens_in: number;
+  tokens_out: number;
+  tokens_cached: number;
 };
 export type LedgerRow = {
   id: number;

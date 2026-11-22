@@ -46,6 +46,60 @@ const bisectRight = (xs: number[], x: number): number => {
   }
   return lo;
 };
+// one row per group: cost and tokens per bucket, plus the totals the table shows
+type Acc = {
+  values: number[];
+  tokens: number[];
+  total: number;
+  requests: number;
+  tokens_in: number;
+  tokens_out: number;
+  tokens_cached: number;
+};
+const blank = (n: number): Acc => ({
+  values: new Array<number>(n).fill(0),
+  tokens: new Array<number>(n).fill(0),
+  total: 0,
+  requests: 0,
+  tokens_in: 0,
+  tokens_out: 0,
+  tokens_cached: 0,
+});
+// router calls are bookkeeping, not requests the user made
+const isRequest = (r: UsageRow): boolean => r.source === "proxy" && r.client !== "(router)";
+const add = (a: Acc, r: UsageRow, i: number): void => {
+  const tin = r.prompt_tokens ?? 0;
+  const tout = r.completion_tokens ?? 0;
+  a.values[i] = (a.values[i] ?? 0) + r.cost_eur;
+  a.tokens[i] = (a.tokens[i] ?? 0) + tin + tout;
+  a.total += r.cost_eur;
+  a.tokens_in += tin;
+  a.tokens_out += tout;
+  a.tokens_cached += r.cached_tokens ?? 0;
+  if (isRequest(r)) a.requests += 1;
+};
+const merge = (into: Acc, from: Acc): Acc => {
+  for (let i = 0; i < into.values.length; i++) {
+    into.values[i] = (into.values[i] ?? 0) + (from.values[i] ?? 0);
+    into.tokens[i] = (into.tokens[i] ?? 0) + (from.tokens[i] ?? 0);
+  }
+  into.total += from.total;
+  into.requests += from.requests;
+  into.tokens_in += from.tokens_in;
+  into.tokens_out += from.tokens_out;
+  into.tokens_cached += from.tokens_cached;
+  return into;
+};
+const seriesOf = (name: string, a: Acc): UsageSeries => ({
+  name,
+  total: a.total,
+  values: a.values,
+  tokens: a.tokens,
+  requests: a.requests,
+  tokens_in: a.tokens_in,
+  tokens_out: a.tokens_out,
+  tokens_cached: a.tokens_cached,
+});
 export const usage = (db: DB, range: string, by: string, now: number, names?: ModelNames): UsageResult => {
   const spec = Object.hasOwn(RANGES, range) ? RANGES[range] : undefined;
   if (!spec) throw new Error("unknown range");
@@ -57,31 +111,27 @@ export const usage = (db: DB, range: string, by: string, now: number, names?: Mo
   const span = (starts[starts.length - 1] ?? now) - since + (unit === "hour" ? 3600 : 86400);
   const rows = db.usageRows(since, now + 1);
   const prevTotal = db.sumCost(since - span, since);
-  const totals = new Map<string, number>();
-  const per = new Map<string, number[]>();
+  const acc = new Map<string, Acc>();
+  const all = blank(n);
   for (const r of rows) {
     const i = bisectRight(starts, r.ts) - 1;
     if (i < 0) continue;
     const name = label(r, by, nm);
-    let vals = per.get(name);
-    if (!vals) {
-      vals = new Array<number>(n).fill(0);
-      per.set(name, vals);
+    let a = acc.get(name);
+    if (!a) {
+      a = blank(n);
+      acc.set(name, a);
     }
-    vals[i] = (vals[i] ?? 0) + r.cost_eur;
-    totals.set(name, (totals.get(name) ?? 0) + r.cost_eur);
+    add(a, r, i);
+    add(all, r, i);
   }
-  const ranked = [...totals.keys()].sort((a, b) => (totals.get(b) ?? 0) - (totals.get(a) ?? 0));
+  const ranked = [...acc.keys()].sort((a, b) => (acc.get(b)?.total ?? 0) - (acc.get(a)?.total ?? 0));
   const keep = ranked.slice(0, TOP_N);
   const rest = ranked.slice(TOP_N);
-  const series: UsageSeries[] = keep.map((k) => ({
-    name: k,
-    total: totals.get(k) ?? 0,
-    values: per.get(k) ?? new Array<number>(n).fill(0),
-  }));
+  const series: UsageSeries[] = keep.map((k) => seriesOf(k, acc.get(k) ?? blank(n)));
   if (rest.length) {
-    const vals = Array.from({ length: n }, (_, i) => rest.reduce((a, k) => a + (per.get(k)?.[i] ?? 0), 0));
-    series.push({ name: OTHER, total: rest.reduce((a, k) => a + (totals.get(k) ?? 0), 0), values: vals });
+    const other = rest.reduce((a, k) => merge(a, acc.get(k) ?? blank(n)), blank(n));
+    series.push(seriesOf(OTHER, other));
   }
   return {
     range,
@@ -90,8 +140,11 @@ export const usage = (db: DB, range: string, by: string, now: number, names?: Mo
     buckets: starts,
     step: unit === "hour" ? 3600 : 86400,
     series,
-    total: rows.reduce((a, r) => a + r.cost_eur, 0),
+    total: all.total,
     prev_total: prevTotal,
-    requests: rows.filter((r) => r.source === "proxy" && r.client !== "(router)").length,
+    requests: all.requests,
+    tokens_in: all.tokens_in,
+    tokens_out: all.tokens_out,
+    tokens_cached: all.tokens_cached,
   };
 };
