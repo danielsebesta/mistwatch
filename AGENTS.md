@@ -65,5 +65,7 @@ Setup prints `[warn] Vibe login`. Ask the user to run `vibe --setup` in their ow
 | `curl: connection refused` | The proxy is not running. Ask the user, then start `serve`. |
 | No Vibe login on Linux | The keyring needs libsecret. Add the key in the web UI instead. |
 | Wrong config written | Restore the newest `<file>.<timestamp>.bak` next to it. |
+| `Your Mistral sign-in cannot be used for http://127.0.0.1:...` in Vibe Desktop | The Desktop only uses its own Mistral sign-in for a `backend = "mistral"` provider. Run `npx mistwatch setup --yes --harness vibe --desktop`: it writes the provider as `generic` (so `MISTWATCH_TOKEN` is used) plus a header that makes Mistwatch return thinking as `reasoning_content`. Restart the Desktop afterwards. The Vibe budget footer is not available in this mode; later plain runs keep it. |
+| Raw `{'type': 'thinking', ...}` text in Vibe Desktop answers | The provider lacks `extra_headers = { x-mw-flat-content = "1" }`. Run setup with `--desktop`. |
 
 Claude Code and current Codex CLI cannot use Mistwatch directly (they need the Anthropic Messages or OpenAI Responses format). Say so instead of trying to configure them.

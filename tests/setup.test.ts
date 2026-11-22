@@ -155,11 +155,21 @@ describe("setup flag parsing", () => {
       json: false,
       showToken: false,
       force: false,
+      desktop: false,
       help: false,
     });
   });
   it("reads every flag", () => {
-    const o = parseSetupArgs(["-y", "--harness", "pi,vibe,pi", "--no-banner", "--json", "--show-token", "--force"]);
+    const o = parseSetupArgs([
+      "-y",
+      "--harness",
+      "pi,vibe,pi",
+      "--no-banner",
+      "--json",
+      "--show-token",
+      "--force",
+      "--desktop",
+    ]);
     expect(o).toMatchObject({
       yes: true,
       harness: ["vibe", "pi"],
@@ -168,6 +178,7 @@ describe("setup flag parsing", () => {
       json: true,
       showToken: true,
       force: true,
+      desktop: true,
     });
     expect(parseSetupArgs(["--harness=all"]).harness).toEqual(["vibe", "opencode", "pi"]);
   });
@@ -534,6 +545,28 @@ describe("harness planners", () => {
     expect(next).toContain('name = "mistwatch"\r\n');
     expect(next.replace(/\r\n/g, "")).not.toContain("\n");
     expect(() => planToml("a = [", BASE)).toThrow("not valid TOML");
+  });
+  it("writes a generic provider with the flatten header for the Vibe Desktop and keeps it on later runs", () => {
+    const providerOf = (t: string): Record<string, unknown> => {
+      const list = parse(t).providers as Record<string, unknown>[];
+      return list.find((p) => p.name === "mistwatch") ?? {};
+    };
+    const fresh = planToml(null, BASE, true) ?? "";
+    expect(providerOf(fresh)).toMatchObject({
+      backend: "generic",
+      api_key_env_var: "MISTWATCH_TOKEN",
+      extra_headers: { "x-mw-flat-content": "1" },
+    });
+    expect(planToml(fresh, BASE, true)).toBeNull();
+    // a plain run afterwards must not undo it
+    expect(planToml(fresh, BASE)).toBeNull();
+    // switching an existing CLI provider over edits it in place, without a second block
+    const cli = planToml(null, BASE) ?? "";
+    expect(providerOf(cli).backend).toBe("mistral");
+    const switched = planToml(cli, BASE, true) ?? "";
+    expect(providerOf(switched)).toMatchObject({ backend: "generic", extra_headers: { "x-mw-flat-content": "1" } });
+    expect((parse(switched).providers as unknown[]).length).toBe(1);
+    expect(planToml(switched, BASE, true)).toBeNull();
   });
 });
 

@@ -568,6 +568,38 @@ describe("proxy routing, limits and shutdown", () => {
     expect(lj.pools.map((x) => x.pool).sort()).toEqual(["api", "vibe"]);
     expect(Object.keys(lj.pools[0]?.windows ?? {}).sort()).toEqual(["5h", "day", "week"]);
   });
+  it("turns thinking chunks into reasoning_content only when x-mw-flat-content asks", async () => {
+    const parts = [
+      { type: "thinking", thinking: [{ type: "text", text: "hmm" }], closed: true },
+      { type: "text", text: "Ahoj" },
+    ];
+    const sse = (): string =>
+      `data: ${JSON.stringify({ model: "mistral-large-4-0", choices: [{ delta: { content: parts } }] })}\n\n` +
+      'data: {"model":"mistral-large-4-0","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}\n\n' +
+      "data: [DONE]\n\n";
+    const st = baseState(() => new Response(sse(), { status: 200, headers: { "content-type": "text/event-stream" } }));
+    const p = createProxy(st);
+    const body = { model: "mistral-large-4-0", stream: true };
+    const flat = await (
+      await p.handle(jreq("/v1/chat/completions", body, { ...AUTH, "x-mw-flat-content": "1" }))
+    ).text();
+    const first = JSON.parse(flat.split("\n")[0]?.slice(5) ?? "{}") as {
+      choices: { delta: Record<string, unknown> }[];
+    };
+    expect(first.choices[0]?.delta).toEqual({ content: "Ahoj", reasoning_content: "hmm" });
+    expect(flat).toContain("[DONE]");
+    const raw = await (await p.handle(jreq("/v1/chat/completions", body, AUTH))).text();
+    expect(raw).toContain('"type":"thinking"');
+    const st2 = baseState(() =>
+      json({ model: "mistral-large-4-0", choices: [{ message: { role: "assistant", content: parts } }] }),
+    );
+    const j = (await (
+      await createProxy(st2).handle(
+        jreq("/v1/chat/completions", { model: "mistral-large-4-0" }, { ...AUTH, "x-mw-flat-content": "1" }),
+      )
+    ).json()) as { choices: { message: Record<string, unknown> }[] };
+    expect(j.choices[0]?.message).toEqual({ role: "assistant", content: "Ahoj", reasoning_content: "hmm" });
+  });
   it("answers /v1/users/me with the Mistwatch user", async () => {
     const st = baseState(() => okJson());
     st.store.createUser("daniel", "correct horse battery");

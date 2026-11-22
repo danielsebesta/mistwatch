@@ -21,6 +21,7 @@ import {
   proxyErrorBody,
   toAppError,
 } from "./errors.ts";
+import { flattenJson, flattenSse, wantsFlat } from "./flatten.ts";
 import type { Reservation } from "./queue.ts";
 import { createQueue } from "./queue.ts";
 import { createRateLimiter } from "./ratelimit.ts";
@@ -288,6 +289,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
     }
     let model = typeof parsed.model === "string" ? parsed.model : null;
     const wantStream = truthy(parsed.stream);
+    const flat = wantsFlat(req.headers);
     const now = Date.now() / 1000;
     const cands: Cand[] = accounted
       ? candidates(st, cls, now)
@@ -625,33 +627,30 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
           };
           clearTimeout(totalTimer);
           touch();
-          return respond(
-            pipe(
-              resp,
-              (c) => {
-                touch();
-                sse.feed(c);
-              },
-              () => {
-                clearTimeout(idle);
-                try {
-                  sse.flush();
-                } catch {
-                  // keep what was parsed so far
-                }
-                try {
-                  book(ctx, sse.usage() ?? [estIn, estimateTokens(sse.outChars()), 0], 200, sse.usage() === null, {
-                    model: sse.model(),
-                  });
-                } finally {
-                  heldResolve();
-                }
-              },
-              ac.signal,
-            ),
-            resp.status,
-            hdrs,
+          const piped = pipe(
+            resp,
+            (c) => {
+              touch();
+              sse.feed(c);
+            },
+            () => {
+              clearTimeout(idle);
+              try {
+                sse.flush();
+              } catch {
+                // keep what was parsed so far
+              }
+              try {
+                book(ctx, sse.usage() ?? [estIn, estimateTokens(sse.outChars()), 0], 200, sse.usage() === null, {
+                  model: sse.model(),
+                });
+              } finally {
+                heldResolve();
+              }
+            },
+            ac.signal,
           );
+          return respond(flat ? piped.pipeThrough(flattenSse()) : piped, resp.status, hdrs);
         }
         let content: Uint8Array;
         try {
@@ -662,7 +661,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
         }
         bookJson(ctx, resp.status, content);
         heldResolve();
-        return respond(content, resp.status, hdrs);
+        return respond(flat ? flattenJson(content) : content, resp.status, hdrs);
       } catch (e) {
         res?.release();
         heldResolve();

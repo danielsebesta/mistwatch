@@ -64,12 +64,20 @@ supports_images = true
 # Mistwatch picks the reasoning effort itself, so Vibe has no effort to offer.
 thinking_levels = ["off"]
 `;
-export const vibe = (base: string, env = ENV): string => `[[providers]]
+// Vibe Desktop signs in to Mistral itself and never sends a key to a "mistral" provider that is not on a Mistral host,
+// so for the Desktop the provider is "generic" (it uses the key) and asks Mistwatch to flatten the thinking chunks.
+export const FLAT_HEADERS = '{ x-mw-flat-content = "1" }';
+export const vibe = (base: string, env = ENV, desktop = false): string => `[[providers]]
 name = "mistwatch"
 api_base = "${base}/v1"
 api_key_env_var = "${env}"
-backend = "mistral"
-
+backend = "${desktop ? "generic" : "mistral"}"
+${
+  desktop
+    ? `extra_headers = ${FLAT_HEADERS}
+`
+    : ""
+}
 # Pick these in Vibe to let Mistwatch choose the model.
 ${VIBE_AUTO.map(vibeAutoBlock).join("\n")}
 # Or set provider = "mistwatch" on the models you already use.

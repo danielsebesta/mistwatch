@@ -20,7 +20,18 @@ import type { Interface } from "node:readline/promises";
 import { WriteStream } from "node:tty";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import { parse } from "smol-toml";
-import { ENV, merge, opencode, opencodeConfigPath, pi, TOOLS, VIBE_AUTO, vibe, vibeAutoBlock } from "./agents.ts";
+import {
+  ENV,
+  FLAT_HEADERS,
+  merge,
+  opencode,
+  opencodeConfigPath,
+  pi,
+  TOOLS,
+  VIBE_AUTO,
+  vibe,
+  vibeAutoBlock,
+} from "./agents.ts";
 import { createBudgetEngine } from "./budget.ts";
 import { CONFIG_TEMPLATE, clientBaseUrl, configPath } from "./config.ts";
 import { checkKey, persistToken, TOKEN_ENV } from "./envtoken.ts";
@@ -43,6 +54,7 @@ export type SetupOptions = {
   json: boolean;
   showToken: boolean;
   force: boolean;
+  desktop?: boolean | undefined;
   help: boolean;
 };
 export type ColorDepth = 0 | 4 | 8 | 24;
@@ -82,6 +94,7 @@ const FLAGS = {
   json: { type: "boolean", default: false },
   "show-token": { type: "boolean", default: false },
   force: { type: "boolean", default: false },
+  desktop: { type: "boolean", default: false },
   help: { type: "boolean", short: "h", default: false },
 } as const satisfies ParseArgsOptionsConfig;
 export const SETUP_USAGE = `usage: mistwatch setup [options]
@@ -100,6 +113,8 @@ options:
       --json           print what was done as JSON; no client token is created unless --show-token is also given
       --show-token     with --json: create the client token (if none exists) and include it in the output
       --force          replace an existing config.toml (a backup is kept)
+      --desktop        Vibe Desktop: write the provider as "generic" so the Desktop sends your key (later runs keep it).
+                       The CLI budget footer is not available then.
   -h, --help           show this help`;
 const isHarness = (s: string): s is Harness => (HARNESSES as readonly string[]).includes(s);
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -161,6 +176,7 @@ export const parseSetupArgs = (args: string[]): SetupOptions => {
     json: v.json,
     showToken: v["show-token"],
     force: v.force,
+    desktop: v.desktop,
     help: v.help,
   };
 };
@@ -347,12 +363,18 @@ const providersOf = (doc: Record<string, unknown>): Record<string, unknown>[] =>
     ? list.filter((p): p is Record<string, unknown> => isRec(p) && p.name === "mistwatch")
     : [];
 };
-const providerMatches = (text: string, base: string): boolean => {
+const providerMatches = (text: string, base: string, desktop = false): boolean => {
   try {
     const found = providersOf(parse(text));
     return (
       found.length > 0 &&
-      found.every((p) => p.api_base === `${base}/v1` && p.api_key_env_var === ENV && p.backend === "mistral")
+      found.every(
+        (p) =>
+          p.api_base === `${base}/v1` &&
+          p.api_key_env_var === ENV &&
+          p.backend === (desktop ? "generic" : "mistral") &&
+          (!desktop || (isRec(p.extra_headers) && p.extra_headers["x-mw-flat-content"] === "1")),
+      )
     );
   } catch {
     return false;
@@ -368,7 +390,8 @@ const mistwatchBlocks = (lines: string[]): [number, number][] => {
   }
   return out;
 };
-const patchBlock = (body: string[], want: Record<string, string>): string[] => {
+const lit = (v: string | { raw: string }): string => (typeof v === "string" ? JSON.stringify(v) : v.raw);
+const patchBlock = (body: string[], want: Record<string, string | { raw: string }>): string[] => {
   const left = new Map(Object.entries(want));
   const out = body.map((l) => {
     const m = /^(\s*)([A-Za-z_]+)\s*=/.exec(l);
@@ -376,12 +399,12 @@ const patchBlock = (body: string[], want: Record<string, string>): string[] => {
     const v = left.get(key);
     if (v === undefined) return l;
     left.delete(key);
-    return `${m?.[1] ?? ""}${key} = ${JSON.stringify(v)}`;
+    return `${m?.[1] ?? ""}${key} = ${lit(v)}`;
   });
-  out.splice(out.findIndex((l) => MW_NAME.test(l)) + 1, 0, ...[...left].map(([k, v]) => `${k} = ${JSON.stringify(v)}`));
+  out.splice(out.findIndex((l) => MW_NAME.test(l)) + 1, 0, ...[...left].map(([k, v]) => `${k} = ${lit(v)}`));
   return out;
 };
-const replaceProviders = (lines: string[], want: Record<string, string>): string[] | null => {
+const replaceProviders = (lines: string[], want: Record<string, string | { raw: string }>): string[] | null => {
   const [first, ...extra] = mistwatchBlocks(lines);
   if (!first) return null;
   let out = lines;
@@ -392,8 +415,17 @@ const replaceProviders = (lines: string[], want: Record<string, string>): string
     ...out.slice(first[1]),
   ];
 };
-export const planToml = (raw: string | null, base: string): string | null => {
-  const block = vibe(base);
+// A provider already written for the Desktop stays that way, so a plain re-run does not break the Desktop.
+const isDesktopProvider = (raw: string): boolean => {
+  try {
+    const found = providersOf(parse(raw));
+    return found.length > 0 && found.every((p) => p.backend === "generic" && isRec(p.extra_headers));
+  } catch {
+    return false;
+  }
+};
+export const planToml = (raw: string | null, base: string, wantDesktop = false): string | null => {
+  const block = vibe(base, ENV, wantDesktop);
   if (raw === null || raw.trim() === "") return `console_base_url = "${base}"\n\n${block}`;
   try {
     parse(raw);
@@ -401,6 +433,7 @@ export const planToml = (raw: string | null, base: string): string | null => {
     throw new SetupError("not valid TOML, left untouched; add the provider block by hand");
   }
   const eol = raw.includes("\r\n") ? "\r\n" : "\n";
+  const desktop = wantDesktop || isDesktopProvider(raw);
   const autoNames = VIBE_AUTO.map(([n]) => n);
   const missingAuto = (text: string): string[] => {
     const m = parse(text).models;
@@ -494,14 +527,21 @@ export const planToml = (raw: string | null, base: string): string | null => {
     return parse(next).console_base_url === base ? next : text;
   };
   const finish = (text: string): string => withConsole(repoint(allowAuto(withAuto(dropLegacy(text)))));
-  if (providerMatches(raw, base)) {
+  if (providerMatches(raw, base, desktop)) {
     const done = finish(raw);
     return done === raw ? null : done;
   }
-  const want = { api_base: `${base}/v1`, api_key_env_var: ENV, backend: "mistral" };
+  const want: Record<string, string | { raw: string }> = {
+    api_base: `${base}/v1`,
+    api_key_env_var: ENV,
+    backend: desktop ? "generic" : "mistral",
+    ...(desktop ? { extra_headers: { raw: FLAT_HEADERS } } : {}),
+  };
   const replaced = providersOf(parse(raw)).length > 0 ? replaceProviders(raw.split(/\r?\n/), want) : null;
-  const next = finish(replaced ? replaced.join(eol) : `${raw.trimEnd()}${eol}${eol}${block.replace(/\n/g, eol)}`);
-  if (!providerMatches(next, base))
+  const next = finish(
+    replaced ? replaced.join(eol) : `${raw.trimEnd()}${eol}${eol}${vibe(base, ENV, desktop).replace(/\n/g, eol)}`,
+  );
+  if (!providerMatches(next, base, desktop))
     throw new SetupError("could not edit the existing mistwatch provider; edit it by hand");
   return next;
 };
@@ -750,7 +790,9 @@ const stepHarness = (ctx: Ctx, h: Harness, cfg: Config | null): void => {
   ctx.report.harnesses.push(result);
   try {
     const plan = (raw: string | null): string | null =>
-      h === "vibe" ? planToml(raw, base) : planJson(raw, h === "pi" ? pi(base) : opencode(base));
+      h === "vibe"
+        ? planToml(raw, base, ctx.opts.desktop === true)
+        : planJson(raw, h === "pi" ? pi(base) : opencode(base));
     const done = applyFile(path, plan, ctx.deps.now());
     result.action = done.action;
     result.backup = done.backup;
@@ -840,6 +882,8 @@ const summary = (ctx: Ctx, cfg: Config | null): string[] => {
     out.push("    - Run `vibe --setup`, then `mistwatch import-vibe` (or add a key in the web UI).");
   out.push(`    - Start the proxy: mistwatch serve   (web UI: ${url})`);
   for (const h of report.harnesses) if (h.action !== "failed") out.push(`    - ${toolHint[h.harness]}`);
+  if (ctx.opts.desktop && report.harnesses.some((h) => h.harness === "vibe" && h.action !== "failed"))
+    out.push(`    - Vibe Desktop: restart it after setting ${ENV}, it reads the variable when it starts.`);
   return out;
 };
 const startNow = async (ctx: Ctx, cfg: Config): Promise<void> => {
