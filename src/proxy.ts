@@ -1,6 +1,14 @@
 import { poolGrossRoom, poolPressure, poolRoom, poolStatusDict } from "./budget.ts";
 import { promptView, rate as rateRequest, SYSTEM } from "./classifier.ts";
-import { authClient, billingBudget, limits, limitsHeader, mistwatchIdentity, rateLimitHeaders } from "./compat.ts";
+import {
+  authClient,
+  billingBudget,
+  billingSubscription,
+  limits,
+  limitsHeader,
+  mistwatchIdentity,
+  rateLimitHeaders,
+} from "./compat.ts";
 import { keyFor } from "./config.ts";
 import type { AppError } from "./errors.ts";
 import {
@@ -262,6 +270,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
     if (!kr.allowed) throw asException(errors.rateLimited(kr.retryAfter));
     if (req.method === "GET" && urlPath === "/v1/billing/budget")
       return Response.json(billingBudget(st, Date.now() / 1000));
+    if (req.method === "GET" && urlPath === "/v1/billing/subscription") return billingSubscription(st);
     // the Vibe CLI greets by this name: the Mistwatch user, not the Mistral account
     if (req.method === "GET" && urlPath === "/v1/users/me") return Response.json(mistwatchIdentity(st, client));
     if (req.method === "GET" && urlPath === "/v1/mistwatch/limits") return Response.json(limits(st, Date.now() / 1000));

@@ -146,7 +146,7 @@ export const llmsTxt = (base: string): string => `# Mistwatch
 - \`401\` with \`error.type = "mistwatch_auth"\`: the key is wrong or revoked.
 - \`429\` with \`error.type = "mistwatch_budget_exhausted"\`: no account has room right now. Wait for the \`Retry-After\` header (seconds) instead of retrying at once. The body lists each pool and when it frees up.
 - Requests whose \`User-Agent\` contains \`Mistral-Vibe\` are charged to the Vibe Code budget, all others to the Studio API budget. If one is used up, the other is tried.
-- \`GET /v1/mistwatch/limits\` lists the 5h, day, week and month windows of every pool; \`GET /v1/billing/budget\` gives the pooled Vibe Code budget in Mistral's shape.
+- \`GET /v1/mistwatch/limits\` lists the 5h, day, week and month windows of every pool; \`GET /v1/billing/budget\` gives the pooled Vibe Code budget and \`GET /v1/billing/subscription\` the plan, both in Mistral's shape.
 - Standard \`RateLimit-Policy\`, \`RateLimit\` and \`RateLimit-Limit/Remaining/Reset\` headers come on accounted calls, in euro cents, for the tightest window; a 429 adds \`RateLimit-Remaining: 0\`.
 - Response headers on accounted calls: \`x-mw-limits\` (room/cap per window), \`x-mw-account\`, \`x-mw-pool\`, \`x-mw-room-eur\` (what can still be spent now) and, for \`auto\`, \`x-mw-routed\` (the model and effort chosen).
 

@@ -597,6 +597,16 @@ describe("Vibe console endpoints", () => {
     expect(await w.json()).not.toHaveProperty("api_base");
     expect(seen).toEqual(["https://console.mistral.ai/api/vibe/whoami Bearer vk"]);
   });
+  it("answers /v1/billing/subscription with the plan from the console", async () => {
+    const cfg = defaultConfig();
+    cfg.db_path = ":memory:";
+    cfg.accounts = [{ name: "a", keys: { vibe: "vk" }, priority: 100, enabled: true, manual: {} }];
+    const st = createState(cfg, (() => Promise.resolve(json({ plan_name: "INDIVIDUAL" }))) as FetchLike);
+    const app = createApp(st, { webDir: WEB_DIR });
+    const r = await api(app, "/v1/billing/subscription");
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ plan_name: "Pro", vibe_payg_enabled: false });
+  });
   it("needs a Mistwatch key once keys exist", async () => {
     const { app, st } = mkApp();
     st.store.createApiKey("k");

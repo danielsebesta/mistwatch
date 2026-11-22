@@ -139,6 +139,17 @@ export const whoami = async (st: State): Promise<Response> => {
   return Response.json({ ...rest, plan_name: names.filter((n) => n).join(" + ") || rest.plan_name });
 };
 
+// The shape of Mistral's GET /v1/billing/subscription, which Vibe Desktop reads for the plan title.
+// Same plan as whoami; pay-as-you-go is always reported off, like in billingBudget.
+export const billingSubscription = async (st: State): Promise<Response> => {
+  const r = await whoami(st);
+  if (!r.ok) return r;
+  const j: unknown = await r.json();
+  const plan = isRec(j) && typeof j.plan_name === "string" ? j.plan_name : "";
+  if (plan === "") return Response.json({ error: "no plan" }, { status: 404 });
+  return Response.json({ plan_name: plan, vibe_payg_enabled: false });
+};
+
 // The shape of Mistral's GET /users/me, filled from Mistwatch.
 export const mistwatchIdentity = (st: State, client: Client) => {
   const first = st.store.listUsers()[0]?.username ?? client?.name ?? "Mistwatch";
