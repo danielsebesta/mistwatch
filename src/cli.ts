@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { dumpJson, opencode, opencodeConfigPath, pi } from "./agents.ts";
+import { dumpJson, FLAT_HEADERS, opencode, opencodeConfigPath, pi } from "./agents.ts";
 import { clientBaseUrl } from "./config.ts";
 import { readSecret as readPassword, readStdinAll } from "./secret.ts";
 import type { PoolStatusDict } from "./types.ts";
@@ -12,7 +12,7 @@ import type { PoolStatusDict } from "./types.ts";
 const USAGE = `usage: mistwatch <command> [options]
 
 commands:
-  setup          one-step setup for your tools (--yes --harness --port --start --json)
+  setup          one-step setup for your tools (--yes --harness --desktop --port --start --json)
   init           write the config template (--force, --import-vibe)
   import-vibe    add the Vibe CLI keyring login as an account (--name)
   status         budget status of every account/pool (--json)
@@ -22,7 +22,7 @@ commands:
   route          dry-run the auto router on a prompt (--tools --llm --pressure)
   passwd         create a user / reset a password
   set-token      store a Mistwatch key as MISTWATCH_TOKEN (--url, --no-check)
-  vibe-config    print the Vibe CLI provider block
+  vibe-config    print the Vibe provider block (--desktop for Vibe Desktop)
   agent-config   provider config for pi|opencode (--write, --env)`;
 const openApp = async () => (await import("./open.ts")).openApp();
 const serverUrl = (cfg: { host: string; port: number }): string => clientBaseUrl(cfg);
@@ -362,17 +362,23 @@ const cmdRoute = async (args: string[]): Promise<number> => {
   console.log(`  ${d.reason}`);
   return 0;
 };
-const cmdVibeConfig = async (): Promise<number> => {
+const cmdVibeConfig = async (args: string[]): Promise<number> => {
+  const { values } = opts({ args, options: { desktop: { type: "boolean", default: false } }, strict: true });
   const { loadConfig } = await import("./config.ts");
   const url = serverUrl(loadConfig());
-  console.log(`Point Vibe CLI at the proxy: add to ~/.vibe/config.toml
+  console.log(`Point ${values.desktop ? "Vibe Desktop" : "Vibe CLI"} at the proxy: add to ~/.vibe/config.toml
 
 [[providers]]
 name = "mistwatch"
 api_base = "${url}/v1"
 api_key_env_var = "MISTWATCH_TOKEN"
-backend = "mistral"
-
+backend = "${values.desktop ? "generic" : "mistral"}"
+${
+  values.desktop
+    ? `extra_headers = ${FLAT_HEADERS}
+`
+    : ""
+}
 # then re-point your models' provider = "mistwatch" and set
 #   MISTWATCH_TOKEN=<a key generated on the "API keys" page of the web UI>
 Other tools: base URL ${url}/v1, API key = that same key.`);
@@ -437,7 +443,7 @@ export const main = async (argv: string[]): Promise<number> => {
     if (cmd === "boost") return await cmdBoost(rest);
     if (cmd === "serve") return await cmdServe(rest);
     if (cmd === "route") return await cmdRoute(rest);
-    if (cmd === "vibe-config") return await cmdVibeConfig();
+    if (cmd === "vibe-config") return await cmdVibeConfig(rest);
     if (cmd === "agent-config") return await cmdAgentConfig(rest);
     console.error(`mistwatch: unknown command '${cmd}'`);
     return 2;
