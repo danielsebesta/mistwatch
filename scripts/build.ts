@@ -1,4 +1,4 @@
-import { rmSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -38,7 +38,12 @@ await build({
   sourcemap: false,
   legalComments: "none",
   external: ["@napi-rs/keyring"],
-  define: { __USD_TO_EUR__: String(usdToEur) },
+  define: {
+    __USD_TO_EUR__: String(usdToEur),
+    __MW_VERSION__: JSON.stringify(
+      (JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8")) as { version: string }).version,
+    ),
+  },
   outfile,
   logLevel: "silent",
 });

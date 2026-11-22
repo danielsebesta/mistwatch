@@ -579,6 +579,17 @@ describe("config migration", () => {
   });
 });
 
+describe("version header", () => {
+  it("tells the running version on proxy and web responses, errors included", async () => {
+    const { app } = mkApp();
+    const pkg = (await import("../package.json", { with: { type: "json" } })).default as { version: string };
+    for (const path of ["/v1/billing/budget", "/api/nope", "/"]) {
+      const r = await api(app, path);
+      expect(r.headers.get("x-mw-version")).toBe(pkg.version);
+    }
+  });
+});
+
 describe("Vibe console endpoints", () => {
   it("forwards whoami to the console with the Vibe key", async () => {
     const seen: string[] = [];

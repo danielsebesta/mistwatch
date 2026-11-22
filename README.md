@@ -112,6 +112,7 @@ Run `mistwatch help` for the list. Everything below also works as `npx mistwatch
 | `passwd <user>` | Create a user or reset a password |
 | `init` | Write a fresh config file |
 | `help` | Show the command list (`-h`, `--help`) |
+| `version` | Print the version (`-v`, `--version`). Every response of a running proxy also carries `x-mw-version` |
 
 ### `setup`
 

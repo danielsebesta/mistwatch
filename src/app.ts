@@ -16,6 +16,7 @@ import { clientIp, isExposed, isHttps, localRequestAllowed, safePathSegment } fr
 import { createState, type State } from "./state.ts";
 import { startSyncLoop } from "./sync.ts";
 import type { Config } from "./types.ts";
+import { VERSION } from "./version.ts";
 import { createWebApi, type WebApiOpts } from "./webapi.ts";
 export type ProxyLike = {
   handle(req: Request, ip?: string): Promise<Response>;
@@ -62,6 +63,7 @@ export const createApp = (st: State, opts: AppOpts = {}): Hono => {
     c.header("X-Frame-Options", "DENY");
     c.header("Referrer-Policy", "no-referrer");
     c.header("X-Content-Type-Options", "nosniff");
+    c.header("x-mw-version", VERSION);
     if (isHttps(new URL(c.req.url).protocol, c.req.header("x-forwarded-proto"), st.cfg.trust_proxy))
       c.header("Strict-Transport-Security", "max-age=31536000");
   });

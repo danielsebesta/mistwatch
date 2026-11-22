@@ -8,6 +8,7 @@ import { dumpJson, FLAT_HEADERS, opencode, opencodeConfigPath, pi } from "./agen
 import { clientBaseUrl } from "./config.ts";
 import { readSecret as readPassword, readStdinAll } from "./secret.ts";
 import type { PoolStatusDict } from "./types.ts";
+import { VERSION } from "./version.ts";
 
 const USAGE = `usage: mistwatch <command> [options]
 
@@ -23,7 +24,8 @@ commands:
   passwd         create a user / reset a password
   set-token      store a Mistwatch key as MISTWATCH_TOKEN (--url, --no-check)
   vibe-config    print the Vibe provider block (--desktop for Vibe Desktop)
-  agent-config   provider config for pi|opencode (--write, --env)`;
+  agent-config   provider config for pi|opencode (--write, --env)
+  version        print the version (-v, --version)`;
 const openApp = async () => (await import("./open.ts")).openApp();
 const serverUrl = (cfg: { host: string; port: number }): string => clientBaseUrl(cfg);
 
@@ -53,7 +55,7 @@ const fmtStatus = (d: {
   pools: PoolRow[];
   by_client_7d: { client: string; account: string; pool: string; n: number; cost_eur: number }[];
 }): string => {
-  const lines = [`sync: ${fmtTs(d.last_sync)}`];
+  const lines = [`mistwatch ${VERSION}`, `sync: ${fmtTs(d.last_sync)}`];
   for (const p of d.pools) {
     const flag = p.blocked_by ? `BLOCKED(${p.blocked_by})` : "ok";
     lines.push(
@@ -250,6 +252,7 @@ const cmdStatus = async (args: string[]): Promise<number> => {
   for (const acc of cfg.accounts)
     for (const pool of ["vibe", "api"]) lastSync = Math.max(lastSync, db.latestSnapshot(acc.name, pool)?.ts ?? 0);
   const d = {
+    version: VERSION,
     last_sync: lastSync,
     pools,
     by_client_7d: db.byClientSince(Date.now() / 1000 - 7 * 86400),
@@ -428,6 +431,10 @@ export const main = async (argv: string[]): Promise<number> => {
     if (cmd === undefined) {
       console.error(USAGE);
       return 2;
+    }
+    if (cmd === "-v" || cmd === "--version" || cmd === "version") {
+      console.log(VERSION);
+      return 0;
     }
     if (cmd === "-h" || cmd === "--help" || cmd === "help") {
       console.log(USAGE);

@@ -64,6 +64,7 @@ Setup prints `[warn] Vibe login`. Ask the user to run `vibe --setup` in their ow
 | `429` (`mistwatch_budget_exhausted`) | No account has room right now. Wait for `Retry-After` seconds. |
 | `curl: connection refused` | The proxy is not running. Ask the user, then start `serve`. |
 | No Vibe login on Linux | The keyring needs libsecret. Add the key in the web UI instead. |
+| A fix from a new version has no effect | An older proxy is still answering on the port (an earlier `serve`, Docker or a global install). Every response has an `x-mw-version` header (`curl.exe -si http://127.0.0.1:8787/v1/billing/budget`); compare it with `npx mistwatch@latest --version`, stop the old process and start `serve` again. |
 | Wrong config written | Restore the newest `<file>.<timestamp>.bak` next to it. |
 | `Your Mistral sign-in cannot be used for http://127.0.0.1:...` in Vibe Desktop | The Desktop only uses its own Mistral sign-in for a `backend = "mistral"` provider. Run `npx mistwatch setup --yes --harness vibe --desktop`: it writes the provider as `generic` (so `MISTWATCH_TOKEN` is used) plus a header that makes Mistwatch return thinking as `reasoning_content`. Restart the Desktop afterwards. The Vibe budget footer is not available in this mode; later plain runs keep it. |
 | Raw `{'type': 'thinking', ...}` text in Vibe Desktop answers | The provider lacks `extra_headers = { x-mw-flat-content = "1" }`. Run setup with `--desktop`. |
