@@ -36,6 +36,7 @@
   },
   "scripts": {
     "dev": "tsx src/cli.ts",
+    "demo": "tsx scripts/demo.ts",
     "build": "tsx scripts/build.ts",
     "typecheck": "tsc -p . --noEmit && tsc -p web --noEmit",
     "lint": "biome check .",

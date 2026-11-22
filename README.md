@@ -24,6 +24,22 @@
 - **Pools several accounts.** Requests go to whichever account still has room.
 - **Works with your tools.** OpenCode, Pi and the Vibe CLI, or anything that speaks the OpenAI chat API.
 
+## Screenshots
+
+![Overview](https://raw.githubusercontent.com/danielsebesta/mistwatch/main/docs/screenshots/overview.png)
+
+Budgets, the limits of every period, spending by model and the latest requests.
+
+![Accounts](https://raw.githubusercontent.com/danielsebesta/mistwatch/main/docs/screenshots/accounts.png)
+
+Each Mistral account with its Vibe and Studio keys. Keys of the same person or organization share one budget.
+
+![API keys](https://raw.githubusercontent.com/danielsebesta/mistwatch/main/docs/screenshots/keys.png)
+
+`mw-…` keys for your tools, with ready-made configs for OpenCode, Pi and the Vibe CLI.
+
+The data in these screenshots is made up. `npm run demo` generates it, see [Demo data](#demo-data).
+
 ## Quick start
 
 You need Node 24 or newer. Use whichever package manager you like:
@@ -59,7 +75,7 @@ With Docker Compose (`docker-compose.yml` in this repo), set `MISTWATCH_BIND` to
 
 ## Web UI
 
-- **Overview**: Vibe and Studio budgets, limits per period, a spending chart and recent requests.
+- **Overview**: Vibe and Studio budgets, limits per period, a spending or token chart with a per-model token table, and recent requests.
 - **Boost**: when the 5 hour or day limit stops you but the month budget has plenty left, press Boost on the Overview (or run `mistwatch boost`). The 5 hour and day limits are lifted for 5 hours, once per day (resets at local midnight). The week and month limits and the reserve still apply.
 - **Accounts**: your Mistral accounts, each with a Vibe key (can be taken over from the Vibe CLI in one click) and a Studio API key. A key is checked before it is saved.
 - **API keys**: `mw-…` keys for your tools. A key is shown only once, when you create it. The same page has ready-made configs for OpenCode, Pi and the Vibe CLI, plus environment variables for other tools.
@@ -176,6 +192,19 @@ npm run build    # dist/cli.js and dist/web
 ```
 
 The logo, favicons and colour palette are generated from `brand/` (`npx tsx brand/build.ts`, `npx tsx brand/contrast.ts`).
+
+### Demo data
+
+`npm run demo` starts a throwaway instance with made-up accounts, budgets and 30 days of usage, so you can look around without touching your own data or Mistral. It writes a fresh database to `.demo/` and points the proxy at a fake Mistral on a second port, so nothing leaves your machine.
+
+```sh
+npm run build:web                 # once, the demo serves dist/web
+npm run demo                      # http://127.0.0.1:8788/
+npm run demo -- --port 9000       # another port
+npm run demo -- --seed random     # a different set of data
+```
+
+Sign in as `daniel` with the password `mistwatch-demo`. The data comes from a seed, so the same seed gives the same numbers; the screenshots above are the default seed. `--upstream-port N` moves the fake Mistral (default 8790).
 
 ## Licence
 
