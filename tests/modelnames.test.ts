@@ -28,7 +28,7 @@ describe("resolution", () => {
       expect(n.display(alias)).toBe("Mistral Large 4");
     expect(n.display("mistral-vibe-cli-latest")).toBe("Mistral Medium 3.5");
     expect(n.resolve("something-new-7b")).toEqual(["Something New 7B", "auto"]);
-    expect(n.display(null)).toBe("(unknown)");
+    expect(n.display(null)).toBe("Unknown");
   });
   it("overrides win and can be reset", () => {
     const n = createModelNames(openDb(":memory:"));

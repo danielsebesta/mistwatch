@@ -98,21 +98,21 @@ describe("usage buckets", () => {
     expect(u.tokens_cached).toBe(40);
     expect(u.requests).toBe(3);
     // a sync row carries no tokens and is not a request
-    const ext = must(u.series.find((s) => s.name === "(external)"));
+    const ext = must(u.series.find((s) => s.name === "Unknown"));
     expect(ext.tokens_in).toBe(0);
     expect(ext.requests).toBe(0);
   });
-  it("groups by client, account, pool and marks external rows", () => {
+  it("groups by client, account, pool and marks unattributed rows as Unknown", () => {
     const db = openDb(":memory:");
     add(db, 1, 1.0, "m1", "vibe-cli", "x", "vibe");
     add(db, 1, 0.3, null, "(external)", "x", "api", "sync");
     add(db, 1, 0.0001, "ministral-3b-latest", "(router)", "y", "vibe");
     expect(new Set(usage(db, "7d", "model", NOW).series.map((s) => s.name))).toEqual(
-      new Set(["M1", "(external)", "Ministral 3 3B"]),
+      new Set(["M1", "Unknown", "Ministral 3 3B"]),
     );
     expect(new Set(usage(db, "7d", "pool", NOW).series.map((s) => s.name))).toEqual(new Set(["vibe", "api"]));
     expect(new Set(usage(db, "7d", "client", NOW).series.map((s) => s.name))).toEqual(
-      new Set(["vibe-cli", "(external)", "(router)"]),
+      new Set(["vibe-cli", "Unknown", "(router)"]),
     );
     expect(usage(db, "7d", "account", NOW).requests).toBe(1);
     expect(() => usage(db, "1y", "model", NOW)).toThrow("unknown range");

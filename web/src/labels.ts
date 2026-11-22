@@ -29,6 +29,8 @@ export const colorOf = (name: string, i: number): string =>
   name === "other" ? "var(--s-other)" : (SERIES[i % SERIES.length] ?? "var(--s-other)");
 export const asRange = (v: string): UsageRange => (v === "24h" || v === "30d" ? v : "7d");
 export const asBy = (v: string): UsageBy => (v === "client" || v === "account" || v === "pool" ? v : "model");
+// sync books spend it cannot attribute to a key under the "(external)" marker
+export const clientLabel = (c: string | null): string => (c === "(external)" ? "Unknown" : c || "—");
 export const DISCLAIMER =
   "Mistwatch is an independent, unofficial tool. It is not affiliated with, endorsed by or sponsored by Mistral AI. “Mistral” is a trademark of Mistral AI.";
 export const legal = (): HTMLElement => h("footer", { class: "legal" }, h("p", {}, DISCLAIMER));

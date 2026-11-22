@@ -137,7 +137,7 @@ export const createModelNames = (db: DB) => {
   };
   const resolve = (modelId: string | null | undefined): [string, NameSource] => {
     const m = trimUnicode(modelId ?? "");
-    if (!m) return ["(unknown)", "auto"];
+    if (!m) return ["Unknown", "auto"];
     const key = groupKey(m);
     for (const k of [m, key]) {
       const o = over.get(k);

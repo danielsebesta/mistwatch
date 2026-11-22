@@ -16,7 +16,18 @@ import { api } from "../api.ts";
 import { entriesOf, h, ic, type Kid, keysOf, svg } from "../dom.ts";
 import { latest, stepTab } from "../flow.ts";
 import { ago, errMsg, eur, eur4, exact, niceMax, pct100, plural, short, TOKEN_STEPS, tokens, when } from "../format.ts";
-import { asBy, asRange, BYS, colorOf, PERIOD_DAYS, poolLabel, RANGE_DAYS, RANGES, winLabel } from "../labels.ts";
+import {
+  asBy,
+  asRange,
+  BYS,
+  clientLabel,
+  colorOf,
+  PERIOD_DAYS,
+  poolLabel,
+  RANGE_DAYS,
+  RANGES,
+  winLabel,
+} from "../labels.ts";
 import { handlers, pref } from "../state.ts";
 import { toast } from "../toast.ts";
 import { act, badge, emptyState, errState, fold, pageHead, skel, td } from "../ui.ts";
@@ -339,7 +350,7 @@ const dashBody = (
                     "tr",
                     {},
                     td("When", "", when(r.ts)),
-                    td("Key", "max trunc", r.client || "—"),
+                    td("Key", "max trunc", clientLabel(r.client)),
                     h(
                       "td",
                       { "data-l": "Model", class: "max trunc", title: r.model ?? "" },
@@ -416,7 +427,7 @@ const dashBody = (
                   h(
                     "tr",
                     {},
-                    td("Key", "max trunc", r.client),
+                    td("Key", "max trunc", clientLabel(r.client)),
                     td("Account / budget", "max trunc", `${r.account} / ${poolLabel(r.pool)}`),
                     td("Requests", "n", r.n),
                     td("Cost", "n", eur(r.cost_eur)),

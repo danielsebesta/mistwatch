@@ -27,10 +27,11 @@ export const bucketStarts = (now: number, n: number, unit: "hour" | "day"): numb
 };
 const label = (row: UsageRow, by: string, names: ModelNames): string => {
   if (by === "model") {
-    if (!row.model) return row.source === "sync" ? "(external)" : "(unknown)";
+    // sync rows carry no model, and neither can a proxy row that failed early
+    if (!row.model) return "Unknown";
     return names.display(row.model);
   }
-  if (by === "client") return row.client || "—";
+  if (by === "client") return row.client === "(external)" ? "Unknown" : row.client || "—";
   const v = by === "account" ? row.account : row.pool;
   return v || "—";
 };
