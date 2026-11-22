@@ -600,6 +600,29 @@ describe("proxy routing, limits and shutdown", () => {
     ).json()) as { choices: { message: Record<string, unknown> }[] };
     expect(j.choices[0]?.message).toEqual({ role: "assistant", content: "Ahoj", reasoning_content: "hmm" });
   });
+  it("flattens for Vibe's generic client by its User-Agent, not for the Mistral client, and honours 0", async () => {
+    const parts = [
+      { type: "thinking", thinking: [{ type: "text", text: "hmm" }], closed: true },
+      { type: "text", text: "Ahoj" },
+    ];
+    const ask = async (headers: Record<string, string>): Promise<{ content: unknown; reasoning_content?: unknown }> => {
+      const st = baseState(() =>
+        json({ model: "mistral-large-4-0", choices: [{ message: { role: "assistant", content: parts } }] }),
+      );
+      const r = await createProxy(st).handle(
+        jreq("/v1/chat/completions", { model: "mistral-large-4-0" }, { ...AUTH, ...headers }),
+      );
+      return ((await r.json()) as { choices: { message: { content: unknown; reasoning_content?: unknown } }[] })
+        .choices[0]?.message as { content: unknown; reasoning_content?: unknown };
+    };
+    expect(await ask({ "user-agent": "Mistral-Vibe/3.1.0" })).toMatchObject({
+      content: "Ahoj",
+      reasoning_content: "hmm",
+    });
+    expect((await ask({ "user-agent": "mistral-client-python/Mistral-Vibe/3.1.0" })).content).toEqual(parts);
+    expect((await ask({ "user-agent": "Mistral-Vibe/3.1.0", "x-mw-flat-content": "0" })).content).toEqual(parts);
+    expect((await ask({ "user-agent": "curl/8" })).content).toEqual(parts);
+  });
   it("answers /v1/users/me with the Mistwatch user", async () => {
     const st = baseState(() => okJson());
     st.store.createUser("daniel", "correct horse battery");

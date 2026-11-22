@@ -81,7 +81,7 @@ mistwatch vibe-config --desktop   # Vibe Desktop
 The Desktop app shares `~/.vibe/config.toml` with the CLI, so the `auto` model and your other models show up in its model picker. Two things differ:
 
 - It uses its own Mistral sign-in for a `backend = "mistral"` provider and refuses to send it to a non-Mistral address ("Your Mistral sign-in cannot be used for http://127.0.0.1:8787/v1"). `mistwatch setup --harness vibe --desktop` writes the provider as `backend = "generic"`, so your `MISTWATCH_TOKEN` is used instead.
-- Mistral returns reasoning as a list of chunks, which a `generic` client prints as raw `{'type': 'thinking', ...}`. The same setup adds `extra_headers = { x-mw-flat-content = "1" }`, and Mistwatch then answers with a plain `content` string and the reasoning in `reasoning_content`.
+- Mistral returns reasoning as a list of chunks, which a `generic` client prints as raw `{'type': 'thinking', ...}`. The same setup adds `extra_headers = { x-mw-flat-content = "1" }`, and Mistwatch then answers with a plain `content` string and the reasoning in `reasoning_content`. Mistwatch also does this by itself for Vibe's generic client (it recognises the `Mistral-Vibe/…` User-Agent), so an old config without the header works too; `x-mw-flat-content: 0` turns it off.
 
 Restart the Desktop after setting `MISTWATCH_TOKEN`, it reads the variable when it starts. In this mode the Vibe budget footer is not available. Later plain `setup` runs keep the Desktop configuration; to go back, set `backend = "mistral"` in the provider block and remove `extra_headers`.
 

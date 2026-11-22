@@ -1,13 +1,17 @@
 // Mistral returns the content of a reasoning model as a list of chunks ({type:"thinking"} and {type:"text"}).
 // Clients that speak plain OpenAI chat (Vibe with backend "generic", used by Vibe Desktop) print that list as text.
-// With the request header `x-mw-flat-content: 1` the proxy turns it into a string `content` plus `reasoning_content`.
+// The proxy turns it into a string `content` plus `reasoning_content` when the request header `x-mw-flat-content: 1` asks for it,
+// and by itself for Vibe's generic client: Vibe sends the User-Agent "Mistral-Vibe/<version>" for a generic provider and
+// "mistral-client-python/Mistral-Vibe/<version>" for a Mistral one, which reads the chunks itself. `x-mw-flat-content: 0` turns it off.
 
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 export const FLAT_HEADER = "x-mw-flat-content";
 export const wantsFlat = (h: Headers): boolean => {
   const v = (h.get(FLAT_HEADER) ?? "").trim().toLowerCase();
-  return v !== "" && v !== "0" && v !== "false";
+  if (v === "0" || v === "false") return false;
+  if (v !== "") return true;
+  return (h.get("user-agent") ?? "").trim().toLowerCase().startsWith("mistral-vibe/");
 };
 
 const textOf = (v: unknown): string => {
