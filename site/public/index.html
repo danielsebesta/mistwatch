@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mistwatch</title>
+    <meta
+      name="description"
+      content="Local proxy in front of Mistral AI for the Vibe CLI and Vibe Desktop. Tracks Vibe Code and Studio budgets and offers an auto model."
+    />
+    <meta name="theme-color" content="#1d1108" />
+    <meta property="og:title" content="Mistwatch" />
+    <meta property="og:description" content="Local proxy in front of Mistral AI. Tracks Vibe Code and Studio budgets, offers an auto model." />
+    <meta property="og:image" content="https://mistwatch.sebesta.dev/img/overview-top.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/site.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header>
+        <img src="/mark.svg" alt="" width="44" height="20" />
+        <h1>Mistwatch</h1>
+        <a href="https://github.com/danielsebesta/mistwatch">GitHub</a>
+      </header>
+
+      <p class="lead">
+        A local proxy in front of Mistral AI. It tracks your Vibe Code and Studio budgets and offers an <code>auto</code> model.
+        For the Vibe CLI and Vibe Desktop.
+      </p>
+
+      <pre><code>npx mistwatch setup --yes --harness vibe
+npx mistwatch serve</code></pre>
+
+      <img
+        class="shot"
+        src="/img/overview-top.png"
+        width="2880"
+        height="1800"
+        alt="Mistwatch overview: budgets, spending chart per model, model table."
+      />
+
+      <h2>Setup</h2>
+      <ol>
+        <li>Node 24 or newer, and a Vibe CLI signed in once (<code>vibe --setup</code>).</li>
+        <li>Run the two commands above. Setup imports the Vibe login, creates a client token and adds the provider to <code>~/.vibe/config.toml</code> (backup first). <code>serve</code> keeps running; the web UI is at <code>http://127.0.0.1:8787/</code>.</li>
+        <li>Set the token: <code>setx MISTWATCH_TOKEN &lt;token&gt;</code> on Windows, <code>export MISTWATCH_TOKEN=&lt;token&gt;</code> elsewhere.</li>
+        <li>In Vibe, open <code>/model</code> and pick Auto. For Vibe Desktop add <code>--desktop</code> to setup.</li>
+      </ol>
+
+      <h2>Vibe only</h2>
+      <p>
+        From 1 December 2026 Mistral counts usage through third-party coding tools towards the API allowance, not the Vibe allowance.
+        Mistwatch answers only clients whose User-Agent contains <code>Mistral-Vibe</code>; everything else gets <code>403</code>.
+        Set <code>vibe_only = false</code> under <code>[limits]</code> to turn this off.
+      </p>
+
+      <footer>
+        <p>
+          <a href="https://github.com/danielsebesta/mistwatch">GitHub</a> ·
+          <a href="https://www.npmjs.com/package/mistwatch">npm</a> ·
+          <a href="https://github.com/danielsebesta/mistwatch/blob/main/LICENSE">MIT</a>
+        </p>
+        <p>
+          Independent, unofficial tool. Not affiliated with, endorsed by or sponsored by Mistral AI. “Mistral” is a trademark of Mistral
+          AI.
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>
