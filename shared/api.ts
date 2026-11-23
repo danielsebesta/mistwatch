@@ -184,7 +184,7 @@ export type SignInAttempt = {
 };
 
 // ---------- tool configs / proxy API keys ----------
-export type AgentTool = "opencode" | "pi" | "vibe" | "env";
+export type AgentTool = "vibe";
 export type AgentConfig = {
   tool: AgentTool;
   label: string;

@@ -135,6 +135,39 @@ max_body_mb = 0
     ).toThrow(/at least 1/);
   });
 });
+describe("upstream timeouts", () => {
+  const load = (body: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "mwcfg-"));
+    const p = join(dir, "config.toml");
+    writeFileSync(p, body);
+    return loadConfig(p);
+  };
+  it("defaults to 60 s for the first byte and 600 s in all", () => {
+    const c = load("");
+    expect(c.first_byte_timeout_s).toBe(60);
+    expect(c.total_timeout_s).toBe(600);
+  });
+  it("reads both from the upstream table", () => {
+    const c = load(`[upstream]
+first_byte_timeout_s = 120
+total_timeout_s = 900
+`);
+    expect(c.first_byte_timeout_s).toBe(120);
+    expect(c.total_timeout_s).toBe(900);
+  });
+  it("refuses a non-positive timeout", () => {
+    expect(() =>
+      load(`[upstream]
+first_byte_timeout_s = 0
+`),
+    ).toThrow(/above 0/);
+    expect(() =>
+      load(`[upstream]
+total_timeout_s = -1
+`),
+    ).toThrow(/above 0/);
+  });
+});
 describe("loadConfig", () => {
   it("reports invalid TOML without quoting the source", () => {
     const dir = mkdtempSync(join(tmpdir(), "mwcfg-"));
@@ -204,6 +237,7 @@ db_path = "/tmp/x.db"
 [limits]
 reserve_pct = 5
 burst_day = 2
+vibe_only = false
 fallback_to_other_pool = false
 
 [router]
@@ -235,6 +269,8 @@ token = "tok"
     expect(cfg.limits.burst_day).toBe(2);
     expect(cfg.limits.burst_5h).toBe(2.0);
     expect(cfg.limits.fallback_to_other_pool).toBe(false);
+    expect(cfg.limits.vibe_only).toBe(false);
+    expect(defaultConfig().limits.vibe_only).toBe(true);
     expect(cfg.router.llm_classifier).toBe(false);
     expect(cfg.router.classifier_timeout_s).toBe(1.5);
     expect(cfg.router.classifier_model).toBe("ministral-3b-latest");

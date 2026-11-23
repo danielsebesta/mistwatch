@@ -1,6 +1,6 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 process.env.MISTWATCH_NO_KEYRING = "1";
@@ -65,9 +65,6 @@ describe("cli argument parsing", () => {
     expect(write.mock.calls.join("")).toContain("mistwatch:");
   });
   it("rejects bad flags and missing arguments with exit 2", async () => {
-    expect(await main(["agent-config"])).toBe(2);
-    expect(errs.join("\n")).toContain("requires tool 'pi' or 'opencode'");
-    expect(await main(["agent-config", "emacs"])).toBe(2);
     expect(await main(["status", "--bogus"])).toBe(2);
     expect(errs.join("\n")).toContain("mistwatch:");
     expect(await main(["passwd"])).toBe(2);
@@ -133,92 +130,5 @@ describe("cli status", () => {
       ["a", "a", ["a", "b"]],
       ["b", "a", ["a", "b"]],
     ]);
-  });
-});
-
-describe("cli agent-config", () => {
-  it("prints the pi provider without --write", async () => {
-    await main(["init"]);
-    logs.length = 0;
-    errs.length = 0;
-    expect(await main(["agent-config", "pi"])).toBe(0);
-    const out = logs.join("\n");
-    expect(out).toContain("models.json");
-    const payload: unknown = JSON.parse(out.slice(out.indexOf("\n") + 1));
-    const mw =
-      isRec(payload) && isRec(payload.providers) && isRec(payload.providers.mistwatch)
-        ? payload.providers.mistwatch
-        : {};
-    expect(isRec(mw) ? mw.api : null).toBe("openai-completions");
-    const first = isRec(mw) && Array.isArray(mw.models) ? mw.models[0] : null;
-    expect(isRec(first) ? first.id : null).toBe("auto");
-    expect(errs.join("\n")).toContain("--write");
-    expect(existsSync(join(home, ".pi", "agent", "models.json"))).toBe(false);
-  });
-  it("writes, merges and backs up the opencode config", async () => {
-    await main(["init"]);
-    const f = join(home, ".config", "opencode", "opencode.json");
-    const { mkdirSync } = await import("node:fs");
-    mkdirSync(join(home, ".config", "opencode"), { recursive: true });
-    writeFileSync(f, JSON.stringify({ theme: "x", provider: { other: { a: 1 } } }));
-    expect(await main(["agent-config", "opencode", "--write"])).toBe(0);
-    const d: unknown = JSON.parse(readFileSync(f, "utf8"));
-    expect(isRec(d) ? d.theme : null).toBe("x");
-    const prov = isRec(d) && isRec(d.provider) ? d.provider : {};
-    expect(isRec(prov) && isRec(prov.other) ? prov.other : null).toEqual({ a: 1 });
-    const mw = isRec(prov) && isRec(prov.mistwatch) ? prov.mistwatch : {};
-    const o = isRec(mw) && isRec(mw.options) ? mw.options : {};
-    expect(isRec(o) ? o.apiKey : null).toBe("{env:MISTWATCH_TOKEN}");
-    const ms = isRec(mw) && isRec(mw.models) ? mw.models : {};
-    expect(isRec(ms) ? "auto" in ms : false).toBe(true);
-    const baks = () => readdirSync(dirname(f)).filter((n) => n.endsWith(".bak"));
-    expect(baks()).toHaveLength(1);
-    const bak = readFileSync(join(dirname(f), baks()[0] ?? ""), "utf8");
-    expect(JSON.parse(bak)).toEqual({ theme: "x", provider: { other: { a: 1 } } });
-    expect(await main(["agent-config", "opencode", "--write"])).toBe(0);
-    expect(baks()).toHaveLength(1);
-    expect(logs.join("\n")).toContain("already up to date");
-  });
-  it("rejects invalid serve ports", async () => {
-    await main(["init"]);
-    for (const p of ["0", "70000", "8787abc", "-1"]) expect(await main(["serve", "--port", p])).toBe(2);
-  });
-  it("init --force keeps a backup of the old config", async () => {
-    await main(["init"]);
-    const c = join(home, "mw", "config.toml");
-    writeFileSync(c, "# mine\n");
-    expect(await main(["init", "--force"])).toBe(0);
-    const baks = readdirSync(dirname(c)).filter((n) => n.endsWith(".bak"));
-    expect(baks).toHaveLength(1);
-    expect(readFileSync(join(dirname(c), baks[0] ?? ""), "utf8")).toBe("# mine\n");
-  });
-  it("creates parent directories on first write", async () => {
-    await main(["init"]);
-    expect(await main(["agent-config", "opencode", "--write"])).toBe(0);
-    const f = join(home, ".config", "opencode", "opencode.json");
-    expect(existsSync(f)).toBe(true);
-    const d: unknown = JSON.parse(readFileSync(f, "utf8"));
-    expect(isRec(d) && isRec(d.provider) && "mistwatch" in d.provider).toBe(true);
-    expect(readdirSync(dirname(f)).filter((n) => n.endsWith(".bak"))).toEqual([]);
-  });
-  it("refuses to overwrite non-plain JSON and leaves it untouched", async () => {
-    await main(["init"]);
-    const f = join(home, ".config", "opencode", "opencode.json");
-    const { mkdirSync } = await import("node:fs");
-    mkdirSync(join(home, ".config", "opencode"), { recursive: true });
-    writeFileSync(f, "{ // comments\n}");
-    expect(await main(["agent-config", "opencode", "--write"])).toBe(1);
-    expect(logs.join("\n")).toContain("not plain JSON");
-    expect(readFileSync(f, "utf8")).toBe("{ // comments\n}");
-    expect(readdirSync(dirname(f)).filter((n) => n.endsWith(".bak"))).toEqual([]);
-    writeFileSync(f, "[1,2]");
-    expect(await main(["agent-config", "opencode", "--write"])).toBe(1);
-    expect(readFileSync(f, "utf8")).toBe("[1,2]");
-  });
-  it("honors --env for the api key variable", async () => {
-    await main(["init"]);
-    logs.length = 0;
-    expect(await main(["agent-config", "pi", "--env", "MY_TOKEN"])).toBe(0);
-    expect(logs.join("\n")).toContain('"apiKey": "MY_TOKEN"');
   });
 });

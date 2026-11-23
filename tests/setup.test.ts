@@ -25,11 +25,9 @@ import {
   createAsk,
   createStyle,
   detectDepth,
-  parseChoice,
   parseHarnesses,
   parseSetupArgs,
   parseUrl,
-  planJson,
   planPort,
   planToml,
   runSetup,
@@ -104,7 +102,7 @@ const make = (
     start: async (cfg) => {
       started.push(cfg);
     },
-    which: (c) => (opts.installed ?? ["vibe", "opencode", "pi"]).includes(c),
+    which: (c) => (opts.installed ?? ["vibe"]).includes(c),
     ...(opts.fetch ? { fetch: opts.fetch } : {}),
     ...(opts.secret ? { secret: opts.secret } : {}),
     ...(opts.setx ? { setx: opts.setx } : {}),
@@ -116,8 +114,6 @@ const text = (h: Harnessed): string => h.out.join("\n");
 const paths = () => ({
   cfg: join(root, "mw", "config.toml"),
   vibe: join(home, ".vibe", "config.toml"),
-  opencode: join(home, ".config", "opencode", "opencode.json"),
-  pi: join(home, ".pi", "agent", "models.json"),
 });
 const put = (path: string, body: string): void => {
   mkdirSync(dirname(path), { recursive: true });
@@ -163,7 +159,7 @@ describe("setup flag parsing", () => {
     const o = parseSetupArgs([
       "-y",
       "--harness",
-      "pi,vibe,pi",
+      "vibe,vibe",
       "--no-banner",
       "--json",
       "--show-token",
@@ -172,7 +168,7 @@ describe("setup flag parsing", () => {
     ]);
     expect(o).toMatchObject({
       yes: true,
-      harness: ["vibe", "pi"],
+      harness: ["vibe"],
       noBanner: true,
       start: false,
       json: true,
@@ -180,9 +176,11 @@ describe("setup flag parsing", () => {
       force: true,
       desktop: true,
     });
-    expect(parseSetupArgs(["--harness=all"]).harness).toEqual(["vibe", "opencode", "pi"]);
+    expect(parseSetupArgs(["--harness=all"]).harness).toEqual(["vibe"]);
   });
   it("rejects unknown harnesses, empty lists and unknown flags", () => {
+    expect(() => parseHarnesses("opencode")).toThrow(SetupArgError);
+    expect(() => parseHarnesses("pi,vibe")).toThrow(SetupArgError);
     expect(() => parseHarnesses("vibe,emacs")).toThrow(SetupArgError);
     expect(() => parseHarnesses("")).toThrow("--harness expects");
     expect(() => parseSetupArgs(["--bogus"])).toThrow(SetupArgError);
@@ -191,13 +189,6 @@ describe("setup flag parsing", () => {
     for (const bad of ["0", "65536", "80x", "", "-1", "1.5"])
       expect(() => parseSetupArgs([`--port=${bad}`])).toThrow("--port expects");
     expect(parseSetupArgs(["--port", "9100"]).port).toBe(9100);
-  });
-  it("understands numbers, names and all in the prompt", () => {
-    expect(parseChoice("1")).toEqual(["vibe"]);
-    expect(parseChoice("3, opencode")).toEqual(["opencode", "pi"]);
-    expect(parseChoice("all")).toEqual(["vibe", "opencode", "pi"]);
-    expect(parseChoice("7")).toBeNull();
-    expect(parseChoice("1 emacs")).toBeNull();
   });
   it("exits 2 with a message on bad flags and 0 on --help", async () => {
     const bad = make();
@@ -265,8 +256,6 @@ describe("setup non-interactive flow", () => {
     expect(toml.providers).toEqual([
       { name: "mistwatch", api_base: `${BASE}/v1`, api_key_env_var: "MISTWATCH_TOKEN", backend: "mistral" },
     ]);
-    expect(existsSync(p.opencode)).toBe(false);
-    expect(existsSync(p.pi)).toBe(false);
     expect(h.asked).toEqual([]);
     expect(h.started).toEqual([]);
     const tokens = text(h).match(TOKEN_RE) ?? [];
@@ -309,16 +298,6 @@ describe("setup non-interactive flow", () => {
     expect(text(h)).toContain("[warn]");
     expect(text(h)).toContain("vibe --setup");
   });
-  it("writes the chosen harnesses", async () => {
-    const h = make();
-    expect(await runSetup(["--yes", "--harness", "vibe,opencode,pi"], h.deps)).toBe(0);
-    const p = paths();
-    const oc: unknown = JSON.parse(readFileSync(p.opencode, "utf8"));
-    expect(isRec(oc) && isRec(oc.provider) && "mistwatch" in oc.provider).toBe(true);
-    const pi: unknown = JSON.parse(readFileSync(p.pi, "utf8"));
-    expect(isRec(pi) && isRec(pi.providers) && "mistwatch" in pi.providers).toBe(true);
-    expect(existsSync(p.vibe)).toBe(true);
-  });
   it("never starts the server unless --start, then starts it with the config", async () => {
     const a = make();
     await runSetup(["--yes"], a.deps);
@@ -333,18 +312,16 @@ describe("setup non-interactive flow", () => {
     expect(await runSetup([], h.deps)).toBe(0);
     expect(h.asked).toEqual([]);
     expect(existsSync(paths().vibe)).toBe(true);
-    expect(existsSync(paths().opencode)).toBe(false);
   });
   it("fails with a clear message and non-zero exit when a config file is unusable", async () => {
     const p = paths();
-    put(p.opencode, "{ // comments\n}");
+    put(p.vibe, "not = [valid");
     const h = make();
-    expect(await runSetup(["--yes", "--harness", "opencode,vibe"], h.deps)).toBe(1);
-    expect(readFileSync(p.opencode, "utf8")).toBe("{ // comments\n}");
-    expect(backups(p.opencode)).toEqual([]);
-    expect(existsSync(p.vibe)).toBe(true);
+    expect(await runSetup(["--yes"], h.deps)).toBe(1);
+    expect(readFileSync(p.vibe, "utf8")).toBe("not = [valid");
+    expect(backups(p.vibe)).toEqual([]);
     expect(text(h)).toContain("[fail]");
-    expect(h.err.join("\n")).toContain("setup failed: OpenCode");
+    expect(h.err.join("\n")).toContain("setup failed: Vibe CLI");
   });
   it("fails when the existing config.toml cannot be loaded", async () => {
     put(paths().cfg, "port = [");
@@ -354,9 +331,9 @@ describe("setup non-interactive flow", () => {
     expect(existsSync(paths().vibe)).toBe(false);
   });
   it("does not start the server after a failure", async () => {
-    put(paths().pi, "[1]");
+    put(paths().vibe, "not = [valid");
     const h = make();
-    expect(await runSetup(["--yes", "--harness", "pi", "--start"], h.deps)).toBe(1);
+    expect(await runSetup(["--yes", "--start"], h.deps)).toBe(1);
     expect(h.started).toEqual([]);
   });
 });
@@ -387,31 +364,15 @@ describe("setup json output", () => {
     const tok = isRec(d) && isRec(d.client_token) ? d.client_token : {};
     expect(tok.created).toBe(true);
     expect(String(tok.token)).toMatch(TOKEN_RE);
-    put(paths().pi, "nope");
+    put(paths().vibe, "nope");
     const f = make();
-    expect(await runSetup(["--yes", "--json", "--harness", "pi"], f.deps)).toBe(1);
+    expect(await runSetup(["--yes", "--json"], f.deps)).toBe(1);
     const e: unknown = JSON.parse(text(f));
     expect(isRec(e) ? e.ok : null).toBe(false);
   });
 });
 
 describe("setup backups, merging and idempotency", () => {
-  it("backs up an existing opencode config with a timestamp and merges into it", async () => {
-    const p = paths();
-    const before = JSON.stringify({ theme: "dark", provider: { other: { a: 1 } } });
-    put(p.opencode, before);
-    const h = make();
-    expect(await runSetup(["--yes", "--harness", "opencode"], h.deps)).toBe(0);
-    const files = backups(p.opencode);
-    expect(files).toEqual(["opencode.json.20261118T101500Z.bak"]);
-    expect(readFileSync(`${p.opencode}.20261118T101500Z.bak`, "utf8")).toBe(before);
-    const d: unknown = JSON.parse(readFileSync(p.opencode, "utf8"));
-    const prov = isRec(d) && isRec(d.provider) ? d.provider : {};
-    expect(isRec(d) ? d.theme : null).toBe("dark");
-    expect(prov.other).toEqual({ a: 1 });
-    expect("mistwatch" in prov).toBe(true);
-    expect(text(h)).toContain("backup:");
-  });
   it("appends the vibe provider to an existing config.toml and keeps the rest", async () => {
     const p = paths();
     const before = 'active_model = "x"\n\n[[providers]]\nname = "mistral"\napi_base = "https://api.mistral.ai/v1"\n';
@@ -433,20 +394,20 @@ describe("setup backups, merging and idempotency", () => {
   });
   it("keeps a unique backup per run when the clock does not move", async () => {
     const p = paths();
-    put(p.pi, "{}");
-    await runSetup(["--yes", "--harness", "pi"], make().deps);
-    put(p.pi, '{"x":1}');
-    await runSetup(["--yes", "--harness", "pi"], make().deps);
-    expect(backups(p.pi).sort()).toEqual(["models.json.20261118T101500Z-1.bak", "models.json.20261118T101500Z.bak"]);
+    put(p.vibe, "a = 1\n");
+    await runSetup(["--yes"], make().deps);
+    put(p.vibe, "b = 2\n");
+    await runSetup(["--yes"], make().deps);
+    expect(backups(p.vibe).sort()).toEqual(["config.toml.20261118T101500Z-1.bak", "config.toml.20261118T101500Z.bak"]);
   });
   it("is idempotent: a second run changes nothing and creates no backups or tokens", async () => {
     const p = paths();
-    await runSetup(["--yes", "--harness", "vibe,opencode,pi"], make().deps);
-    const snap = [p.cfg, p.vibe, p.opencode, p.pi].map((f) => readFileSync(f, "utf8"));
+    await runSetup(["--yes"], make().deps);
+    const snap = [p.cfg, p.vibe].map((f) => readFileSync(f, "utf8"));
     const h = make();
-    expect(await runSetup(["--yes", "--harness", "vibe,opencode,pi"], h.deps)).toBe(0);
-    expect([p.cfg, p.vibe, p.opencode, p.pi].map((f) => readFileSync(f, "utf8"))).toEqual(snap);
-    for (const f of [p.cfg, p.vibe, p.opencode, p.pi]) expect(backups(f)).toEqual([]);
+    expect(await runSetup(["--yes"], h.deps)).toBe(0);
+    expect([p.cfg, p.vibe].map((f) => readFileSync(f, "utf8"))).toEqual(snap);
+    for (const f of [p.cfg, p.vibe]) expect(backups(f)).toEqual([]);
     expect(text(h)).not.toMatch(TOKEN_RE);
     expect(text(h)).toContain("already up to date");
     expect(text(h)).toContain("already exists, keeping it");
@@ -465,26 +426,12 @@ describe("setup backups, merging and idempotency", () => {
   });
   it("uses the configured port in the generated provider", async () => {
     put(paths().cfg, "[server]\nport = 9100\n");
-    await runSetup(["--yes", "--harness", "opencode"], make().deps);
-    expect(readFileSync(paths().opencode, "utf8")).toContain("http://127.0.0.1:9100/v1");
+    await runSetup(["--yes"], make().deps);
+    expect(readFileSync(paths().vibe, "utf8")).toContain("http://127.0.0.1:9100/v1");
   });
 });
 
 describe("harness planners", () => {
-  const data = { provider: { mistwatch: { a: 1 } } };
-  it("merges json without touching siblings and reports no change when equal", () => {
-    const raw = JSON.stringify({ keep: true, provider: { other: 1 } });
-    const next = planJson(raw, data);
-    expect(JSON.parse(next ?? "{}")).toEqual({ keep: true, provider: { other: 1, mistwatch: { a: 1 } } });
-    expect(planJson(next, data)).toBeNull();
-    expect(JSON.parse(planJson(null, data) ?? "{}")).toEqual(data);
-    expect(JSON.parse(planJson("  \n", data) ?? "{}")).toEqual(data);
-    expect(JSON.parse(planJson(`﻿${raw}`, data) ?? "{}")).toMatchObject({ keep: true });
-  });
-  it("refuses json that is not a plain object", () => {
-    expect(() => planJson("{ // c\n}", data)).toThrow("not plain JSON");
-    expect(() => planJson("[1]", data)).toThrow("not a JSON object");
-  });
   it("creates, keeps and replaces the toml provider block", () => {
     const head = `console_base_url = "${BASE}"\n\n`;
     expect(planToml(null, BASE)).toBe(`${head}${vibe(BASE)}`);
@@ -571,17 +518,14 @@ describe("harness planners", () => {
 });
 
 describe("setup prompts", () => {
-  it("asks about the Vibe login, the tools and whether to start", async () => {
-    const h = make({ interactive: true, answers: ["", "", "2,3", "n", "n"] });
+  it("asks about the Vibe login and whether to start", async () => {
+    const h = make({ interactive: true, answers: ["", "", "n", "n"] });
     expect(await runSetup([], h.deps)).toBe(0);
-    expect(h.asked).toHaveLength(5);
+    expect(h.asked).toHaveLength(4);
     expect(text(h)).toContain("Where does Mistwatch run?");
     expect(h.asked[1]).toContain("Import it as an account?");
-    expect(existsSync(paths().vibe)).toBe(false);
-    expect(existsSync(paths().opencode)).toBe(true);
-    expect(existsSync(paths().pi)).toBe(true);
+    expect(existsSync(paths().vibe)).toBe(true);
     expect(h.started).toEqual([]);
-    expect(text(h)).toContain("1  Vibe CLI");
   });
   it("starts the server when the user agrees and skips the tool question with --harness", async () => {
     const h = make({ interactive: true, answers: ["", "y", "n", "y"] });
@@ -589,11 +533,10 @@ describe("setup prompts", () => {
     expect(h.asked).toHaveLength(4);
     expect(h.started).toHaveLength(1);
   });
-  it("can decline the Vibe import and re-asks on unclear answers", async () => {
-    const h = make({ interactive: true, answers: ["", "n", "9", "1", "n"] });
+  it("can decline the Vibe import", async () => {
+    const h = make({ interactive: true, answers: ["", "n", "n"] });
     expect(await runSetup([], h.deps)).toBe(0);
     expect(text(h)).toContain("not imported");
-    expect(text(h)).toContain("Not understood.");
     expect(existsSync(paths().vibe)).toBe(true);
   });
   it("declines questions but keeps the default tool when input ends", async () => {
@@ -608,11 +551,11 @@ describe("setup prompts", () => {
 describe("setup --port", () => {
   it("writes the port into a new config.toml and the harness URLs", async () => {
     const h = make();
-    expect(await runSetup(["--yes", "--harness", "vibe,opencode,pi", "--port", "9200", "--start"], h.deps)).toBe(0);
+    expect(await runSetup(["--yes", "--port", "9200", "--start"], h.deps)).toBe(0);
     const p = paths();
     expect(readFileSync(p.cfg, "utf8")).toContain("port = 9200");
     expect(backups(p.cfg)).toEqual([]);
-    for (const f of [p.vibe, p.opencode, p.pi]) expect(readFileSync(f, "utf8")).toContain("http://127.0.0.1:9200/v1");
+    expect(readFileSync(p.vibe, "utf8")).toContain("http://127.0.0.1:9200/v1");
     expect(h.started[0]?.port).toBe(9200);
   });
   it("changes the port of an existing config with a backup and is idempotent", async () => {
@@ -646,18 +589,6 @@ describe("setup --port", () => {
 });
 
 describe("setup token and prompt robustness", () => {
-  it("asks which tools to use before it creates the key", async () => {
-    const h = make({ interactive: true, answers: ["", "n", "1", "n"] });
-    const ask = h.deps.io.ask;
-    let keysWhenAsked = -1;
-    h.deps.io.ask = async (q) => {
-      if (q.includes("Numbers or names")) keysWhenAsked = (text(h).match(/created key/g) ?? []).length;
-      return ask(q);
-    };
-    await runSetup(["--no-banner"], h.deps);
-    expect(keysWhenAsked).toBe(0);
-    expect(text(h)).toMatch(TOKEN_RE);
-  });
   it("keeps the flow going when input ends at every prompt", async () => {
     const h = make({ interactive: true });
     expect(await runSetup(["--no-banner"], h.deps)).toBe(0);
@@ -683,75 +614,56 @@ describe("setup file writes", () => {
   const tmpLeft = (path: string): string[] => readdirSync(dirname(path)).filter((f) => f.includes("mistwatch-tmp"));
   it("removes the temp file and the new backup when the rename fails", async () => {
     const p = paths();
-    put(p.pi, '{"x":1}');
+    put(p.vibe, "x = 1\n");
     vi.mocked(renameSync).mockImplementationOnce(() => {
       throw Object.assign(new Error("EPERM: operation not permitted, rename"), { code: "EPERM" });
     });
     const h = make();
-    expect(await runSetup(["--yes", "--harness", "pi"], h.deps)).toBe(1);
+    expect(await runSetup(["--yes"], h.deps)).toBe(1);
     expect(text(h)).toContain("EPERM");
-    expect(readFileSync(p.pi, "utf8")).toBe('{"x":1}');
-    expect(tmpLeft(p.pi)).toEqual([]);
-    expect(backups(p.pi)).toEqual([]);
-    expect(await runSetup(["--yes", "--harness", "pi"], make().deps)).toBe(0);
-    expect(backups(p.pi)).toHaveLength(1);
+    expect(readFileSync(p.vibe, "utf8")).toBe("x = 1\n");
+    expect(tmpLeft(p.vibe)).toEqual([]);
+    expect(backups(p.vibe)).toEqual([]);
+    expect(await runSetup(["--yes"], make().deps)).toBe(0);
+    expect(backups(p.vibe)).toHaveLength(1);
   });
   it.skipIf(process.platform === "win32")("keeps the file mode of an existing config", async () => {
     const p = paths();
-    put(p.pi, "{}");
-    chmodSync(p.pi, 0o600);
-    await runSetup(["--yes", "--harness", "pi"], make().deps);
-    expect(statSync(p.pi).mode & 0o777).toBe(0o600);
+    put(p.vibe, "# mine\n");
+    chmodSync(p.vibe, 0o600);
+    await runSetup(["--yes"], make().deps);
+    expect(statSync(p.vibe).mode & 0o777).toBe(0o600);
   });
   it("writes through a symlink and leaves the link in place", async () => {
     const p = paths();
-    const real = join(root, "dotfiles", "models.json");
-    put(real, "{}");
-    mkdirSync(dirname(p.pi), { recursive: true });
+    const real = join(root, "dotfiles", "config.toml");
+    put(real, "# mine\n");
+    mkdirSync(dirname(p.vibe), { recursive: true });
     try {
-      symlinkSync(real, p.pi);
+      symlinkSync(real, p.vibe);
     } catch {
       return;
     }
-    expect(await runSetup(["--yes", "--harness", "pi"], make().deps)).toBe(0);
-    expect(realpathSync(p.pi)).toBe(realpathSync(real));
+    expect(await runSetup(["--yes"], make().deps)).toBe(0);
+    expect(realpathSync(p.vibe)).toBe(realpathSync(real));
     expect(readFileSync(real, "utf8")).toContain("mistwatch");
     expect(tmpLeft(real)).toEqual([]);
   });
   it("creates the target of a dangling symlink", async () => {
     const p = paths();
-    const real = join(root, "dotfiles", "models.json");
-    mkdirSync(dirname(p.pi), { recursive: true });
+    const real = join(root, "dotfiles", "config.toml");
+    mkdirSync(dirname(p.vibe), { recursive: true });
     mkdirSync(dirname(real), { recursive: true });
     try {
-      symlinkSync(real, p.pi);
+      symlinkSync(real, p.vibe);
     } catch {
       return;
     }
-    expect(await runSetup(["--yes", "--harness", "pi"], make().deps)).toBe(0);
+    expect(await runSetup(["--yes"], make().deps)).toBe(0);
     expect(readFileSync(real, "utf8")).toContain("mistwatch");
   });
 });
 
-describe("opencode config location", () => {
-  it("honours XDG_CONFIG_HOME on non-Windows and falls back to ~/.config", async () => {
-    const xdg = join(root, "xdg");
-    setEnv("XDG_CONFIG_HOME", xdg);
-    expect(await runSetup(["--yes", "--harness", "opencode"], make().deps)).toBe(0);
-    expect(existsSync(join(xdg, "opencode", "opencode.json"))).toBe(true);
-    expect(existsSync(paths().opencode)).toBe(false);
-  });
-  it("ignores a relative XDG_CONFIG_HOME and the variable on win32", async () => {
-    setEnv("XDG_CONFIG_HOME", "relative/dir");
-    await runSetup(["--yes", "--harness", "opencode"], make().deps);
-    expect(existsSync(paths().opencode)).toBe(true);
-    rmSync(paths().opencode);
-    setEnv("XDG_CONFIG_HOME", join(root, "xdg"));
-    await runSetup(["--yes", "--harness", "opencode"], make({ platform: "win32" }).deps);
-    expect(existsSync(paths().opencode)).toBe(true);
-    expect(existsSync(join(root, "xdg"))).toBe(false);
-  });
-});
 describe("parseUrl", () => {
   it("accepts a server address and drops /v1 and slashes", () => {
     expect(parseUrl(undefined)).toBeNull();
@@ -873,13 +785,6 @@ describe("setup where and installed tools", () => {
     expect(h.asked).toEqual([]);
     expect(text(h)).toContain("cannot reach http://h:1");
     expect(existsSync(paths().cfg)).toBe(false);
-  });
-  it("says which tools are missing and how to install them", async () => {
-    const h = make({ installed: ["vibe"] });
-    expect(await runSetup(["--yes", "--harness", "vibe,opencode,pi", "--no-banner"], h.deps)).toBe(0);
-    expect(text(h)).toContain("npm install -g opencode-ai");
-    expect(text(h)).toContain("npm install -g @earendil-works/pi-coding-agent");
-    expect(text(h)).not.toContain("uv tool install mistral-vibe");
   });
   it("tells how to install Vibe when it is missing", async () => {
     const h = make({ installed: [] });

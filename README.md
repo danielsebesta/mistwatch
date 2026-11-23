@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="https://raw.githubusercontent.com/danielsebesta/mistwatch/main/web/public/favicon.svg" alt="" height="40" align="top">
+  <img src="https://raw.githubusercontent.com/danielsebesta/mistwatch/main/web/public/favicon.svg" alt="" height="20" align="top">
   Mistwatch
 </h1>
 
@@ -16,13 +16,15 @@
 
 > **Unofficial tool.** Mistwatch is an independent project. It is not a product of Mistral AI and is not affiliated with, endorsed by or sponsored by it. "Mistral" is a trademark of Mistral AI and is used here only to describe the service the tool talks to.
 
+> **Vibe only.** From 1 December 2026 Mistral counts usage through third-party coding tools towards the monthly API allowance instead of the Vibe allowance. Mistwatch is therefore for the Vibe CLI and Vibe Desktop only: the OpenCode and Pi configs and `agent-config` are gone, and the proxy answers every other client with `403 mistwatch_not_vibe`. The check is the `User-Agent` (`vibe_user_agent_regex`, default `Mistral-Vibe`); it keeps other tools from using the proxy by mistake and is not a security boundary. `vibe_only = false` under `[limits]` turns it off. Mistral accepts its own harnesses through ACP with third-party tools. Do not fake the User-Agent for other tools: Mistral decides what counts as Vibe.
+
 ## What it does
 
 - **Tracks your budgets.** It shows how much of your Vibe Code and Studio (API) allowance you have used, per 5 hours, day, week and month.
 - **Spreads usage over time.** It paces requests so you do not burn a whole month's allowance in one afternoon. When nothing is left it answers `429` with a `Retry-After` header.
 - **Offers one `auto` model.** A small model rates each request from the prompt, the project instructions (AGENTS.md) and what the agent has done; the router then picks the model and reasoning effort, preferring the cheaper choice among similar ones. The client cannot set the effort. When it lands on GLM 5.3 Flash it tries the free Vibe variant first and, if that is refused, uses the paid one for the next ten minutes.
 - **Pools several accounts.** Requests go to whichever account still has room.
-- **Works with your tools.** OpenCode, Pi and the Vibe CLI, or anything that speaks the OpenAI chat API.
+- **Works with your tools.** The Vibe CLI and Vibe Desktop. Other clients are refused (see above).
 
 ## Screenshots
 
@@ -36,7 +38,7 @@ Each Mistral account with its Vibe and Studio keys. Keys of the same person or o
 
 ![API keys](https://raw.githubusercontent.com/danielsebesta/mistwatch/main/docs/screenshots/keys.png)
 
-`mw-…` keys for your tools, with ready-made configs for OpenCode, Pi and the Vibe CLI.
+`mw-…` keys for your tools, with a ready-made config for the Vibe CLI.
 
 The data in these screenshots is made up. `npm run demo` generates it, see [Demo data](#demo-data).
 
@@ -61,7 +63,7 @@ To install it globally instead: `npm i -g mistwatch`, `pnpm add -g mistwatch`, `
 
 Your tools read the client token from the `MISTWATCH_TOKEN` environment variable. Set it as setup tells you.
 
-For scripts and AI agents there is a non-interactive form: `mistwatch setup --yes --harness vibe` (or `opencode`, `pi`). For Vibe Desktop add `--desktop`, see [Vibe Desktop](#vibe-desktop). See [AGENTS.md](AGENTS.md).
+For scripts and AI agents there is a non-interactive form: `mistwatch setup --yes --harness vibe`. For Vibe Desktop add `--desktop`, see [Vibe Desktop](#vibe-desktop). See [AGENTS.md](AGENTS.md).
 
 ### Docker
 
@@ -78,7 +80,7 @@ With Docker Compose (`docker-compose.yml` in this repo), set `MISTWATCH_BIND` to
 - **Overview**: Vibe and Studio budgets, limits per period, a spending or token chart with a per-model token table, and recent requests.
 - **Boost**: when the 5 hour or day limit stops you but the month budget has plenty left, press Boost on the Overview (or run `mistwatch boost`). The 5 hour and day limits are lifted for 5 hours, once per day (resets at local midnight). The week and month limits and the reserve still apply.
 - **Accounts**: your Mistral accounts, each with a Vibe key (can be taken over from the Vibe CLI in one click) and a Studio API key. A key is checked before it is saved.
-- **API keys**: `mw-…` keys for your tools. A key is shown only once, when you create it. The same page has ready-made configs for OpenCode, Pi and the Vibe CLI, plus environment variables for other tools.
+- **API keys**: `mw-…` keys for your tools. A key is shown only once, when you create it. The same page has a ready-made config for the Vibe CLI.
 - **Settings**: change your password, add users and rename models in charts and tables.
 
 ## Connecting your tools
@@ -86,8 +88,6 @@ With Docker Compose (`docker-compose.yml` in this repo), set `MISTWATCH_BIND` to
 `mistwatch setup` does it in one go. You can also do one tool at a time:
 
 ```sh
-mistwatch agent-config opencode --write
-mistwatch agent-config pi --write
 mistwatch vibe-config
 mistwatch vibe-config --desktop   # Vibe Desktop
 ```
@@ -103,7 +103,7 @@ Restart the Desktop after setting `MISTWATCH_TOKEN`, it reads the variable when 
 
 Claude Code and current Codex CLI do not work directly, because they need the Anthropic Messages or OpenAI Responses format and Mistral offers neither. Put a translating proxy such as LiteLLM in front of Mistwatch if you need them.
 
-**Limits for other tools.** `GET /v1/mistwatch/limits` (with your `mw-` key) returns the 5 h, day, week and month windows of every pool, and each accounted response carries `x-mw-limits`, `x-mw-room-eur` and the standard `RateLimit-Policy`, `RateLimit` and `RateLimit-Limit/Remaining/Reset` headers (IETF draft; units are euro cents, the plain triple describes the tightest window). A `429` carries `Retry-After` and `RateLimit-Remaining: 0`. `GET /v1/billing/budget` answers in Mistral's own shape, summed over your accounts, so the Vibe CLI footer shows the pooled Vibe Code budget; `GET /v1/billing/subscription` gives the plan the same way. Setup also sets `console_base_url` in the Vibe config: the plan is read from your real Mistral accounts (one per key, shown as `Pro + Pro + Team`), the name Vibe greets you with (`/v1/users/me`) is your Mistwatch user. The web UI shows who each Mistral key belongs to. There is no standard usage endpoint for Pi or OpenCode; they can call the limits endpoint.
+**Limits for other tools.** `GET /v1/mistwatch/limits` (with your `mw-` key) returns the 5 h, day, week and month windows of every pool, and each accounted response carries `x-mw-limits`, `x-mw-room-eur` and the standard `RateLimit-Policy`, `RateLimit` and `RateLimit-Limit/Remaining/Reset` headers (IETF draft; units are euro cents, the plain triple describes the tightest window). A `429` carries `Retry-After` and `RateLimit-Remaining: 0`. `GET /v1/billing/budget` answers in Mistral's own shape, summed over your accounts, so the Vibe CLI footer shows the pooled Vibe Code budget; `GET /v1/billing/subscription` gives the plan the same way. Setup also sets `console_base_url` in the Vibe config: the plan is read from your real Mistral accounts (one per key, shown as `Pro + Pro + Team`), the name Vibe greets you with (`/v1/users/me`) is your Mistwatch user. The web UI shows who each Mistral key belongs to.
 
 **Accounts are automatic.** In the web UI you sign in with Mistral or paste a key; Mistwatch asks Mistral whose it is (`/v1/users/me`, `whoami`), tells a Vibe key from a Studio key, and files it under that person's e-mail (or organization). Keys of the same person end up in one account, nothing has to be named or grouped by hand.
 
@@ -124,7 +124,6 @@ Run `mistwatch help` for the list. Everything below also works as `npx mistwatch
 | `set-token` | Store a Mistwatch key as `MISTWATCH_TOKEN` |
 | `import-vibe` | Add the Vibe CLI login as an account |
 | `vibe-config` | Print the Vibe provider block |
-| `agent-config` | Provider config for OpenCode or Pi |
 | `passwd <user>` | Create a user or reset a password |
 | `init` | Write a fresh config file |
 | `help` | Show the command list (`-h`, `--help`) |
@@ -137,7 +136,7 @@ Run `mistwatch help` for the list. Everything below also works as `npx mistwatch
 | Option | |
 | --- | --- |
 | `-y`, `--yes` | Never ask, use defaults (also when stdin is not a terminal) |
-| `--harness LIST` | Comma-separated `vibe`, `opencode`, `pi` or `all` (default `vibe`) |
+| `--harness LIST` | `vibe` (the only choice, kept for scripts; default) |
 | `--desktop` | Vibe Desktop: write the provider as `generic` with the flatten header. Later runs keep it |
 | `--port N` | Write this port into `config.toml` and the tool configs |
 | `--url URL` | Base URL of a Mistwatch running elsewhere, e.g. `http://100.64.0.1:8787` |
@@ -160,7 +159,7 @@ Run `mistwatch help` for the list. Everything below also works as `npx mistwatch
 | `set-token` | `--url URL` server to check the key against, `--no-check` skip that check. The key is typed hidden |
 | `import-vibe` | `--name NAME` account name (default `vibe-login`) |
 | `vibe-config` | `--desktop` print the provider block for Vibe Desktop |
-| `agent-config opencode\|pi` | `--write` write the file (a backup is kept), `--env NAME` environment variable that holds the key (default `MISTWATCH_TOKEN`) |
+|pi` | `--write` write the file (a backup is kept), `--env NAME` environment variable that holds the key (default `MISTWATCH_TOKEN`) |
 | `passwd <user>` | none. Asks for the new password twice |
 | `init` | `--force` overwrite an existing config, `--import-vibe` also import the Vibe login |
 
@@ -172,7 +171,9 @@ To reach the UI under another host name, for example through a tunnel, add it to
 
 A request body larger than `max_body_mb` (32 MiB by default) is refused with `413` before it reaches Mistral. Raise it under `[server]` when a client sends images or a very long context. The proxy buffers the whole body to read `model` and `stream`, so the cap is also a memory bound: the worst case is `max_body_mb` times the concurrency (8).
 
-`mistwatch setup` asks whether Mistwatch runs on this computer or on another machine/hosted instance (or pass `--url http://HOST:8787`). For a hosted one it only writes the tool configs and checks that the server answers. It also says which of Vibe, OpenCode and Pi are not installed and how to install them, and offers to store your Mistwatch key as `MISTWATCH_TOKEN` (typing is hidden, the key is checked against the server first; on Windows it goes to your user environment, on macOS/Linux to your zsh or bash profile after you confirm). `mistwatch set-token [--url URL]` does only that step.
+A streaming request that gets no first byte from Mistral within `first_byte_timeout_s` (60 s by default) is answered with `504`; `total_timeout_s` (600 s) bounds a whole request. A very large context can take a while to prefill before the first token, so raise `first_byte_timeout_s` under `[upstream]` if big prompts time out.
+
+`mistwatch setup` asks whether Mistwatch runs on this computer or on another machine/hosted instance (or pass `--url http://HOST:8787`). For a hosted one it only writes the tool configs and checks that the server answers. It also says if Vibe is not installed and how to install it, and offers to store your Mistwatch key as `MISTWATCH_TOKEN` (typing is hidden, the key is checked against the server first; on Windows it goes to your user environment, on macOS/Linux to your zsh or bash profile after you confirm). `mistwatch set-token [--url URL]` does only that step.
 
 ## Security
 

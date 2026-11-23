@@ -195,12 +195,9 @@ const API_MODELS: ModelSpec[] = [
 ];
 const VIBE_CLIENTS = [
   { name: "vibe-cli", weight: 82 },
-  { name: "opencode", weight: 12 },
-  { name: "pi", weight: 6 },
+  { name: "vibe-desktop", weight: 18 },
 ];
 const API_CLIENTS = [
-  { name: "opencode", weight: 28 },
-  { name: "pi", weight: 16 },
   { name: "notebook", weight: 24 },
   { name: "scripts", weight: 32 },
 ];
@@ -403,7 +400,7 @@ const seedDemo = (db: DB, cfg: Config, rnd: () => number, now: number): DemoData
       keyToAccount.set(key, account);
     }
   }
-  const apiKeys = ["vibe-cli", "opencode", "pi", "notebook", "scripts"];
+  const apiKeys = ["vibe-cli", "vibe-desktop", "notebook", "scripts"];
   for (const [i, name] of apiKeys.entries()) {
     const [row] = store.createApiKey(name, now - (60 - i * 7) * 86400);
     db.stmt("UPDATE api_keys SET last_used=? WHERE id=?").run(now - (i * 37 + 4) * 60, row.id);

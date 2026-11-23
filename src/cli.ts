@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { dumpJson, FLAT_HEADERS, opencode, opencodeConfigPath, pi } from "./agents.ts";
+import { dumpJson, FLAT_HEADERS } from "./agents.ts";
 import { clientBaseUrl } from "./config.ts";
 import { readSecret as readPassword, readStdinAll } from "./secret.ts";
 import type { PoolStatusDict } from "./types.ts";
@@ -24,7 +24,6 @@ commands:
   passwd         create a user / reset a password
   set-token      store a Mistwatch key as MISTWATCH_TOKEN (--url, --no-check)
   vibe-config    print the Vibe provider block (--desktop for Vibe Desktop)
-  agent-config   provider config for pi|opencode (--write, --env)
   version        print the version (-v, --version)`;
 const openApp = async () => (await import("./open.ts")).openApp();
 const serverUrl = (cfg: { host: string; port: number }): string => clientBaseUrl(cfg);
@@ -387,44 +386,6 @@ ${
 Other tools: base URL ${url}/v1, API key = that same key.`);
   return 0;
 };
-const cmdAgentConfig = async (args: string[]): Promise<number> => {
-  const { values, positionals } = opts({
-    args,
-    allowPositionals: true,
-    options: { write: { type: "boolean", default: false }, env: { type: "string", default: "MISTWATCH_TOKEN" } },
-    strict: true,
-  });
-  const [tool] = positionals;
-  if (tool !== "pi" && tool !== "opencode") {
-    console.error("mistwatch: agent-config requires tool 'pi' or 'opencode'");
-    return 2;
-  }
-  const { loadConfig } = await import("./config.ts");
-  const env = values.env;
-  const base = serverUrl(loadConfig());
-  const home = homedir();
-  const data = tool === "pi" ? pi(base, env) : opencode(base, env);
-  const path = tool === "pi" ? join(home, ".pi", "agent", "models.json") : opencodeConfigPath(home, process.platform);
-  if (!values.write) {
-    console.log(`# ${path}\n${dumpJson(data)}`);
-    console.error(`\n# set ${env}=<a key from the API keys page>; add --write to merge this into the file`);
-    return 0;
-  }
-  const { applyFile, planJson, SetupError } = await import("./setup.ts");
-  try {
-    const res = applyFile(path, (raw) => planJson(raw, data), new Date());
-    console.log(
-      res.action === "unchanged"
-        ? `${path} is already up to date`
-        : `wrote ${path}${res.backup ? ` (backup: ${res.backup})` : ""}. Set ${env}=<key from the API keys page>.`,
-    );
-  } catch (e) {
-    if (!(e instanceof SetupError)) throw e;
-    console.log(`${path}: ${e.message}. Paste the block above manually.`);
-    return 1;
-  }
-  return 0;
-};
 export const main = async (argv: string[]): Promise<number> => {
   const [cmd, ...rest] = argv;
   try {
@@ -451,7 +412,6 @@ export const main = async (argv: string[]): Promise<number> => {
     if (cmd === "serve") return await cmdServe(rest);
     if (cmd === "route") return await cmdRoute(rest);
     if (cmd === "vibe-config") return await cmdVibeConfig(rest);
-    if (cmd === "agent-config") return await cmdAgentConfig(rest);
     console.error(`mistwatch: unknown command '${cmd}'`);
     return 2;
   } catch (e) {

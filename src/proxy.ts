@@ -40,9 +40,7 @@ import type { Account, ChatBody, Decision, PoolStatus } from "./types.ts";
 
 // The proxy buffers a whole body to read model and stream, so the cap is also a memory bound.
 const BODY_HINT = "Raise max_body_mb under [server] in config.toml, or send less context.";
-export const CONNECT_S = 15;
-export const TOTAL_S = 600;
-// A stream may run this long in all; it is cut earlier only after TOTAL_S without any data.
+// A stream may run this long in all; it is cut earlier only after total_timeout_s without any data.
 export const STREAM_MAX_S = 3600;
 export const BLOCK_S = 600;
 export const BLOCK_429_S = 30;
@@ -219,7 +217,7 @@ const makeSseParser = (): {
 };
 export type ProxyOpts = {
   bodyLimit?: number | undefined;
-  connectTimeoutS?: number | undefined;
+  firstByteTimeoutS?: number | undefined;
   totalTimeoutS?: number | undefined;
   globalRate?: [number, number] | undefined;
   keyRate?: [number, number] | undefined;
@@ -241,8 +239,8 @@ type Ctx = {
 export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
   const cfg = st.cfg;
   const bodyLimit = opts.bodyLimit ?? cfg.max_body_mb * 1024 * 1024;
-  const connectMs = (opts.connectTimeoutS ?? CONNECT_S) * 1000;
-  const totalMs = (opts.totalTimeoutS ?? TOTAL_S) * 1000;
+  const firstByteMs = (opts.firstByteTimeoutS ?? cfg.first_byte_timeout_s) * 1000;
+  const totalMs = (opts.totalTimeoutS ?? cfg.total_timeout_s) * 1000;
   const [gLim, gWin] = opts.globalRate ?? [600, 60];
   const [kLim, kWin] = opts.keyRate ?? [300, 60];
   const globalRl = createRateLimiter({ limit: gLim, windowS: gWin });
@@ -272,6 +270,10 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
     if (!g.allowed) throw asException(errors.rateLimited(g.retryAfter));
     const kr = keyRl.check(client === null ? "open" : String(client.id));
     if (!kr.allowed) throw asException(errors.rateLimited(kr.retryAfter));
+    if (cfg.limits.vibe_only) {
+      const ua = req.headers.get("user-agent") ?? "";
+      if (!st.vibeRe.test(ua)) throw asException(errors.notVibe(ua));
+    }
     if (req.method === "GET" && urlPath === "/v1/billing/budget")
       return Response.json(billingBudget(st, Date.now() / 1000));
     if (req.method === "GET" && urlPath === "/v1/billing/subscription") return billingSubscription(st);
@@ -509,18 +511,21 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
       };
       const held = deferred<void>();
       const early = deferred<Response>();
-      let connectTimer: ReturnType<typeof setTimeout> | undefined;
-      const totalTimer = setTimeout(() => ac.abort(asException(errors.upstreamTimeout())), totalMs);
+      let firstByteTimer: ReturnType<typeof setTimeout> | undefined;
+      const totalTimer = setTimeout(
+        () => ac.abort(asException(errors.upstreamTimeout(totalMs / 1000, "total"))),
+        totalMs,
+      );
       totalTimer.unref();
       const heldResolve = (): void => held.resolve();
       const job = queue.run(
         async (sig) => {
           onAbort(sig);
-          connectTimer = setTimeout(
-            () => ac.abort(asException(errors.upstreamTimeout())),
-            wantStream ? connectMs : totalMs,
+          firstByteTimer = setTimeout(
+            () => ac.abort(asException(errors.upstreamTimeout(firstByteMs / 1000, "first_byte"))),
+            wantStream ? firstByteMs : totalMs,
           );
-          connectTimer.unref();
+          firstByteTimer.unref();
           try {
             const resp = await st.fetch(`${cfg.upstream}${urlPath}${url.search}`, {
               method: req.method,
@@ -535,7 +540,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
             early.reject(e);
             throw e;
           } finally {
-            clearTimeout(connectTimer);
+            clearTimeout(firstByteTimer);
             clearTimeout(totalTimer);
           }
         },
@@ -553,7 +558,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
         }
         throw upstreamErr(e);
       }
-      clearTimeout(connectTimer);
+      clearTimeout(firstByteTimer);
       if (free && resp.status >= 400) {
         // The free variant refused (quota, not offered on this key, ...): use the paid model for a while.
         await resp.arrayBuffer().catch(() => null);
@@ -621,11 +626,11 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
         };
         if (wantStream && resp.status === 200) {
           const sse = makeSseParser();
-          // a stream that keeps sending data may outlive TOTAL_S; only silence for that long cuts it
+          // a stream that keeps sending data may outlive total_timeout_s; only silence for that long cuts it
           let idle: ReturnType<typeof setTimeout> | undefined;
           const touch = (): void => {
             clearTimeout(idle);
-            idle = setTimeout(() => ac.abort(asException(errors.upstreamTimeout())), totalMs);
+            idle = setTimeout(() => ac.abort(asException(errors.upstreamTimeout(totalMs / 1000, "idle"))), totalMs);
             idle.unref();
           };
           clearTimeout(totalTimer);

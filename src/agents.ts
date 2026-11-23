@@ -1,10 +1,8 @@
-import { isAbsolute, join } from "node:path";
 import type { AgentConfig, AgentTool } from "../shared/api.ts";
 import { autoname, builtin } from "./modelnames.ts";
 import { LADDER } from "./router.ts";
 export const ENV = "MISTWATCH_TOKEN";
 export type ModelSpec = [id: string, name: string, ctx: number, vision: boolean];
-const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const NON_ASCII = /[\u0080-\uffff]/g;
 export const dumpJson = (v: unknown): string =>
   JSON.stringify(v, null, 2).replace(NON_ASCII, (c) => `\\u${(c.codePointAt(0) ?? 0).toString(16).padStart(4, "0")}`);
@@ -24,36 +22,6 @@ export const models = (): ModelSpec[] => {
 export const VIBE_AUTO: readonly (readonly [name: string, label: string, ctx: number])[] = models()
   .slice(0, 1)
   .map(([id, name, ctx]) => [id, name, ctx] as const);
-export const pi = (base: string, env = ENV): Record<string, unknown> => ({
-  providers: {
-    mistwatch: {
-      baseUrl: `${base}/v1`,
-      api: "openai-completions",
-      apiKey: env,
-      models: models().map(([id, name, ctx, vision]) => ({
-        id,
-        name,
-        reasoning: id !== "mistral-small-2603",
-        input: vision ? ["text", "image"] : ["text"],
-        contextWindow: ctx,
-        maxTokens: 32_768,
-      })),
-    },
-  },
-});
-export const opencode = (base: string, env = ENV): Record<string, unknown> => ({
-  $schema: "https://opencode.ai/config.json",
-  provider: {
-    mistwatch: {
-      npm: "@ai-sdk/openai-compatible",
-      name: "mistwatch",
-      options: { baseURL: `${base}/v1`, apiKey: `{env:${env}}` },
-      models: Object.fromEntries(
-        models().map(([id, name, ctx]) => [id, { name, limit: { context: ctx, output: 32_768 } }]),
-      ),
-    },
-  },
-});
 export const vibeAutoBlock = ([name, label, ctx]: (typeof VIBE_AUTO)[number]): string => `[[models]]
 name = "${name}"
 provider = "mistwatch"
@@ -82,54 +50,21 @@ ${
 ${VIBE_AUTO.map(vibeAutoBlock).join("\n")}
 # Or set provider = "mistwatch" on the models you already use.
 `;
-export const merge = (dst: Record<string, unknown>, src: Record<string, unknown>): Record<string, unknown> => {
-  for (const [k, v] of Object.entries(src)) {
-    if (k === "__proto__" || k === "constructor" || k === "prototype") continue;
-    const cur = dst[k];
-    dst[k] = isRec(v) && isRec(cur) ? merge(cur, v) : v;
-  }
-  return dst;
-};
-export const opencodeConfigPath = (
-  home: string,
-  platform: NodeJS.Platform,
-  env: NodeJS.ProcessEnv = process.env,
-): string => {
-  const xdg = env.XDG_CONFIG_HOME;
-  const base = platform !== "win32" && xdg && isAbsolute(xdg) ? xdg : join(home, ".config");
-  return join(base, "opencode", "opencode.json");
-};
 export const TOOLS: Record<AgentTool, { label: string; path: string; language: string }> = {
-  opencode: { label: "OpenCode", path: "~/.config/opencode/opencode.json", language: "json" },
-  pi: { label: "Pi", path: "~/.pi/agent/models.json", language: "json" },
   vibe: { label: "Vibe CLI", path: "~/.vibe/config.toml", language: "toml" },
-  env: { label: "Other tools", path: "environment", language: "sh" },
 };
-export const TOOL_ORDER: readonly AgentTool[] = ["opencode", "pi", "vibe", "env"];
+export const TOOL_ORDER: readonly AgentTool[] = ["vibe"];
 export const render = (tool: AgentTool, base: string, env = ENV): AgentConfig => {
   const { label, path, language } = TOOLS[tool];
-  let text: string;
-  let note: string;
-  if (tool === "opencode") {
-    text = `${dumpJson(opencode(base, env))}\n`;
-    note = "Merge this into the file, or run: mistwatch agent-config opencode --write";
-  } else if (tool === "pi") {
-    text = `${dumpJson(pi(base, env))}\n`;
-    note = "Merge this into the file, or run: mistwatch agent-config pi --write";
-  } else if (tool === "vibe") {
-    text = vibe(base, env);
-    note = "Add this to the file.";
-  } else {
-    text = `export OPENAI_BASE_URL="${base}/v1"\nexport OPENAI_API_KEY="$${env}"\n`;
-    note = 'Any tool that speaks the OpenAI chat completions API. Use the model name "auto".';
-  }
+  const text = vibe(base, env);
+  const note = "Add this to the file.";
   return {
     tool,
     label,
     path,
     language,
     content: text,
-    filename: path.includes("/") ? (path.split("/").pop() ?? path) : "mistwatch.env",
+    filename: path.split("/").pop() ?? path,
     note: `${note} Set ${env} to a key from the API keys page.`,
   };
 };
@@ -153,19 +88,19 @@ export const llmsTxt = (base: string): string => `# Mistwatch
 
 - \`401\` with \`error.type = "mistwatch_auth"\`: the key is wrong or revoked.
 - \`429\` with \`error.type = "mistwatch_budget_exhausted"\`: no account has room right now. Wait for the \`Retry-After\` header (seconds) instead of retrying at once. The body lists each pool and when it frees up.
-- Requests whose \`User-Agent\` contains \`Mistral-Vibe\` are charged to the Vibe Code budget, all others to the Studio API budget. If one is used up, the other is tried.
+- Only Vibe and the Vibe CLI are served: a request whose \`User-Agent\` does not contain \`Mistral-Vibe\` gets \`403\` with \`error.type = "mistwatch_not_vibe"\` (config: \`vibe_only\` under \`[limits]\`). Mistral counts other tools towards the API allowance since 1 December 2026, so do not point another tool at this gateway and do not fake the User-Agent.
 - \`GET /v1/mistwatch/limits\` lists the 5h, day, week and month windows of every pool; \`GET /v1/billing/budget\` gives the pooled Vibe Code budget and \`GET /v1/billing/subscription\` the plan, both in Mistral's shape.
 - Standard \`RateLimit-Policy\`, \`RateLimit\` and \`RateLimit-Limit/Remaining/Reset\` headers come on accounted calls, in euro cents, for the tightest window; a 429 adds \`RateLimit-Remaining: 0\`.
 - Response headers on accounted calls: \`x-mw-limits\` (room/cap per window), \`x-mw-account\`, \`x-mw-pool\`, \`x-mw-room-eur\` (what can still be spent now) and, for \`auto\`, \`x-mw-routed\` (the model and effort chosen).
 
 ## Set up a tool
 
-- Run one command: \`npx mistwatch setup --yes --harness vibe\` (or \`opencode\`, \`pi\`, or a list such as \`vibe,opencode\`). It creates the config, links the Vibe CLI login, creates a client token (shown once) and writes the tool's provider config. Any file it changes is copied to \`<file>.<timestamp>.bak\` first and merged, never replaced. Safe to run again. Needs Node 24+. If the default port 8787 is taken, add \`--port N\`: it writes the port into config.toml and into the tool configs (\`serve --port N\` alone changes neither).
+- Run one command: \`npx mistwatch setup --yes --harness vibe\`. It creates the config, links the Vibe CLI login, creates a client token (shown once) and writes the tool's provider config. Any file it changes is copied to \`<file>.<timestamp>.bak\` first and merged, never replaced. Safe to run again. Needs Node 24+. If the default port 8787 is taken, add \`--port N\`: it writes the port into config.toml and into the tool configs (\`serve --port N\` alone changes neither).
 - Give the token to tools through the environment variable \`${ENV}\`. Never ask the user to paste keys into chat and never print the token again.
 - Verify with \`mistwatch status\` and, while the proxy runs, \`curl -H "Authorization: Bearer $${ENV}" ${base}/v1/models\`.
 - If the Vibe login is missing, the user runs \`vibe --setup\` and then \`mistwatch import-vibe\`.
 - Ask the user before starting \`mistwatch serve\`: it keeps running.
-- By hand: \`mistwatch agent-config opencode --write\`, \`mistwatch agent-config pi --write\`, \`mistwatch vibe-config\`. Any other OpenAI-compatible tool: base URL \`${base}/v1\`, key from the API keys page, model \`auto\`.
+- By hand: \`mistwatch vibe-config\`.
 - The same snippets can be copied or downloaded from the web UI: ${base}/#/keys
 - Full agent instructions: AGENTS.md in the repository.
 

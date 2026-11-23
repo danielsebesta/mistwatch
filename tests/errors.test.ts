@@ -45,6 +45,13 @@ describe("AppError", () => {
     );
     expect(errors.tooLarge(256 * 1024).message).toBe("The request body is larger than 256 KiB.");
   });
+  it("upstreamTimeout names the phase and the limit", () => {
+    expect(errors.upstreamTimeout(60, "first_byte").message).toBe(
+      "Mistral did not start answering within 60 s. Try again.",
+    );
+    expect(errors.upstreamTimeout(600, "idle").message).toBe("Mistral sent nothing for 10 min. Try again.");
+    expect(errors.upstreamTimeout(600, "total").message).toBe("Mistral did not finish within 10 min. Try again.");
+  });
   it("toAppError normalises unknown throws without leaking internals", () => {
     const mine = errors.auth();
     expect(toAppError(mine)).toBe(mine);

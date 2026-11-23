@@ -25,7 +25,7 @@ export const viewKeys = async (main: HTMLElement): Promise<void> => {
   main.append(
     pageHead(
       "API keys",
-      "Keys that let your tools (Vibe CLI, Pi, OpenCode, scripts) use Mistwatch. The full key is shown only once, when you create it.",
+      "Keys that let your tools (Vibe CLI, scripts) use Mistwatch. The full key is shown only once, when you create it.",
     ),
     list,
   );
@@ -175,24 +175,10 @@ const toolsCard = (cfgs: AgentConfig[], baseUrl: string): HTMLElement => {
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     };
     panel.replaceChildren(
-      h("div", { class: "sm mut" }, c.tool === "env" ? "Set these variables" : ["Goes in ", h("code", {}, c.path)]),
+      h("div", { class: "sm mut" }, ["Goes in ", h("code", {}, c.path)]),
       codeBlock(c.content),
       h("p", { class: "sm mut" }, c.note),
-      ...(c.tool === "env"
-        ? [
-            h("div", { class: "sm mut" }, "Quick test"),
-            codeBlock(
-              `curl ${baseUrl}/chat/completions \\
-  -H "Authorization: Bearer mw-…" -H "Content-Type: application/json" \\
-  -d '{"model":"auto","messages":[{"role":"user","content":"Hello"}]}'`,
-            ),
-          ]
-        : []),
-      h(
-        "div",
-        { class: "row" },
-        c.tool === "env" ? null : h("button", { class: "btn", onclick: dl }, ic("download"), `Download ${c.filename}`),
-      ),
+      h("div", { class: "row" }, h("button", { class: "btn", onclick: dl }, ic("download"), `Download ${c.filename}`)),
     );
   };
   cfgs.forEach((c, i) => {

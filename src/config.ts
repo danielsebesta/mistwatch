@@ -29,6 +29,10 @@ max_body_mb = 32
 base_url = "https://api.mistral.ai"
 # Where the Vibe CLI reads your plan and name (served at /api/vibe/whoami and /users/me when its console_base_url points here)
 console_url = "https://console.mistral.ai"
+# How long a streaming request may wait for Mistral's first byte, and how long any request may take in all.
+# A very large context can take a while to prefill before the first token, so raise first_byte_timeout_s if you see 504s.
+first_byte_timeout_s = 60
+total_timeout_s = 600
 
 [pricing]
 usd_to_eur = ${DEFAULT_USD_TO_EUR}          # docs prices are USD, budgets are EUR
@@ -42,6 +46,7 @@ sync_interval_s = 300
 strategy = "most_headroom" # or "priority"
 fallback_to_other_pool = true
 vibe_user_agent_regex = "Mistral-Vibe"
+vibe_only = true           # answer only clients whose User-Agent matches the line above (Vibe, Vibe CLI); others get 403
 
 [router]
 llm_classifier = true      # ask a tiny model to rate prompt difficulty for \`auto\`
@@ -56,6 +61,7 @@ export const defaultLimits = (): Limits => ({
   strategy: "most_headroom",
   fallback_to_other_pool: true,
   vibe_user_agent_regex: "Mistral-Vibe",
+  vibe_only: true,
 });
 const defaultRouterCfg = (): RouterCfg => ({
   llm_classifier: true,
@@ -70,6 +76,8 @@ export const defaultConfig = (): Config => ({
   max_body_mb: 32,
   upstream: "https://api.mistral.ai",
   console_upstream: "https://console.mistral.ai",
+  first_byte_timeout_s: 60,
+  total_timeout_s: 600,
   usd_to_eur: DEFAULT_USD_TO_EUR,
   db_path: join(homeDir(), "mistwatch.db"),
   limits: defaultLimits(),
@@ -205,11 +213,14 @@ export const loadConfig = (path?: string): Config => {
   // MISTWATCH_ALLOWED_HOSTS (comma separated) adds to the file list, so Docker needs no config edit
   const envHosts = process.env.MISTWATCH_ALLOWED_HOSTS;
   if (envHosts) cfg.allowed_hosts = [...new Set([...cfg.allowed_hosts, ...hostList(envHosts.split(","))])];
-  cfg.upstream = pick(optTable(raw.upstream, "upstream"), "base_url", cfg.upstream, asStr).replace(/\/+$/, "");
-  cfg.console_upstream = pick(optTable(raw.upstream, "upstream"), "console_url", cfg.console_upstream, asStr).replace(
-    /\/+$/,
-    "",
-  );
+  const up = optTable(raw.upstream, "upstream");
+  cfg.upstream = pick(up, "base_url", cfg.upstream, asStr).replace(/\/+$/, "");
+  cfg.console_upstream = pick(up, "console_url", cfg.console_upstream, asStr).replace(/\/+$/, "");
+  cfg.first_byte_timeout_s = pick(up, "first_byte_timeout_s", cfg.first_byte_timeout_s, asFloat);
+  cfg.total_timeout_s = pick(up, "total_timeout_s", cfg.total_timeout_s, asFloat);
+  if (cfg.first_byte_timeout_s <= 0)
+    throw new TypeError(`first_byte_timeout_s must be above 0, not ${cfg.first_byte_timeout_s}`);
+  if (cfg.total_timeout_s <= 0) throw new TypeError(`total_timeout_s must be above 0, not ${cfg.total_timeout_s}`);
   const pricing = optTable(raw.pricing, "pricing");
   cfg.usd_to_eur = pick(pricing, "usd_to_eur", cfg.usd_to_eur, asFloat);
   cfg.price_overrides = parseOverrides(pricing.models);
@@ -225,6 +236,7 @@ export const loadConfig = (path?: string): Config => {
     strategy: pick(lim, "strategy", cfg.limits.strategy, asStr),
     fallback_to_other_pool: pick(lim, "fallback_to_other_pool", cfg.limits.fallback_to_other_pool, asBool),
     vibe_user_agent_regex: pick(lim, "vibe_user_agent_regex", cfg.limits.vibe_user_agent_regex, asStr),
+    vibe_only: pick(lim, "vibe_only", cfg.limits.vibe_only, asBool),
   };
   const rou = optTable(raw.router, "router");
   cfg.router = {

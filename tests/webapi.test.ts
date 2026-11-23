@@ -41,6 +41,7 @@ const upstream: Handler = (url, init) => {
 type App = { app: Hono; st: ReturnType<typeof createState> };
 const mkApp = (apiOpts: WebApiOpts = {}, fetchFn: FetchLike = upstream as FetchLike): App => {
   const cfg = defaultConfig();
+  cfg.limits.vibe_only = false;
   cfg.db_path = ":memory:";
   const st = createState(cfg, fetchFn);
   return { st, app: createApp(st, { webDir: WEB_DIR, apiOpts }) };
@@ -95,6 +96,7 @@ describe("web ui and session gate", () => {
   });
   it("marks the cookie Secure behind a trusted HTTPS proxy", async () => {
     const cfg = defaultConfig();
+    cfg.limits.vibe_only = false;
     cfg.db_path = ":memory:";
     cfg.trust_proxy = true;
     cfg.allowed_hosts = ["mw.example.com"];
@@ -119,6 +121,7 @@ describe("web ui and session gate", () => {
     const body = "console.log(1)";
     writeFileSync(join(dir, "index.html"), `<html><script type="module">${body}</script></html>`);
     const cfg = defaultConfig();
+    cfg.limits.vibe_only = false;
     cfg.db_path = ":memory:";
     const app = createApp(createState(cfg, upstream as FetchLike), { webDir: dir });
     const csp = (await api(app, "/")).headers.get("content-security-policy") ?? "";
@@ -474,14 +477,14 @@ describe("models, agent-config and sign-in", () => {
     expect(r2.status).toBe(200);
     expect(await r2.json()).toEqual({ models: 1 });
   });
-  it("serves agent configs for all four tools behind auth", async () => {
+  it("serves the agent config behind auth", async () => {
     const { app } = mkApp();
     expect((await api(app, "/api/agent-config")).status).toBe(401);
     const { cookie } = await login(app);
     const r = await api(app, "/api/agent-config", { headers: authed(cookie) });
     const out: unknown = await r.json();
     const tools = Array.isArray(out) ? out.map((t) => (isRec(t) ? t.tool : null)) : [];
-    expect(tools).toEqual(["opencode", "pi", "vibe", "env"]);
+    expect(tools).toEqual(["vibe"]);
     for (const t of Array.isArray(out) ? out : []) {
       expect(isRec(t) && typeof t.content === "string" ? t.content : "").toContain("/v1");
     }
@@ -567,6 +570,7 @@ describe("proxy keys lifecycle", () => {
 describe("config migration", () => {
   it("runs once and does not resurrect deleted accounts", () => {
     const cfg = defaultConfig();
+    cfg.limits.vibe_only = false;
     cfg.db_path = ":memory:";
     cfg.accounts.push({ name: "old", keys: { api: "literal-key-12345" }, priority: 100, enabled: true, manual: {} });
     cfg.clients.push({ name: "t", token: "tok-1" });
@@ -594,6 +598,7 @@ describe("Vibe console endpoints", () => {
   it("forwards whoami to the console with the Vibe key", async () => {
     const seen: string[] = [];
     const cfg = defaultConfig();
+    cfg.limits.vibe_only = false;
     cfg.db_path = ":memory:";
     cfg.accounts = [{ name: "a", keys: { vibe: "vk" }, priority: 100, enabled: true, manual: {} }];
     const st = createState(cfg, ((url: string, init?: RequestInit) => {
@@ -610,6 +615,7 @@ describe("Vibe console endpoints", () => {
   });
   it("answers /v1/billing/subscription with the plan from the console", async () => {
     const cfg = defaultConfig();
+    cfg.limits.vibe_only = false;
     cfg.db_path = ":memory:";
     cfg.accounts = [{ name: "a", keys: { vibe: "vk" }, priority: 100, enabled: true, manual: {} }];
     const st = createState(cfg, (() => Promise.resolve(json({ plan_name: "INDIVIDUAL" }))) as FetchLike);
@@ -629,6 +635,7 @@ describe("Vibe console endpoints", () => {
 describe("key owner", () => {
   it("reads who Mistral says a key belongs to", async () => {
     const cfg = defaultConfig();
+    cfg.limits.vibe_only = false;
     cfg.db_path = ":memory:";
     cfg.accounts = [{ name: "a", keys: { vibe: "vk" }, priority: 100, enabled: true, manual: {} }];
     const fetchFn = ((url: string) => {
@@ -715,6 +722,7 @@ describe("keys find their owner", () => {
 describe("combined plan", () => {
   it("joins the plan of every account", async () => {
     const cfg = defaultConfig();
+    cfg.limits.vibe_only = false;
     cfg.db_path = ":memory:";
     cfg.accounts = [
       { name: "a", keys: { vibe: "key-a-123456" }, priority: 100, enabled: true, manual: {} },

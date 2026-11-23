@@ -57,6 +57,7 @@ const mkCfg = (accounts: Account[], withClient = true): Config => {
   c.db_path = ":memory:";
   c.usd_to_eur = 1.0;
   c.router.llm_classifier = false;
+  c.limits.vibe_only = false;
   c.accounts.push(...accounts);
   if (withClient) c.clients.push({ name: "t", token: "tok" });
   return c;
@@ -862,15 +863,28 @@ describe("proxy accounting hardening", () => {
     expect(row.completion_tokens).toBe(100);
     expect(must(st.engine.status("a", "api")).inflight).toBe(0);
   });
-  it("lets a non-streaming upstream take longer than the connect limit to answer", async () => {
+  it("lets a non-streaming upstream take longer than the first-byte limit to answer", async () => {
     const st = baseState(async () => {
       await new Promise((r) => setTimeout(r, 300));
       return okJson();
     });
-    const r = await createProxy(st, { connectTimeoutS: 0.05 }).handle(
+    const r = await createProxy(st, { firstByteTimeoutS: 0.05 }).handle(
       jreq("/v1/chat/completions", { model: "mistral-large-4-0" }, AUTH),
     );
     expect(r.status).toBe(200);
+  });
+  it("gives up on a stream that never sends its first byte, and names that limit", async () => {
+    const st = baseState((_u, init) =>
+      abortable(new Promise<Response>((ok) => setTimeout(() => ok(okJson()), 300)), init?.signal),
+    );
+    st.cfg.first_byte_timeout_s = 0.05;
+    const r = await createProxy(st).handle(
+      jreq("/v1/chat/completions", { model: "mistral-large-4-0", stream: true }, AUTH),
+    );
+    expect(r.status).toBe(504);
+    const body = (await r.json()) as { error: { type: string; message: string } };
+    expect(body.error.type).toBe("mistwatch_upstream_timeout");
+    expect(body.error.message).toContain("start answering");
   });
   it("survives a negative max_tokens", async () => {
     const st = baseState(() => okJson());
@@ -916,5 +930,50 @@ describe("proxy accounting hardening", () => {
     );
     await r.text();
     expect(must(st.db.recent()[0]).completion_tokens).toBe(5);
+  });
+});
+
+describe("vibe_only", () => {
+  const strict = (): State => {
+    const st = createState(
+      mkCfg([acct()]),
+      fakeFetch(() => okJson()),
+    );
+    st.cfg.limits.vibe_only = true;
+    seedPool(st, "a", "vibe", 0, 100);
+    return st;
+  };
+  it("answers Vibe and the Vibe CLI, in both of its backends, and nothing else", async () => {
+    const p = createProxy(strict());
+    for (const ua of ["Mistral-Vibe/3.1.4", "mistral-client-python/Mistral-Vibe/3.1.4"]) {
+      const r = await p.handle(
+        jreq("/v1/chat/completions", { model: "mistral-large-4-0" }, { ...AUTH, "user-agent": ua }),
+      );
+      expect(r.status).toBe(200);
+    }
+    for (const ua of ["curl/8", "opencode/1.0", "pi", ""]) {
+      const r = await p.handle(
+        jreq("/v1/chat/completions", { model: "mistral-large-4-0" }, { ...AUTH, "user-agent": ua }),
+      );
+      expect(r.status).toBe(403);
+      expect(await errType(r)).toBe("mistwatch_not_vibe");
+    }
+  });
+  it("also refuses the read-only endpoints and every forwarded path for other clients", async () => {
+    const p = createProxy(strict());
+    for (const path of ["/v1/models", "/v1/mistwatch/limits", "/v1/billing/budget", "/v1/users/me"]) {
+      const r = await p.handle(req(path, { headers: { ...AUTH, "user-agent": "curl/8" } }));
+      expect(r.status).toBe(403);
+    }
+    const ok = await p.handle(req("/v1/billing/budget", { headers: { ...AUTH, "user-agent": "Mistral-Vibe/3.1.4" } }));
+    expect(ok.status).toBe(200);
+  });
+  it("lets everything through with vibe_only = false", async () => {
+    const st = strict();
+    st.cfg.limits.vibe_only = false;
+    const r = await createProxy(st).handle(
+      jreq("/v1/chat/completions", { model: "mistral-large-4-0" }, { ...AUTH, "user-agent": "curl/8" }),
+    );
+    expect(r.status).toBe(200);
   });
 });

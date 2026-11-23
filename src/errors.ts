@@ -78,8 +78,16 @@ export const errors = {
       502,
       "Could not get a usable answer from Mistral on any account (network error or rejected key). Check the connection and the account keys in the web UI, then try again.",
     ),
-  upstreamTimeout: (): AppError =>
-    appError("mistwatch_upstream_timeout", 504, "Mistral did not answer in time. Try again.", { retryAfter: 1 }),
+  upstreamTimeout: (seconds?: number, phase: "first_byte" | "total" | "idle" = "total"): AppError => {
+    const t = seconds === undefined ? "" : ` within ${waitText(seconds)}`;
+    const msg =
+      phase === "first_byte"
+        ? `Mistral did not start answering${t}. Try again.`
+        : phase === "idle"
+          ? `Mistral sent nothing for ${seconds === undefined ? "too long" : waitText(seconds)}. Try again.`
+          : `Mistral did not finish${t}. Try again.`;
+    return appError("mistwatch_upstream_timeout", 504, msg, { retryAfter: 1 });
+  },
   tooLarge: (limitBytes?: number, hint?: string): AppError =>
     appError(
       "mistwatch_body_too_large",
@@ -111,6 +119,12 @@ export const errors = {
       "mistwatch_forbidden",
       403,
       `This address is not allowed. Open Mistwatch at http://127.0.0.1:${port}/ or add this host to allowed_hosts under [server] in config.toml.`,
+    ),
+  notVibe: (ua: string): AppError =>
+    appError(
+      "mistwatch_not_vibe",
+      403,
+      `Mistwatch serves only Vibe and the Vibe CLI (User-Agent "${ua.slice(0, 60)}" is neither). Since 1 December 2026 Mistral counts other tools towards the API allowance, not Vibe. Set vibe_only = false under [limits] in config.toml to allow other clients.`,
     ),
   forbidden: (message: string): AppError => appError("mistwatch_forbidden", 403, message),
   shuttingDown: (): AppError =>

@@ -17,6 +17,7 @@ export type Limits = {
   strategy: string;
   fallback_to_other_pool: boolean;
   vibe_user_agent_regex: string;
+  vibe_only: boolean;
 };
 export type RouterCfg = { llm_classifier: boolean; classifier_model: string; classifier_timeout_s: number };
 export type PriceOverride = { input: number; output: number; cached?: number | undefined };
@@ -28,6 +29,8 @@ export type Config = {
   max_body_mb: number;
   upstream: string;
   console_upstream: string;
+  first_byte_timeout_s: number;
+  total_timeout_s: number;
   usd_to_eur: number;
   db_path: string;
   limits: Limits;

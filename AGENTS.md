@@ -15,14 +15,14 @@ Run one command. It never prompts, and you can run it again safely.
 npx mistwatch setup --yes --harness vibe
 ```
 
-Other tools: `--harness opencode`, `--harness pi`, or a list such as `--harness vibe,opencode`. Add `--port N` if the default port 8787 is taken. From a git checkout use `npm install && npm run build && node dist/cli.js setup --yes --harness vibe`.
+Only Vibe is supported (OpenCode and Pi were removed: Mistral counts third-party tools towards the API allowance from 1 December 2026). Add `--port N` if the default port 8787 is taken. From a git checkout use `npm install && npm run build && node dist/cli.js setup --yes --harness vibe`.
 
 Setup does this, in order:
 
 1. Creates `~/.mistwatch/config.toml` if it is missing (`MISTWATCH_HOME` or `MISTWATCH_CONFIG` change the location).
 2. Imports the Vibe CLI login from the OS keyring as an account.
 3. Creates a client token (`mw-...`) if there is none, and prints it **once**. (With `--json` no token is created unless you also pass `--show-token`, because a masked token could never be recovered.)
-4. Writes the provider config of each chosen tool: `~/.vibe/config.toml`, `~/.config/opencode/opencode.json` (`$XDG_CONFIG_HOME/opencode/opencode.json` when that variable is set; not on Windows) or `~/.pi/agent/models.json`. An existing file is copied to `<file>.<timestamp>.bak` first, then merged, never replaced. A file that is already correct is left alone.
+4. Writes the Vibe provider config: `~/.vibe/config.toml`. An existing file is copied to `<file>.<timestamp>.bak` first, then merged, never replaced. A file that is already correct is left alone.
 5. Checks the local status and prints `OK`.
 
 A non-zero exit code means a step failed; the output says which one and why. Warnings (`[warn]`) do not fail the run.
@@ -56,7 +56,6 @@ Setup prints `[warn] Vibe login`. Ask the user to run `vibe --setup` in their ow
 
 | Symptom | What to do |
 | --- | --- |
-| `[fail]` for OpenCode or Pi: "not plain JSON" | The file has comments. It was left untouched. Run `npx mistwatch agent-config opencode` (or `pi`) and have the user merge the printed block. |
 | `[fail]` for Vibe: "not valid TOML" | Same: the file is untouched. Run `npx mistwatch vibe-config` and have the user add the block. |
 | `... not found - run mistwatch init first` | Run `npx mistwatch setup --yes`. |
 | Port 8787 already in use | Run `npx mistwatch setup --yes --harness vibe --port N`: it writes the port into `config.toml` (backup kept) and into the tool configs. `serve --port N` alone is only for that one run; it changes neither `config.toml` nor the tool URLs. If you edit `[server] port` by hand, run setup again so the tools get the new URL. |

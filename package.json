@@ -18,8 +18,7 @@
     "gateway",
     "budget",
     "rate-limit",
-    "openai-compatible",
-    "opencode"
+    "openai-compatible"
   ],
   "repository": {
     "type": "git",

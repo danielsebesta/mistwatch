@@ -20,18 +20,7 @@ import type { Interface } from "node:readline/promises";
 import { WriteStream } from "node:tty";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import { parse } from "smol-toml";
-import {
-  ENV,
-  FLAT_HEADERS,
-  merge,
-  opencode,
-  opencodeConfigPath,
-  pi,
-  TOOLS,
-  VIBE_AUTO,
-  vibe,
-  vibeAutoBlock,
-} from "./agents.ts";
+import { ENV, FLAT_HEADERS, TOOLS, VIBE_AUTO, vibe, vibeAutoBlock } from "./agents.ts";
 import { createBudgetEngine } from "./budget.ts";
 import { CONFIG_TEMPLATE, clientBaseUrl, configPath } from "./config.ts";
 import { checkKey, persistToken, TOKEN_ENV } from "./envtoken.ts";
@@ -42,8 +31,8 @@ import { mask, StoreError, VIBE_REF, vibeCliKeyPresent } from "./store.ts";
 import type { Config } from "./types.ts";
 import { POOLS } from "./types.ts";
 
-export type Harness = "vibe" | "opencode" | "pi";
-export const HARNESSES: readonly Harness[] = ["vibe", "opencode", "pi"];
+export type Harness = "vibe";
+export const HARNESSES: readonly Harness[] = ["vibe"];
 export type SetupOptions = {
   yes: boolean;
   harness: Harness[] | null;
@@ -105,7 +94,7 @@ without a timestamped .bak copy, and unchanged files are left alone.
 
 options:
   -y, --yes            never ask, use defaults (also when stdin is not a terminal)
-      --harness LIST   comma-separated: vibe, opencode, pi or all (default: vibe)
+      --harness LIST   comma-separated: vibe (the only one; default)
       --port N         write this port into config.toml and the tool configs (default: keep the configured one, 8787 for a new config)
       --url URL        base URL the tools use to reach a Mistwatch running elsewhere, e.g. http://100.64.0.1:8787 (default: this machine)
       --start          run the proxy when setup is done
@@ -339,21 +328,6 @@ export const applyFile = (
     throw e;
   }
   return { action: raw === null ? "created" : "updated", backup };
-};
-export const planJson = (raw: string | null, data: Record<string, unknown>): string | null => {
-  let cur: Record<string, unknown> = {};
-  if (raw !== null && raw.trim() !== "") {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw.replace(/^﻿/, ""));
-    } catch {
-      throw new SetupError("not plain JSON (comments?), left untouched; merge the block by hand");
-    }
-    if (!isRec(parsed)) throw new SetupError("not a JSON object, left untouched");
-    cur = parsed;
-  }
-  const next = merge(structuredClone(cur), data);
-  return raw !== null && JSON.stringify(next) === JSON.stringify(cur) ? null : `${JSON.stringify(next, null, 2)}\n`;
 };
 const MW_NAME = /^\s*name\s*=\s*(["'])mistwatch\1\s*(#.*)?$/;
 const PROVIDERS_HEAD = /^\s*\[\[\s*providers\s*\]\]\s*(#.*)?$/;
@@ -728,41 +702,9 @@ const stepToken = (ctx: Ctx, store: Store): void => {
   if (ctx.opts.showToken) tok.token = secret;
   note(ctx, "ok", "Client token", `created key 'setup' (${tok.masked}), shown once below`);
 };
-const toHarness = (p: string): Harness | null => {
-  const n = Number(p);
-  const byNumber = Number.isInteger(n) ? HARNESSES[n - 1] : undefined;
-  if (byNumber) return byNumber;
-  const lower = p.toLowerCase();
-  return isHarness(lower) ? lower : null;
-};
-export const parseChoice = (raw: string): Harness[] | null => {
-  const parts = raw.split(/[\s,]+/).filter(Boolean);
-  if (parts.includes("all")) return [...HARNESSES];
-  const picked = parts.map(toHarness);
-  return parts.length > 0 && picked.every((h) => h !== null) ? HARNESSES.filter((h) => picked.includes(h)) : null;
-};
-const pickHarnesses = async (ctx: Ctx): Promise<Harness[]> => {
-  if (ctx.opts.harness) return ctx.opts.harness;
-  if (ctx.auto) return ["vibe"];
-  const { io } = ctx.deps;
-  io.out(`\n  ${ctx.style.accent("?")} Which tools should use Mistwatch?`);
-  for (const [i, h] of HARNESSES.entries())
-    io.out(
-      `      ${i + 1}  ${TOOLS[h].label}${i === 0 ? ctx.style.dim("  (default)") : ""}${ctx.style.dim(toolInstalled(ctx.deps, h) ? "  installed" : "  not found on this computer")}`,
-    );
-  for (let i = 0; i < 3; i++) {
-    const a = ((await io.ask(`    Numbers or names, comma-separated, 'all', or Enter for the default: `)) ?? "").trim();
-    if (a === "") return ["vibe"];
-    const picked = parseChoice(a);
-    if (picked) return picked;
-    io.out(`    ${ctx.style.paint("Not understood.", BAD)}`);
-  }
-  return ["vibe"];
-};
+const pickHarnesses = (ctx: Ctx): Harness[] => ctx.opts.harness ?? ["vibe"];
 const INSTALL: Record<Harness, { bin: string; cmd: string }> = {
   vibe: { bin: "vibe", cmd: "uv tool install mistral-vibe" },
-  opencode: { bin: "opencode", cmd: "npm install -g opencode-ai" },
-  pi: { bin: "pi", cmd: "npm install -g @earendil-works/pi-coding-agent" },
 };
 export const onPath = (command: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform): boolean => {
   const dirs = (env.PATH ?? env.Path ?? "").split(platform === "win32" ? ";" : ":").filter(Boolean);
@@ -776,8 +718,6 @@ const toolInstalled = (deps: SetupDeps, h: Harness): boolean => {
 };
 const HARNESS_PATHS = (deps: SetupDeps): Record<Harness, string> => ({
   vibe: join(deps.vibeHome, "config.toml"),
-  opencode: opencodeConfigPath(deps.home, deps.platform),
-  pi: join(deps.home, ".pi", "agent", "models.json"),
 });
 const stepHarness = (ctx: Ctx, h: Harness, cfg: Config | null): void => {
   const path = HARNESS_PATHS(ctx.deps)[h];
@@ -789,10 +729,7 @@ const stepHarness = (ctx: Ctx, h: Harness, cfg: Config | null): void => {
   const result: HarnessResult = { harness: h, path, action: "failed", backup: null, installed };
   ctx.report.harnesses.push(result);
   try {
-    const plan = (raw: string | null): string | null =>
-      h === "vibe"
-        ? planToml(raw, base, ctx.opts.desktop === true)
-        : planJson(raw, h === "pi" ? pi(base) : opencode(base));
+    const plan = (raw: string | null): string | null => planToml(raw, base, ctx.opts.desktop === true);
     const done = applyFile(path, plan, ctx.deps.now());
     result.action = done.action;
     result.backup = done.backup;
@@ -859,8 +796,6 @@ const tokenCommand = (platform: NodeJS.Platform): string =>
     : "export MISTWATCH_TOKEN=<token>   (add it to your shell profile)";
 const toolHint: Record<Harness, string> = {
   vibe: 'In Vibe, open /model and pick "Auto"; your Mistral models now go through Mistwatch too.',
-  opencode: 'In OpenCode, pick a model of the "mistwatch" provider (start with auto).',
-  pi: "In Pi, pick the mistwatch provider and the model auto.",
 };
 const summary = (ctx: Ctx, cfg: Config | null): string[] => {
   const { style, report } = ctx;
@@ -945,7 +880,7 @@ export const runSetup = async (args: string[], deps: SetupDeps): Promise<number>
   } catch (e) {
     if (!(e instanceof SetupArgError)) throw e;
     io.err(`mistwatch: ${e.message}`);
-    io.err("usage: mistwatch setup [--yes] [--harness vibe,opencode,pi] [--port N] [--no-banner] [--start] [--json]");
+    io.err("usage: mistwatch setup [--yes] [--harness vibe] [--port N] [--no-banner] [--start] [--json]");
     return 2;
   }
   if (opts.help) {
@@ -981,14 +916,14 @@ export const runSetup = async (args: string[], deps: SetupDeps): Promise<number>
     if (!opts.url && !ctx.auto) await askWhere(ctx);
     if (opts.url) {
       await stepRemote(ctx, opts.url);
-      for (const h of await pickHarnesses(ctx)) stepHarness(ctx, h, null);
+      for (const h of pickHarnesses(ctx)) stepHarness(ctx, h, null);
       await stepKey(ctx, opts.url);
     } else {
       stepConfig(ctx);
       app = openApp();
       cfg = app.cfg;
       await stepVibe(ctx, app.store);
-      const picked = await pickHarnesses(ctx);
+      const picked = pickHarnesses(ctx);
       stepToken(ctx, app.store);
       for (const h of picked) stepHarness(ctx, h, app.cfg);
       await stepKey(ctx, clientBaseUrl(app.cfg));
