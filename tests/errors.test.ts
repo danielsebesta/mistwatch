@@ -39,6 +39,12 @@ describe("AppError", () => {
     expect(x.message).toBe("The request body is too large.");
     expect(x.stack).toBeTypeOf("string");
   });
+  it("tooLarge names the limit and the hint when given", () => {
+    expect(errors.tooLarge(32 * 1024 * 1024, "Raise it.").message).toBe(
+      "The request body is larger than 32 MiB. Raise it.",
+    );
+    expect(errors.tooLarge(256 * 1024).message).toBe("The request body is larger than 256 KiB.");
+  });
   it("toAppError normalises unknown throws without leaking internals", () => {
     const mine = errors.auth();
     expect(toAppError(mine)).toBe(mine);

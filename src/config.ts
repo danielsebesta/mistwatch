@@ -22,6 +22,8 @@ port = 8787
 # Set to true only behind a reverse proxy (Caddy, nginx, Cloudflare) that sets X-Forwarded-For and X-Forwarded-Proto.
 # Then per-IP limits use the real client address and cookies get the Secure flag.
 trust_proxy = false
+# Largest request body the proxy accepts, in MiB. Raise it for clients that send images or very long contexts.
+max_body_mb = 32
 
 [upstream]
 base_url = "https://api.mistral.ai"
@@ -65,6 +67,7 @@ export const defaultConfig = (): Config => ({
   port: 8787,
   allowed_hosts: [],
   trust_proxy: false,
+  max_body_mb: 32,
   upstream: "https://api.mistral.ai",
   console_upstream: "https://console.mistral.ai",
   usd_to_eur: DEFAULT_USD_TO_EUR,
@@ -196,6 +199,8 @@ export const loadConfig = (path?: string): Config => {
   cfg.port = pick(server, "port", cfg.port, asInt);
   cfg.trust_proxy = pick(server, "trust_proxy", cfg.trust_proxy, asBool);
   if (process.env.MISTWATCH_TRUST_PROXY) cfg.trust_proxy = /^(1|true|yes|on)$/i.test(process.env.MISTWATCH_TRUST_PROXY);
+  cfg.max_body_mb = pick(server, "max_body_mb", cfg.max_body_mb, finiteInt);
+  if (cfg.max_body_mb < 1) throw new TypeError(`max_body_mb must be at least 1, not ${cfg.max_body_mb}`);
   cfg.allowed_hosts = pick(server, "allowed_hosts", cfg.allowed_hosts, hostList);
   // MISTWATCH_ALLOWED_HOSTS (comma separated) adds to the file list, so Docker needs no config edit
   const envHosts = process.env.MISTWATCH_ALLOWED_HOSTS;

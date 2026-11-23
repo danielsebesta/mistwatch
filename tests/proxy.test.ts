@@ -647,6 +647,17 @@ describe("proxy routing, limits and shutdown", () => {
     expect(r.status).toBe(413);
     expect(await errType(r)).toBe("mistwatch_body_too_large");
   });
+  it("takes the body limit from the config and says how to raise it", async () => {
+    const st = baseState(() => okJson());
+    st.cfg.max_body_mb = 1;
+    const p = createProxy(st);
+    const r = await p.handle(jreq("/v1/chat/completions", { model: "m", pad: "x".repeat(1024 * 1024) }, AUTH));
+    expect(r.status).toBe(413);
+    const body = (await r.json()) as { error: { type: string; message: string } };
+    expect(body.error.type).toBe("mistwatch_body_too_large");
+    expect(body.error.message).toContain("1 MiB");
+    expect(body.error.message).toContain("max_body_mb");
+  });
   it("rate limits per proxy key with Retry-After", async () => {
     const st = baseState(() => okJson());
     const p = createProxy(st, { keyRate: [1, 3600] });

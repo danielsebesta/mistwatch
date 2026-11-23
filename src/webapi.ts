@@ -114,7 +114,7 @@ export const createWebApi = (st: State, opts: WebApiOpts = {}): Hono => {
     if (left > 0) throw asException(errors.locked(left));
   };
   const jsonBody = async (c: Context): Promise<Record<string, unknown>> => {
-    if (!bodyWithinLimit(c.req.header("content-length"), BODY_LIMIT)) throw asException(errors.tooLarge());
+    if (!bodyWithinLimit(c.req.header("content-length"), BODY_LIMIT)) throw asException(errors.tooLarge(BODY_LIMIT));
     const raw = await readLimitedBody(c.req.raw.body, BODY_LIMIT);
     let data: unknown;
     try {

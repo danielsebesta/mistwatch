@@ -37,7 +37,9 @@ import {
 import type { State } from "./state.ts";
 import { blockKey, candidates, classify, exhaustedInfo } from "./state.ts";
 import type { Account, ChatBody, Decision, PoolStatus } from "./types.ts";
-export const BODY_LIMIT = 8 * 1024 * 1024;
+
+// The proxy buffers a whole body to read model and stream, so the cap is also a memory bound.
+const BODY_HINT = "Raise max_body_mb under [server] in config.toml, or send less context.";
 export const CONNECT_S = 15;
 export const TOTAL_S = 600;
 // A stream may run this long in all; it is cut earlier only after TOTAL_S without any data.
@@ -238,7 +240,7 @@ type Ctx = {
 };
 export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
   const cfg = st.cfg;
-  const bodyLimit = opts.bodyLimit ?? BODY_LIMIT;
+  const bodyLimit = opts.bodyLimit ?? cfg.max_body_mb * 1024 * 1024;
   const connectMs = (opts.connectTimeoutS ?? CONNECT_S) * 1000;
   const totalMs = (opts.totalTimeoutS ?? TOTAL_S) * 1000;
   const [gLim, gWin] = opts.globalRate ?? [600, 60];
@@ -264,7 +266,8 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
       return Response.json(apiErrorBody(appError("mistwatch_not_found", 404, "Not Found")), { status: 404 });
     // per-IP budget and the lock after wrong keys come first, then the key lookup, then the shared limits
     const client = authClient(st, req.headers.get("authorization"), req.headers.get("x-api-key"), ip);
-    if (!bodyWithinLimit(req.headers.get("content-length"), bodyLimit)) throw asException(errors.tooLarge());
+    if (!bodyWithinLimit(req.headers.get("content-length"), bodyLimit))
+      throw asException(errors.tooLarge(bodyLimit, BODY_HINT));
     const g = globalRl.check("");
     if (!g.allowed) throw asException(errors.rateLimited(g.retryAfter));
     const kr = keyRl.check(client === null ? "open" : String(client.id));
@@ -275,7 +278,7 @@ export const createProxy = (st: State, opts: ProxyOpts = {}): Proxy => {
     // the Vibe CLI greets by this name: the Mistwatch user, not the Mistral account
     if (req.method === "GET" && urlPath === "/v1/users/me") return Response.json(mistwatchIdentity(st, client));
     if (req.method === "GET" && urlPath === "/v1/mistwatch/limits") return Response.json(limits(st, Date.now() / 1000));
-    const body = await readLimitedBody(req.body, bodyLimit);
+    const body = await readLimitedBody(req.body, bodyLimit, BODY_HINT);
     const cls = classify(st, req.headers.get("user-agent") ?? "");
     const accounted = req.method === "POST" && ACCOUNTED.some((p) => urlPath === p || urlPath.startsWith(`${p}/`));
     let parsed: ChatBody = {};

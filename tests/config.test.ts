@@ -112,6 +112,29 @@ allowed_hosts = "x"
     ).toThrow();
   });
 });
+describe("max_body_mb", () => {
+  const load = (body: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "mwcfg-"));
+    const p = join(dir, "config.toml");
+    writeFileSync(p, body);
+    return loadConfig(p);
+  };
+  it("defaults to 32 and reads the server table", () => {
+    expect(load("").max_body_mb).toBe(32);
+    expect(
+      load(`[server]
+max_body_mb = 64
+`).max_body_mb,
+    ).toBe(64);
+  });
+  it("refuses a limit below one MiB", () => {
+    expect(() =>
+      load(`[server]
+max_body_mb = 0
+`),
+    ).toThrow(/at least 1/);
+  });
+});
 describe("loadConfig", () => {
   it("reports invalid TOML without quoting the source", () => {
     const dir = mkdtempSync(join(tmpdir(), "mwcfg-"));

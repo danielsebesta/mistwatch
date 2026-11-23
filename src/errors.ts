@@ -49,6 +49,8 @@ const waitText = (s: number): string => {
   const h = Math.floor(m / 60);
   return m % 60 === 0 ? `${h} h` : `${h} h ${m % 60} min`;
 };
+const sizeLabel = (bytes: number): string =>
+  bytes >= 1024 * 1024 ? `${Math.round(bytes / (1024 * 1024))} MiB` : `${Math.round(bytes / 1024)} KiB`;
 export const errors = {
   auth: (): AppError =>
     appError(
@@ -78,7 +80,14 @@ export const errors = {
     ),
   upstreamTimeout: (): AppError =>
     appError("mistwatch_upstream_timeout", 504, "Mistral did not answer in time. Try again.", { retryAfter: 1 }),
-  tooLarge: (): AppError => appError("mistwatch_body_too_large", 413, "The request body is too large."),
+  tooLarge: (limitBytes?: number, hint?: string): AppError =>
+    appError(
+      "mistwatch_body_too_large",
+      413,
+      limitBytes === undefined
+        ? "The request body is too large."
+        : `The request body is larger than ${sizeLabel(limitBytes)}.${hint === undefined ? "" : ` ${hint}`}`,
+    ),
   queueFull: (retryAfter = 1): AppError =>
     appError("mistwatch_queue_full", 503, "Mistwatch is busy with too many requests. Retry in a moment.", {
       retryAfter: secs(retryAfter),

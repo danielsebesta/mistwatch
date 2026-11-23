@@ -25,6 +25,7 @@ export type Config = {
   port: number;
   allowed_hosts: string[];
   trust_proxy: boolean;
+  max_body_mb: number;
   upstream: string;
   console_upstream: string;
   usd_to_eur: number;

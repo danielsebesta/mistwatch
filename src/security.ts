@@ -116,7 +116,11 @@ export const bodyWithinLimit = (contentLength: string | null | undefined, limit:
   const n = Number(contentLength);
   return !Number.isFinite(n) || n <= limit;
 };
-export const readLimitedBody = async (body: ReadableStream<Uint8Array> | null, limit: number): Promise<Uint8Array> => {
+export const readLimitedBody = async (
+  body: ReadableStream<Uint8Array> | null,
+  limit: number,
+  hint?: string,
+): Promise<Uint8Array> => {
   if (body === null) return new Uint8Array(0);
   const r = body.getReader();
   const parts: Uint8Array[] = [];
@@ -128,7 +132,7 @@ export const readLimitedBody = async (body: ReadableStream<Uint8Array> | null, l
       size += value.byteLength;
       if (size > limit) {
         await r.cancel().catch(() => undefined);
-        throw asException(errors.tooLarge());
+        throw asException(errors.tooLarge(limit, hint));
       }
       parts.push(value);
     }
@@ -143,13 +147,13 @@ export const readLimitedBody = async (body: ReadableStream<Uint8Array> | null, l
   }
   return out;
 };
-export const limitBodyStream = (limit: number): TransformStream<Uint8Array, Uint8Array> => {
+export const limitBodyStream = (limit: number, hint?: string): TransformStream<Uint8Array, Uint8Array> => {
   let size = 0;
   return new TransformStream({
     transform(chunk, ctrl) {
       size += chunk.byteLength;
       if (size > limit) {
-        ctrl.error(asException(errors.tooLarge()));
+        ctrl.error(asException(errors.tooLarge(limit, hint)));
         return;
       }
       ctrl.enqueue(chunk);

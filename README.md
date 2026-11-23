@@ -170,6 +170,8 @@ Settings live in `~/.mistwatch/config.toml` (server address and port, limits, pr
 
 To reach the UI under another host name, for example through a tunnel, add it to `allowed_hosts` under `[server]`. In Docker, set `MISTWATCH_ALLOWED_HOSTS` instead (comma separated, for example `mw.tailnet.ts.net,100.64.0.1`); it is added to the list from the file.
 
+A request body larger than `max_body_mb` (32 MiB by default) is refused with `413` before it reaches Mistral. Raise it under `[server]` when a client sends images or a very long context. The proxy buffers the whole body to read `model` and `stream`, so the cap is also a memory bound: the worst case is `max_body_mb` times the concurrency (8).
+
 `mistwatch setup` asks whether Mistwatch runs on this computer or on another machine/hosted instance (or pass `--url http://HOST:8787`). For a hosted one it only writes the tool configs and checks that the server answers. It also says which of Vibe, OpenCode and Pi are not installed and how to install them, and offers to store your Mistwatch key as `MISTWATCH_TOKEN` (typing is hidden, the key is checked against the server first; on Windows it goes to your user environment, on macOS/Linux to your zsh or bash profile after you confirm). `mistwatch set-token [--url URL]` does only that step.
 
 ## Security
