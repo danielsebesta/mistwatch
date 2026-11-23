@@ -205,8 +205,8 @@ a {
   text-decoration: none;
 }
 .brand img {
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 2.2rem;
+  height: auto;
   display: block;
   image-rendering: pixelated;
 }
@@ -1399,8 +1399,8 @@ dialog.dlg::backdrop {
   justify-content: center;
 }
 .auth .brand img {
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 3.3rem;
+  height: auto;
 }
 .auth .card {
   display: grid;

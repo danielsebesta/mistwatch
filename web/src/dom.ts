@@ -106,7 +106,7 @@ export const ic = (name: IconName): SVGSVGElement => {
   return s;
 };
 export const logoMark = (): HTMLImageElement =>
-  h("img", { src: "/favicon.svg", alt: "", width: 24, height: 24, "aria-hidden": "true" });
+  h("img", { src: "/favicon.svg", alt: "", width: 33, height: 15, "aria-hidden": "true" });
 export const qs = <T extends Element = HTMLElement>(sel: string, el: ParentNode = document): T | null =>
   el.querySelector<T>(sel);
 export const keysOf = <T extends object>(o: T): (keyof T)[] => Object.keys(o) as (keyof T)[];

@@ -26,8 +26,8 @@ const GLYPHS: Record<string, { cells: Cell[]; adv: number }> = {
 // sunset amber -> coral; a pixel-stepped gradient
 const STEPS = ["#ffc233", "#ffa21f", "#ff7f2a", "#f95a3b", "#e8384f"];
 const tokens = JSON.parse(readFileSync(join(HERE, "palette.json"), "utf8")).tokens as Record<string, string>;
-const TILE = tokens.bg as string;
-const INK_DARK = tokens.bg as string;
+const BG = tokens.bg as string;
+const INK_DARK = BG;
 const INK_LIGHT = tokens.text as string;
 
 const text = (s: string): { px: Cell[]; width: number } => {
@@ -57,9 +57,6 @@ const gradient = (px: Cell[], width: number): { x: number; y: number; c: string 
 
 const MARK = text("MW");
 const CELLS = gradient(MARK.px, MARK.width);
-const GRID = 15; // 15-cell tile
-const MX = 2; // the 11x5 mark sits at (2, 5)
-const MY = 5;
 
 const rects = (dx = 0, dy = 0): string => {
   const by = new Map<string, string[]>();
@@ -71,50 +68,32 @@ const rects = (dx = 0, dy = 0): string => {
   }
   return [...by].map(([c, d]) => `<path fill="${c}" d="${d.join("")}"/>`).join("");
 };
-const tilePath = (n: number): string => `M1 0h${n - 2}v1h1v${n - 2}h-1v1H1v-1H0V1h1z`;
 
-const favicon = (): string =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${GRID} ${GRID}" shape-rendering="crispEdges"><path fill="${TILE}" d="${tilePath(GRID)}"/>${rects(MX, MY)}</svg>`;
 const mark = (): string =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${MARK.width} 5" shape-rendering="crispEdges">${rects()}</svg>`;
+// The mark and the wordmark side by side, no tile.
 const logo = (ink: string): string => {
   const wm = text("MISTWATCH");
   const gap = 3;
-  const w = GRID + gap + wm.width;
-  const word = wm.px.map(([x, y]) => `M${x + GRID + gap} ${y + MY}h1v1h-1z`).join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${GRID}" shape-rendering="crispEdges"><path fill="${TILE}" d="${tilePath(GRID)}"/>${rects(MX, MY)}<path fill="${ink}" d="${word}"/></svg>`;
+  const w = MARK.width + gap + wm.width;
+  const word = wm.px.map(([x, y]) => `M${x + MARK.width + gap} ${y}h1v1h-1z`).join("");
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} 5" shape-rendering="crispEdges">${rects()}<path fill="${ink}" d="${word}"/></svg>`;
 };
 
 type RGB = [number, number, number];
 const hexRgb = (h: string): RGB => [1, 3, 5].map((i) => Number.parseInt(h.slice(i, i + 2), 16)) as RGB;
 
-// RGBA raster. notch=true: the favicon tile (15 cells, centred); false: full-bleed square with a centred mark.
-const raster = (size: number, notch: boolean): Uint8Array => {
+// RGBA raster: the mark on a transparent square, as large as whole pixels allow.
+const raster = (size: number): Uint8Array => {
   const px = new Uint8Array(size * size * 4); // transparent
-  const fill = (x0: number, y0: number, x1: number, y1: number, [r, g, b]: RGB): void => {
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) px.set([r, g, b, 255], (y * size + x) * 4);
-  };
-  const bg = hexRgb(TILE);
-  let c: number;
-  let mx: number;
-  let my: number;
-  if (notch) {
-    c = Math.floor(size / GRID);
-    const o = Math.floor((size - GRID * c) / 2);
-    const r = (x0: number, y0: number, x1: number, y1: number): void =>
-      fill(o + x0 * c, o + y0 * c, o + x1 * c - 1, o + y1 * c - 1, bg);
-    r(0, 1, GRID, GRID - 1);
-    r(1, 0, GRID - 1, GRID);
-    mx = o + MX * c;
-    my = o + MY * c;
-  } else {
-    fill(0, 0, size - 1, size - 1, bg);
-    c = Math.max(1, Math.round((size * 0.66) / MARK.width));
-    mx = Math.floor((size - MARK.width * c) / 2);
-    my = Math.floor((size - 5 * c) / 2);
+  const c = Math.max(1, Math.floor(size / MARK.width));
+  const mx = Math.floor((size - MARK.width * c) / 2);
+  const my = Math.floor((size - 5 * c) / 2);
+  for (const { x, y, c: col } of CELLS) {
+    const [r, g, b] = hexRgb(col);
+    for (let yy = my + y * c; yy < my + (y + 1) * c; yy++)
+      for (let xx = mx + x * c; xx < mx + (x + 1) * c; xx++) px.set([r, g, b, 255], (yy * size + xx) * 4);
   }
-  for (const { x, y, c: col } of CELLS)
-    fill(mx + x * c, my + y * c, mx + (x + 1) * c - 1, my + (y + 1) * c - 1, hexRgb(col));
   return px;
 };
 
@@ -155,7 +134,7 @@ const png = (size: number, rgba: Uint8Array): Buffer => {
 };
 // ICO container holding PNG images
 const ico = (sizes: number[]): Buffer => {
-  const images = sizes.map((s) => png(s, raster(s, true)));
+  const images = sizes.map((s) => png(s, raster(s)));
   const head = Buffer.alloc(6);
   head.writeUInt16LE(1, 2);
   head.writeUInt16LE(images.length, 4);
@@ -176,7 +155,7 @@ const ico = (sizes: number[]): Buffer => {
 };
 
 mkdirSync(OUT, { recursive: true });
-writeFileSync(join(OUT, "favicon.svg"), favicon());
+writeFileSync(join(OUT, "favicon.svg"), mark());
 writeFileSync(join(OUT, "mark.svg"), mark());
 writeFileSync(join(OUT, "logo.svg"), logo(INK_DARK));
 writeFileSync(join(OUT, "logo-dark.svg"), logo(INK_LIGHT));
@@ -186,7 +165,7 @@ for (const [name, size] of [
   ["icon-192", 192],
   ["icon-512", 512],
 ] as const)
-  writeFileSync(join(OUT, `${name}.png`), png(size, raster(size, false)));
+  writeFileSync(join(OUT, `${name}.png`), png(size, raster(size)));
 writeFileSync(
   join(OUT, "site.webmanifest"),
   JSON.stringify({
@@ -194,8 +173,8 @@ writeFileSync(
     short_name: "Mistwatch",
     start_url: "/",
     display: "standalone",
-    background_color: TILE,
-    theme_color: TILE,
+    background_color: BG,
+    theme_color: BG,
     icons: [
       { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
       { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
